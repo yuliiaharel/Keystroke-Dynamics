@@ -7,9 +7,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.162.0",
+    "itsdangerous>=2.2.0",
     "numpy>=2.5.4",
+    "psycopg[binary]>=3.3.7",
     "pydantic-settings>=2.16.2",
+    "sqlalchemy>=2",
     "uvicorn>=0.54.0",
 ]
 
@@ -29,10 +34,16 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["legacy", "*.md"]
+extend-exclude = ["legacy", "*.md", "migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's own documented pattern for dependency injection is a
+# `Depends(...)` call as a parameter default; B008 otherwise flags
+# every single route and sub-dependency in api/.
+extend-immutable-calls = ["fastapi.Depends"]
 
 [tool.mypy]
 python_version = "3.12"
