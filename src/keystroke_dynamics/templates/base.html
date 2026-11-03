@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Keystroke Dynamics{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="site-header">
+    <h1>Keystroke Dynamics</h1>
+    <nav>
+      <a href="/" class="{{ 'active' if active_page == 'home' else '' }}">Home</a>
+      <a href="/create-profile" class="{{ 'active' if active_page == 'create-profile' else '' }}">Create Profile</a>
+      <a href="/authenticate" class="{{ 'active' if active_page == 'authenticate' else '' }}">Authenticate</a>
+      <a href="/how-it-works" class="{{ 'active' if active_page == 'how-it-works' else '' }}">How It Works</a>
+      <a href="/about" class="{{ 'active' if active_page == 'about' else '' }}">About</a>
+    </nav>
+  </header>
+
+  <main class="site-main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>A demo application. Not a production biometric system.</p>
+  </footer>
+</body>
+</html>

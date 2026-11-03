@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}How It Works – Keystroke Dynamics{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <h2>What is keystroke dynamics?</h2>
+  <p>
+    Keystroke dynamics is a behavioral biometric: the detailed timing of
+    when each key is pressed and released as someone types. Two raw signals
+    are measured for each key: <strong>hold time</strong> (how long a key is
+    held down) and <strong>flight time</strong> (the gap between releasing
+    one key and pressing the next). A pair of consecutive keys and the
+    timing between them is called a <strong>digraph</strong>.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>How this app works</h2>
+  <p>
+    When you create a profile, the browser records the hold time for each
+    key and the flight time between consecutive key pairs you type. For
+    each distinct key (or key pair), the server keeps a running
+    <strong>mean and variance</strong> using
+    <a href="https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm">Welford's
+    online algorithm</a> — so your profile improves with every sample
+    without ever storing the raw timestamps it was built from.
+  </p>
+  <p>
+    To authenticate, the app extracts the same features from your new
+    sample and computes a <strong>scaled Manhattan distance</strong>
+    between each feature and your stored mean, scaled by that feature's own
+    standard deviation. The scores are averaged into a single distance; if
+    it is at or below a calibrated threshold, the sample is a
+    <strong>match</strong>.
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Measured accuracy and limits</h2>
+  <p>
+    The scoring method was evaluated against a public keystroke-timing
+    benchmark dataset, using its published train/test split. It reached an
+    <strong>equal error rate (EER) of about 9%</strong> — close to the ~10%
+    reported in the dataset's original publication for comparable methods.
+    An EER this high means the method is a reasonable research-grade
+    demonstration, not a secure standalone authenticator: in roughly 1 in 11
+    genuine attempts it would be scored as a non-match, and roughly as often
+    an impostor would be scored as a match.
+  </p>
+  <p>
+    Because of this, typing is used only as <strong>one signal alongside
+    your password</strong>, never as a replacement for it. A failed typing
+    check is shown to you but never fails your login or locks your account
+    by itself. Until a profile has enough data, the app reports
+    <strong>insufficient data</strong> rather than guessing.
+  </p>
+</section>
+
+{% endblock %}

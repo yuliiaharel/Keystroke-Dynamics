@@ -1,9 +1,12 @@
 """App creation and wiring."""
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from keystroke_dynamics.api import auth, profile
+from keystroke_dynamics.api import auth, pages, profile
 from keystroke_dynamics.api.middleware import MaxBodySizeMiddleware
 from keystroke_dynamics.config import settings
 
@@ -27,6 +30,10 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(profile.router)
+app.include_router(pages.router)
+
+_static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 
 @app.get("/health")

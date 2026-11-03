@@ -1,0 +1,200 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f0f0f0;
+  --panel-bg: #ffffff;
+  --text: #1a1a1a;
+  --accent: #3b4a6b;
+  --accent-dark: #2a3650;
+  --border: #d0d0d0;
+  --error: #b00020;
+  --success: #1a7a3c;
+  --danger: #b00020;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.site-header {
+  background: var(--accent);
+  color: #fff;
+  padding: 1rem 1.5rem;
+}
+
+.site-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+}
+
+.site-header nav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-header nav a {
+  color: #fff;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.site-header nav a.active,
+.site-header nav a:hover {
+  background: var(--accent-dark);
+}
+
+.site-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.site-footer {
+  text-align: center;
+  padding: 1rem;
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.panel--success {
+  border-color: var(--success);
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 420px;
+}
+
+label {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+input,
+textarea {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 1rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.button--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.cta-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.error {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.sample-phrase {
+  background: #f7f7f2;
+  border-left: 4px solid var(--accent);
+  padding: 0.75rem 1rem;
+  font-style: italic;
+}
+
+.privacy-note {
+  background: #eef3ea;
+  border-left: 4px solid var(--success);
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+/* Typing-result states: each decision gets its own text label and
+   symbol (see ui.ts), so color is never the only signal. */
+.result {
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.result--match {
+  background: #e4f5e8;
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.result--no_match {
+  background: #fbe6e8;
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.result--insufficient_data {
+  background: #f1f1e8;
+  color: #6b6b1a;
+  border: 1px solid #b0a93c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --panel-bg: #242424;
+    --text: #e8e8e8;
+    --border: #3a3a3a;
+  }
+
+  .sample-phrase {
+    background: #2a2a24;
+  }
+
+  .privacy-note {
+    background: #1f2a1f;
+  }
+}
