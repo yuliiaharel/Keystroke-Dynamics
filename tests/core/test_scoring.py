@@ -1,7 +1,12 @@
 import pytest
 
 from keystroke_dynamics.core.features import Feature, FeatureKey
-from keystroke_dynamics.core.scoring import Decision, scaled_manhattan_score, three_sigma_score
+from keystroke_dynamics.core.scoring import (
+    Decision,
+    plain_manhattan_score,
+    scaled_manhattan_score,
+    three_sigma_score,
+)
 from keystroke_dynamics.core.stats import RunningStats, from_values
 
 HOLD_A: FeatureKey = ("hold", "KeyA")
@@ -77,6 +82,29 @@ def test_effective_std_uses_actual_std_when_above_the_floor() -> None:
 
 def test_scaled_manhattan_zero_compared_features_returns_insufficient_data() -> None:
     result = scaled_manhattan_score([Feature(HOLD_A, 50.0)], {}, min_compared_features=0)
+    assert result.decision == Decision.INSUFFICIENT_DATA
+    assert result.compared_features == 0
+
+
+def test_plain_manhattan_does_not_scale_by_std() -> None:
+    # Unlike scaled_manhattan_score, a wide-spread profile must not
+    # shrink the distance here: the raw difference is all that matters.
+    low_spread = make_profile({HOLD_A: [49.0, 50.0, 51.0]})  # std = 1.0
+    high_spread = make_profile({HOLD_A: [0.0, 50.0, 100.0]})  # std = 50.0
+
+    low = plain_manhattan_score(
+        [Feature(HOLD_A, 60.0)], low_spread, min_feature_count=1, min_compared_features=1
+    )
+    high = plain_manhattan_score(
+        [Feature(HOLD_A, 60.0)], high_spread, min_feature_count=1, min_compared_features=1
+    )
+
+    assert low.score == pytest.approx(10.0)
+    assert high.score == pytest.approx(10.0)  # same raw distance, unlike the scaled version
+
+
+def test_plain_manhattan_zero_compared_features_returns_insufficient_data() -> None:
+    result = plain_manhattan_score([Feature(HOLD_A, 50.0)], {}, min_compared_features=0)
     assert result.decision == Decision.INSUFFICIENT_DATA
     assert result.compared_features == 0
 
