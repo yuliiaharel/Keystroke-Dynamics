@@ -18,6 +18,13 @@ htmlcov/
 # Node / frontend build output
 node_modules/
 frontend/dist/
+frontend/screenshots/
+frontend/test-results/
+frontend/playwright-report/
+# Vite builds straight into the backend's static dir (see
+# frontend/vite.config.ts) -- the JS it generates is a build artifact,
+# not source; the hand-authored CSS beside it is still tracked.
+src/keystroke_dynamics/static/js/*.js
 
 # Databases
 *.sqlite

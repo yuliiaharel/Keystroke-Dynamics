@@ -100,4 +100,10 @@ def test_no_username_availability_endpoint_exists(client: TestClient) -> None:
         "/api/profile/samples",
         "/api/profile/verify",
         "/api/profile",
+        "/",
+        "/create-profile",
+        "/authenticate",
+        "/how-it-works",
+        "/about",
+        "/finish",
     }
