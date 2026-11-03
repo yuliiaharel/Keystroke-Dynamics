@@ -19,9 +19,14 @@ from keystroke_dynamics.core.stats import RunningStats
 DEFAULT_MIN_FEATURE_COUNT = 5
 DEFAULT_MIN_STD_MS = 1.0
 DEFAULT_MIN_COMPARED_FEATURES = 20
-#: Provisional -- calibrated against a real benchmark in Phase 3.
-DEFAULT_THRESHOLD = 1.0
-#: Provisional -- same caveat, calibrated in Phase 3.
+#: Provisional: the mean of each subject's own EER-crossover threshold
+#: on the Phase 3 benchmark (evaluation/results.md), using this exact
+#: scoring method. Not an independently-validated operating point --
+#: see that file's Limitation section (one fixed password, not free
+#: text) before trusting it as a real decision boundary.
+DEFAULT_THRESHOLD = 1.0724
+#: Provisional -- three_sigma_score isn't the method this app uses to
+#: decide anything (see its docstring), so this is left uncalibrated.
 DEFAULT_THREE_SIGMA_MATCH_RATIO = 0.5
 
 
