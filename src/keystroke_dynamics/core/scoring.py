@@ -89,6 +89,48 @@ def scaled_manhattan_score(
     )
 
 
+def plain_manhattan_score(
+    sample: list[Feature],
+    profile: dict[FeatureKey, RunningStats],
+    *,
+    min_feature_count: int = DEFAULT_MIN_FEATURE_COUNT,
+    min_compared_features: int = DEFAULT_MIN_COMPARED_FEATURES,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> ScoreResult:
+    """Unscaled Manhattan distance: abs(sample_value - profile_mean),
+    not divided by profile_std. The score is the average across
+    compared features; lower means more similar. MATCH when
+    score <= threshold.
+
+    For comparison against scaled_manhattan_score in Phase 3 only.
+    Without scaling, a feature with naturally larger timings (e.g. a
+    flight vs. a hold) dominates the average regardless of how
+    variable it actually is for this profile -- exactly what scaling
+    by profile_std corrects for.
+    """
+    distances: list[float] = []
+
+    for feature in sample:
+        stats = profile.get(feature.key)
+        if stats is None or stats.count < min_feature_count:
+            continue
+        distances.append(abs(feature.value_ms - stats.mean))
+
+    if not distances or len(distances) < min_compared_features:
+        return ScoreResult(
+            decision=Decision.INSUFFICIENT_DATA,
+            score=None,
+            threshold=threshold,
+            compared_features=len(distances),
+        )
+
+    score = sum(distances) / len(distances)
+    decision = Decision.MATCH if score <= threshold else Decision.NO_MATCH
+    return ScoreResult(
+        decision=decision, score=score, threshold=threshold, compared_features=len(distances)
+    )
+
+
 def three_sigma_score(
     sample: list[Feature],
     profile: dict[FeatureKey, RunningStats],
