@@ -44,3 +44,22 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start the Compose stack
+        run: docker compose up --build -d --wait
+
+      - name: Health check
+        run: curl --fail http://127.0.0.1:8000/health
+
+      - name: Compose logs (on failure)
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
