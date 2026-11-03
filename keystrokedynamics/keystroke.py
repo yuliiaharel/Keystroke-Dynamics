@@ -2,11 +2,10 @@ from flask import render_template
 from flask import request, Response
 from keystrokedynamics import app, nav, cross_origin
 
-import json
-
 import checkname
 import profile
 import bioauth
+import getpost
 
 nav.Bar('top', [
     nav.Item('Home', 'index'),
@@ -41,11 +40,8 @@ def createprofile():
                 print "New Name"
                 return Response("OK", mimetype="text/plain")
         elif typepost == "Create_Profile":
-            postfile = typepost + "_" + user + "POST.json"
-            with open(postfile, "w") as f:
-                f.write(json.dumps(postdata))
-
-            if profile.new_profile(postfile):
+            username, rawdata = getpost.parse_keystroke_payload(postdata)
+            if profile.new_profile(username, rawdata):
                 print "Profile Created"
                 return Response("True", mimetype="text/plain")
             else:
@@ -73,11 +69,9 @@ def auth():
                 print "New Name"
                 return Response("OK", mimetype="text/plain")
         elif typepost == "Auth":
-            postfile = typepost + "_" + user + "POST.json"
-            with open(postfile, "w") as f:
-                f.write(json.dumps(postdata))
-            print "Auth begin for ", user
-            return Response(bioauth.start_auth(postfile), mimetype="text/plain")
+            username, rawdata = getpost.parse_keystroke_payload(postdata)
+            print "Auth begin for ", username
+            return Response(bioauth.start_auth(username, rawdata), mimetype="text/plain")
     return render_template('auth.html')
 
 

@@ -6,18 +6,20 @@ this to anyone else or exposing it off localhost.
 
 ## Security
 
-1. **SQL injection via table names.** Usernames are concatenated directly into
-   `CREATE TABLE`/`SELECT`/`INSERT` statements (`"SELECT * FROM " + username`)
-   in `bioauth.py`, `profile.py`, `checkname.py`. A username like
-   `x; DROP TABLE sqlite_master;--` goes straight into the query. Fix properly
-   by moving to one shared table (`digraphs(username, digraph_id,
-   expected_value, variance, frequency)`, username as a bound parameter) —
-   also fixes #6 below.
-2. **Raw request bodies written to disk as JSON**, named only from the
-   client-supplied username and type (`Create_Profile_<user>POST.json`) with
-   no path sanitization — a crafted username could write outside the working
-   directory. Validate/allowlist the username before it touches a filename,
-   or stop round-tripping through files entirely (see #5).
+1. ✅ **Fixed.** ~~SQL injection via table names.~~ Usernames were concatenated
+   directly into `CREATE TABLE`/`SELECT`/`INSERT` statements
+   (`"SELECT * FROM " + username`) in `bioauth.py`, `profile.py`,
+   `checkname.py`. Replaced with one shared table (`storage.py`'s `digraphs`
+   table, keyed by `(username, digraph_id)`), with username and digraph_id
+   always passed as bound parameters, never spliced into query text. Also
+   resolves #7 below (no more per-user tables, so no more deriving a table
+   name from `"".join(prof.keys())`).
+2. ✅ **Fixed.** ~~Raw request bodies written to disk as JSON~~, named only
+   from the client-supplied username and type
+   (`Create_Profile_<user>POST.json`) with no path sanitization. Removed the
+   file round-trip entirely: `getpost.parse_keystroke_payload` now works
+   directly on Flask's already-parsed `request.json`, so no filename is ever
+   built from client input.
 3. **No auth on the API itself.** Anyone can create or overwrite anyone's
    profile — there's no password, token, or session tied to a username.
    Keystroke dynamics is acting as the *entire* auth system with zero
@@ -31,11 +33,13 @@ this to anyone else or exposing it off localhost.
 ## Correctness bugs
 
 6. `user.replace(" ", "_")` in `keystroke.py` discards its return value —
-   strings are immutable in Python, so this line does nothing. Usernames with
-   spaces still reach the DB layer unmodified.
-7. `profile.py`/`bioauth.py` build table names as `"".join(prof.keys())` —
-   works only because there's exactly one key; fragile and confusing. Goes
-   away with #1's schema fix.
+   strings are immutable in Python, so this line does nothing by itself.
+   `storage.py` now normalizes spaces internally before touching the DB, so
+   this no longer causes inconsistent lookups, but the dead statement in
+   `keystroke.py` is still there and still misleading.
+7. ✅ **Resolved** by #1 above. ~~`profile.py`/`bioauth.py` build table names
+   as `"".join(prof.keys())`~~ — that pattern no longer exists now that
+   there's one shared table instead of a dynamically-named one per user.
 
 ## Python 2 → 3
 
