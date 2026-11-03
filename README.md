@@ -21,7 +21,7 @@ enough to authenticate — no password needed.
 - Flask (**Python 2** — `print` statements, `flask.ext.navigation`, `xrange`; it
   will not run under Python 3 without porting)
 - Vanilla JS + jQuery on the frontend, capturing key events
-- SQLite for per-user digraph statistics
+- SQLite (one shared `digraphs` table, keyed by `(username, digraph_id)`)
 
 ## Run it locally
 
@@ -44,10 +44,10 @@ wherever you're running the Flask app, or nothing will reach your local server.
 
 ## Notes
 
-This is a 2018 class-project-style demo, not production code: no auth on the
-API itself, keystroke logs are written to plaintext JSON files on disk before
-processing, and the statistical model (3-sigma match on raw digraph timing) is
-simple by design. Treat it as a working illustration of the idea, not a
-biometric system to rely on. See [`TODO.md`](TODO.md) for a prioritized list
-of what's worth fixing, including a real SQL injection via unsanitized table
-names.
+This is a 2018 class-project-style demo, not production code: there's no auth
+on the API itself (anyone can create or overwrite anyone's profile), and the
+statistical model (3-sigma match on raw digraph timing) is simple by design.
+Treat it as a working illustration of the idea, not a biometric system to rely
+on. See [`TODO.md`](TODO.md) for what's left — it used to also have a SQL
+injection via unsanitized table names and a path-traversal-prone file write,
+both now fixed.

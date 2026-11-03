@@ -1,9 +1,5 @@
-import json
-import sqlite3
 import digraph
-import getpost
-import sys
-import os
+import storage
 
 class Etalon:
     def __init__(self):
@@ -46,46 +42,18 @@ class Profile:
             print item[0]
             item[1].printEtalon()
 
-def is_table_exists(name):
-    conn = sqlite3.connect('keystroke.sqlite')
-    cur = conn.cursor()
-    name = str(name.replace(" ", ""))
-    cur.execute("SELECT * FROM sqlite_master WHERE type='table' AND name=?", (name,))
-    row = cur.fetchone()
-    cur.close()
-    if row is not None:
-        print "Username alredy exists"
-        return True
-    else:
-        return False
-
-def push_to_sql(prof):
-    table  = "".join(prof.keys())
-    conn = sqlite3.connect('keystroke.sqlite')
-    cur = conn.cursor()
-
-    if is_table_exists(table):
-        return False
-
-    cur.execute('''
-    CREATE TABLE IF NOT EXISTS ''' + table +''' (digraph_id INTEGER, expected_value REAL, variance REAL, frequency INTEGER)''')
-    keys = prof["".join(prof.keys())].getkeys()
-    values = prof["".join(prof.keys())].getvalues()
-    for i in xrange(len(keys)):
-        cur.execute('''INSERT INTO ''' + table +''' (digraph_id, expected_value, variance, frequency)
-        VALUES ( ?, ?, ?, ? )''', (keys[i], values[i][0], values[i][1], values[i][2]))
-    conn.commit()
-    cur.close()
-    return True
-
-def new_profile(postfile):
+def new_profile(username, rawdata):
+    """username: the profile owner. rawdata: list of [key+action,
+    timestamp] pairs, as extracted by getpost.parse_keystroke_payload.
+    Returns False (without touching storage) if username already has
+    a profile.
+    """
     myprofile = Profile()
-    #postfile = sys.argv[1]
-    user, data = getpost.get_post_data(postfile)
+    user_profile = myprofile.createProfile(username, rawdata)
+    etalon = user_profile[username]
 
-    user_profile = myprofile.createProfile(user, data)
-    if push_to_sql(user_profile):
-        os.remove(postfile)
-        return True
-    else:
-        return False
+    items = [
+        (digraph_id, expected_value, variance, frequency)
+        for digraph_id, (expected_value, variance, frequency) in etalon.getitems()
+    ]
+    return storage.save_profile(username, items)

@@ -1,8 +1,5 @@
 import digraph
-import sqlite3
-import getpost
-import os
-import sys
+import storage
 import math
 
 class Auth:
@@ -15,9 +12,7 @@ class Auth:
         for item in data:
             key, value = self.temp.add(item)
             if key is not None and value is not None:
-                #print key, value
-                expected_value, variance = self.get_from_sql(user, key)
-                #print expected_value, variance
+                expected_value, variance = storage.get_digraph(user, key)
 
                 if expected_value is None or variance is None:
                     print user, "is a new user. Thre is no record in data base"
@@ -28,8 +23,8 @@ class Auth:
                         V += 1
                         #print V
 
-        mV = float(V)/float(self.sql_num_rows(user))
-        print V, "/", self.sql_num_rows(user), " = ", mV
+        mV = float(V)/float(storage.count_digraphs(user))
+        print V, "/", storage.count_digraphs(user), " = ", mV
         if mV <= 0.5:
             print "Access Denied", mV, " <= ", 0.5
             V = 0
@@ -43,45 +38,6 @@ class Auth:
         else:
             return "Wait"
 
-    def get_from_sql(self, username, digraph):
-        conn = sqlite3.connect('keystroke.sqlite')
-        cur = conn.cursor()
-        username = str(username.replace(" ", ""))
-
-        if not self.is_table_exists(username):
-            #print Username, "is a new user. Thre is no record in data base"
-            return None, None #new user
-
-        cur.execute("SELECT expected_value, variance FROM "+username+" WHERE digraph_id = ? ", (digraph,))
-        row = cur.fetchone()
-        if row is None:
-            return 0, 0 #new digraph
-        else:
-            return row[0], row[1]
-
-    def sql_num_rows(self, name):
-        conn = sqlite3.connect('keystroke.sqlite')
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM " + name)
-        return len(cur.fetchall())
-
-    def is_table_exists(self, name):
-        conn = sqlite3.connect('keystroke.sqlite')
-        cur = conn.cursor()
-        name = str(name.replace(" ", ""))
-        cur.execute("SELECT * FROM sqlite_master WHERE type='table' AND name=?", (name,))
-        row = cur.fetchone()
-        cur.close()
-        if row is not None:
-            return True
-        else:
-            return False
-
-def start_auth(postfile):
+def start_auth(user, data):
     bioAuth = Auth()
-    #postfile = "Auth_CitrixPOST.json"
-    user, data = getpost.get_postAuth_data(postfile)
-    result = bioAuth.authentication(user, data)
-    if result != "Wait":
-        os.remove(postfile)
-    return result
+    return bioAuth.authentication(user, data)
