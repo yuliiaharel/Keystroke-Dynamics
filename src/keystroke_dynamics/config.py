@@ -1,7 +1,11 @@
 """Application settings, loaded from the environment (and a .env file
 in local development)."""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: The placeholder shipped in .env.example -- never a real secret.
+_EXAMPLE_SESSION_SECRET = "change-me"
 
 
 class Settings(BaseSettings):
@@ -31,6 +35,21 @@ class Settings(BaseSettings):
     #: fine for one instance, not a real multi-process guarantee.
     rate_limit_max_attempts: int = 10
     rate_limit_window_seconds: float = 60.0
+
+    @model_validator(mode="after")
+    def _require_a_real_secret_outside_local_development(self) -> "Settings":
+        # debug doubles as "this is local development" elsewhere already
+        # (see main.py's https_only=not settings.debug); reused here so
+        # a deployment that forgets to set a real secret fails loudly at
+        # startup instead of silently signing sessions with a value
+        # anyone can read in this repo's own .env.example.
+        if not self.debug and self.session_secret in ("", _EXAMPLE_SESSION_SECRET):
+            raise ValueError(
+                "SESSION_SECRET is missing or still the .env.example placeholder "
+                f"({_EXAMPLE_SESSION_SECRET!r}). Set a real secret, or set DEBUG=true "
+                "for local development only."
+            )
+        return self
 
 
 settings = Settings()
