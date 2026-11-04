@@ -1,6 +1,5 @@
 .git/
 .github/
-legacy/
 evaluation/data/
 **/__pycache__/
 *.pyc

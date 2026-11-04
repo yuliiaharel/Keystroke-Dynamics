@@ -35,7 +35,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["legacy", "*.md", "migrations/versions"]
+extend-exclude = ["*.md", "migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -49,7 +49,6 @@ extend-immutable-calls = ["fastapi.Depends"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-exclude = ["^legacy/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
