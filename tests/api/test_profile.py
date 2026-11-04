@@ -71,6 +71,22 @@ def test_malformed_sample_rejected(logged_in_client: TestClient) -> None:
     assert resp.status_code == 400
 
 
+@pytest.mark.parametrize("bad_t_ms_literal", ["NaN", "Infinity", "-Infinity"])
+def test_non_finite_t_ms_rejected(logged_in_client: TestClient, bad_t_ms_literal: str) -> None:
+    # A plain pydantic float field accepts NaN/Infinity from JSON (a
+    # browser's JSON.stringify can't produce these, but a raw HTTP
+    # client can); core.events.validate is what actually rejects them
+    # (Phase 7 review finding -- NaN would otherwise slip past the
+    # backward-time check and corrupt a stored profile's statistics).
+    # httpx's own json= encoder refuses to serialize non-finite floats
+    # client-side, so the body is built by hand here.
+    body = f'{{"events": [{{"code": "KeyA", "action": "down", "t_ms": {bad_t_ms_literal}}}]}}'
+    resp = logged_in_client.post(
+        "/api/profile/verify", content=body, headers={"content-type": "application/json"}
+    )
+    assert resp.status_code == 400
+
+
 def test_too_many_events_rejected(logged_in_client: TestClient) -> None:
     events = [
         {"code": "KeyA", "action": "down" if i % 2 == 0 else "up", "t_ms": float(i)}

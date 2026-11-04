@@ -38,6 +38,17 @@ def test_validate_rejects_backward_time() -> None:
         validate(events)
 
 
+@pytest.mark.parametrize("bad_t_ms", [float("nan"), float("inf"), float("-inf")])
+def test_validate_rejects_non_finite_t_ms(bad_t_ms: float) -> None:
+    # A plain pydantic float field accepts NaN/Infinity from JSON (see
+    # api/schemas.py); NaN in particular would otherwise slip past the
+    # backward-time check above, since every comparison against NaN is
+    # False, and would then corrupt a stored profile's mean/variance.
+    events = [KeyEvent(code="KeyA", action="down", t_ms=bad_t_ms)]
+    with pytest.raises(InvalidSampleError):
+        validate(events)
+
+
 def test_pair_presses_simple_pair() -> None:
     events = [
         KeyEvent(code="KeyA", action="down", t_ms=0),

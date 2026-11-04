@@ -7,6 +7,7 @@ rules this module implements.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -63,8 +64,12 @@ class InvalidSampleError(ValueError):
 
 def validate(events: list[KeyEvent], *, max_events: int = 2000) -> None:
     """Raises InvalidSampleError if events exceeds max_events, contains
-    an action other than "down"/"up", or has a t_ms that goes backward
-    relative to the previous event in the list."""
+    an action other than "down"/"up", has a non-finite t_ms (NaN or
+    +/-inf -- pydantic accepts these for a plain float field, and NaN
+    in particular would otherwise slip past the backward-time check
+    below, since every comparison against NaN is False), or has a
+    t_ms that goes backward relative to the previous event in the
+    list."""
     if len(events) > max_events:
         raise InvalidSampleError(f"sample has {len(events)} events, exceeds limit of {max_events}")
 
@@ -72,6 +77,8 @@ def validate(events: list[KeyEvent], *, max_events: int = 2000) -> None:
     for event in events:
         if event.action not in ("down", "up"):
             raise InvalidSampleError(f"unknown action: {event.action!r}")
+        if not math.isfinite(event.t_ms):
+            raise InvalidSampleError(f"non-finite t_ms: {event.t_ms!r}")
         if event.t_ms < last_t:
             raise InvalidSampleError("event times go backward")
         last_t = event.t_ms
