@@ -1,3 +1,5 @@
+import concurrent.futures
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -47,3 +49,24 @@ def test_register_accepts_valid_usernames(client: TestClient, username: str) -> 
 def test_register_rejects_short_password(client: TestClient) -> None:
     resp = client.post("/api/register", json={"username": "alice", "password": "short"})
     assert resp.status_code == 422
+
+
+def test_concurrent_registration_of_the_same_new_username_gets_one_201_and_409s(
+    client: TestClient,
+) -> None:
+    # Phase 7 review finding: the exists-check and the insert aren't
+    # atomic, so two concurrent registrations for the same brand-new
+    # username can both pass the check and race on the unique
+    # constraint. Before the fix, the loser's IntegrityError was
+    # uncaught -- a 500, not a clean 409.
+    n = 10
+    body = {"username": "raceuser", "password": "correct-password-123"}
+
+    def attempt() -> int:
+        return client.post("/api/register", json=body).status_code
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+        results = list(pool.map(lambda _: attempt(), range(n)))
+
+    assert results.count(201) == 1
+    assert results.count(409) == n - 1

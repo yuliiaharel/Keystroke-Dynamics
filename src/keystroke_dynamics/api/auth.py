@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from keystroke_dynamics.api.deps import (
@@ -36,7 +37,16 @@ router = APIRouter(prefix="/api", dependencies=[Depends(require_matching_origin)
 def register(body: RegisterRequest, db: Session = Depends(get_db)) -> dict[str, str]:
     if get_user_by_username(db, body.username) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "username already exists")
-    create_user(db, body.username, hash_password(body.password))
+    try:
+        create_user(db, body.username, hash_password(body.password))
+    except IntegrityError:
+        # The check above and this insert aren't atomic -- two
+        # concurrent registrations for the same new username can both
+        # pass the check, and the second loses to the unique
+        # constraint here. Same outcome as the check catching it:
+        # a 409, not an unhandled 500.
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "username already exists") from None
     return {"status": "created"}
 
 
