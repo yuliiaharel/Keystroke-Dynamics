@@ -367,8 +367,7 @@ if settings.debug:
     )
     def record_target(body: RecordTargetRequest) -> None:
         lines: dict[str, list[list[KeyEvent]]] = {
-            level: [[e.to_core() for e in line] for line in runs]
-            for level, runs in body.lines.items()
+            level: [_validate_events(line) for line in runs] for level, runs in body.lines.items()
         }
         TARGETS_DIR.mkdir(parents=True, exist_ok=True)
         path = TARGETS_DIR / f"{body.name.lower().replace(' ', '-')}.json"
