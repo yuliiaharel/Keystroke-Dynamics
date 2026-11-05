@@ -52,5 +52,13 @@ What's still open:
    section. Not a defect in the limiter; just means `npm run e2e` needs
    `RATE_LIMIT_MAX_ATTEMPTS=50` set on the dev server it's pointed at.
 
+7. **`/typing-twin` (the account-based game, item 5/6 above) and `/party`
+   (the new anonymous game, see `PARTY_LAUNCH_PLAN.md`) both still exist,
+   side by side, when `ENABLE_ACCOUNTS=true`.** `/party` is the one meant
+   for the public launch; `/typing-twin`'s disposable-account approach is
+   effectively superseded by it, but nothing has deleted `/typing-twin`,
+   its page, or its e2e spec yet -- an explicit decision, not an oversight
+   (not mine to make unilaterally). Retiring it would also resolve item 5.
+
 See `MODERNIZATION_PLAN.md`'s "Later ideas (not part of this work)" for
 BioKey's update-after-login step and other explicitly out-of-scope ideas.
