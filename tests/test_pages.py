@@ -5,7 +5,15 @@ enough to surface; the frontend's own test suite covers behavior."""
 import pytest
 from fastapi.testclient import TestClient
 
-PAGES = ["/", "/create-profile", "/authenticate", "/how-it-works", "/about", "/finish"]
+PAGES = [
+    "/",
+    "/create-profile",
+    "/authenticate",
+    "/how-it-works",
+    "/about",
+    "/finish",
+    "/typing-twin",
+]
 
 
 @pytest.mark.parametrize("path", PAGES)
@@ -22,3 +30,7 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
 
     resp = client.get("/authenticate")
     assert "/static/js/authenticate.js" in resp.text
+
+    resp = client.get("/typing-twin")
+    assert "/static/js/typing-twin.js" in resp.text
+    assert "/static/css/typing-twin.css" in resp.text

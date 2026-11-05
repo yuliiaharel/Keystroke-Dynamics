@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-// Builds the capture module and its two page-wiring entry points into
+// Builds the capture module and its page-wiring entry points into
 // plain ES module files under the backend's static directory -- no
 // content hashing, so the Jinja templates can reference stable
 // filenames (static/js/create-profile.js, static/js/authenticate.js).
@@ -12,6 +12,7 @@ export default defineConfig({
       entry: {
         "create-profile": "src/pages/create-profile.ts",
         authenticate: "src/pages/authenticate.ts",
+        "typing-twin": "src/pages/typing-twin.ts",
       },
       formats: ["es"],
       fileName: (_format, entryName) => `${entryName}.js`,

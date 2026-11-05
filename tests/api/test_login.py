@@ -106,4 +106,5 @@ def test_no_username_availability_endpoint_exists(client: TestClient) -> None:
         "/how-it-works",
         "/about",
         "/finish",
+        "/typing-twin",
     }
