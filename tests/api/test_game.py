@@ -396,3 +396,43 @@ def test_rate_limiting_blocks_after_too_many_requests(client: TestClient) -> Non
         assert resp.status_code != 429
     resp = client.post("/api/game/party/reset")
     assert resp.status_code == 429
+
+
+# ---------- debug-only target recording (Part 1 section 7) ----------
+#
+# tests/conftest.py sets DEBUG=true, so the route exists in this
+# suite's app instance -- its *absence* outside debug mode needs a
+# fresh process instead (settings.debug is read once, at import time,
+# to decide whether to register the route at all); see
+# tests/test_public_mode.py's own subprocess for why.
+
+
+def test_record_target_writes_a_file_the_game_can_then_load(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
+    from keystroke_dynamics.api import game as game_api
+    from keystroke_dynamics.game import targets as targets_module
+
+    monkeypatch.setattr(game_api, "TARGETS_DIR", tmp_path)
+    monkeypatch.setattr(targets_module, "TARGETS_DIR", tmp_path)
+
+    resp = client.post(
+        "/api/game/debug/record-target",
+        json={"name": "Yuliia", "lines": {"word": [WORD_LINE] * 5}},
+    )
+    assert resp.status_code == 204, resp.text
+    assert list(tmp_path.glob("*.json"))
+
+    _create_party(client, level="word")
+    party = client.get("/api/game/party").json()
+    recorded = [t for t in party["targets"] if t["kind"] == "target"]
+    assert recorded and recorded[0]["name"] == "Yuliia"
+
+
+def test_record_target_requires_a_matching_origin(client: TestClient) -> None:
+    with TestClient(app) as bare_client:  # no Origin header
+        resp = bare_client.post(
+            "/api/game/debug/record-target",
+            json={"name": "Yuliia", "lines": {"word": [WORD_LINE] * 5}},
+        )
+        assert resp.status_code == 403

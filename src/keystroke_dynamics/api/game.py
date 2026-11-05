@@ -42,6 +42,7 @@ from keystroke_dynamics.game.schemas import (
     NoteView,
     PartyView,
     PlayerView,
+    RecordTargetRequest,
     RenamePlayerRequest,
     ReplayRequest,
     ReplayResponse,
@@ -56,7 +57,12 @@ from keystroke_dynamics.game.store import (
     PartyLimitReached,
     Player,
 )
-from keystroke_dynamics.game.targets import load_permanent_target, sample_targets
+from keystroke_dynamics.game.targets import (
+    TARGETS_DIR,
+    load_permanent_target,
+    sample_targets,
+    save_permanent_target,
+)
 
 router = APIRouter(prefix="/api/game")
 
@@ -344,3 +350,26 @@ def create_replay(
         verdict_text=verdict.text,
         notes=[NoteView.from_core(n) for n in target.notes],
     )
+
+
+if settings.debug:
+    # Local-only (PARTY_LAUNCH_PLAN.md Part 1 section 7): this route
+    # is never even registered -- not just rejected -- unless
+    # settings.debug is true, so it can't exist in a real deployment
+    # (debug must be false there; see config.py's own validator).
+    # Meant to be run once, by hand, on a developer's own machine to
+    # record a permanent target -- not something the game itself
+    # ever calls.
+    @router.post(
+        "/debug/record-target",
+        status_code=status.HTTP_204_NO_CONTENT,
+        dependencies=[Depends(require_matching_origin)],
+    )
+    def record_target(body: RecordTargetRequest) -> None:
+        lines: dict[str, list[list[KeyEvent]]] = {
+            level: [[e.to_core() for e in line] for line in runs]
+            for level, runs in body.lines.items()
+        }
+        TARGETS_DIR.mkdir(parents=True, exist_ok=True)
+        path = TARGETS_DIR / f"{body.name.lower().replace(' ', '-')}.json"
+        save_permanent_target(path, name=body.name, lines=lines)
