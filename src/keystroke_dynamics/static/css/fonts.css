@@ -1,0 +1,49 @@
+/* Self-hosted basic-Latin subsets of the three families the approved
+   mockup (design/typing-twin-party.html) uses, replacing the Google
+   Fonts <link> tags -- see PARTY_LAUNCH_PLAN.md Part 1 section 8:
+   "Self-host the fonts and remove third-party requests." Only the
+   basic-Latin subset is kept (the game's lines are plain English
+   text); the party.* module's own CSP has no connect to fonts.* at
+   all, so this file is served from /static like everything else. */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/static/fonts/atkinson-hyperlegible-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Bagel Fat One";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/bagel-fat-one-400.woff2") format("woff2");
+}
+
+/* One variable-font file covers both weights -- Google Fonts serves
+   the same physical file for 400 and 600 here too. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/jetbrains-mono-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/static/fonts/jetbrains-mono-variable.woff2") format("woff2");
+}
