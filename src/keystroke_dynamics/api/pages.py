@@ -45,3 +45,8 @@ def about_page(request: Request) -> HTMLResponse:
 @router.get("/finish", response_class=HTMLResponse)
 def finish_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "finish.html", {"active_page": "finish"})
+
+
+@router.get("/typing-twin", response_class=HTMLResponse)
+def typing_twin_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "typing_twin.html", {"active_page": "typing-twin"})

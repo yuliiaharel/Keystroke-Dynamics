@@ -33,5 +33,14 @@ What's still open:
    one event at a time instead. Keep for a future batch-enrollment path, or
    remove if none is planned.
 
+5. **Typing Twin (`/typing-twin`) leaves orphan `users` rows.** Each play
+   session registers a random, disposable account; "Start over" deletes its
+   typing profile but not the account itself, since there's no
+   account-deletion endpoint (the app never needed one before this). The
+   orphan rows carry no typing data once the profile is deleted, just a
+   random username and a password hash nobody has. Fine for a demo; would
+   need a real cleanup path (an admin job, or an actual DELETE /api/account)
+   if this saw real traffic.
+
 See `MODERNIZATION_PLAN.md`'s "Later ideas (not part of this work)" for
 BioKey's update-after-login step and other explicitly out-of-scope ideas.
