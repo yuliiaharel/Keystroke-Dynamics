@@ -107,6 +107,7 @@ def test_no_username_availability_endpoint_exists(client: TestClient) -> None:
         "/about",
         "/finish",
         "/typing-twin",
+        "/party",
         "/api/game/party",
         "/api/game/party/reset",
         "/api/game/players",

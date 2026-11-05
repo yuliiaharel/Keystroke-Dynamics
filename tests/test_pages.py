@@ -13,6 +13,7 @@ PAGES = [
     "/about",
     "/finish",
     "/typing-twin",
+    "/party",
 ]
 
 
@@ -34,3 +35,17 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
     resp = client.get("/typing-twin")
     assert "/static/js/typing-twin.js" in resp.text
     assert "/static/css/typing-twin.css" in resp.text
+
+    resp = client.get("/party")
+    assert "/static/js/party.js" in resp.text
+    assert "/static/css/party.css" in resp.text
+    assert "/static/css/fonts.css" in resp.text
+    assert "fonts.googleapis.com" not in resp.text
+    assert "fonts.gstatic.com" not in resp.text
+
+
+def test_party_page_has_a_strict_csp_with_no_inline_scripts(client: TestClient) -> None:
+    resp = client.get("/party")
+    csp = resp.headers["content-security-policy"]
+    assert "script-src 'self'" in csp
+    assert "unsafe-inline" not in csp

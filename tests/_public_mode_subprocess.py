@@ -40,11 +40,26 @@ client = TestClient(app, headers={"origin": "http://testserver"})
 
 assert client.get("/health").status_code == 200
 
+# The game page itself lives at "/" in this mode (api/pages.py).
+home = client.get("/")
+assert home.status_code == 200
+assert "/static/js/party.js" in home.text
+assert home.headers["content-security-policy"].startswith("default-src 'self'")
+
 for path in ("/api/register", "/api/login", "/api/logout"):
     assert client.post(path, json={}).status_code == 404, path
 assert client.post("/api/profile/samples", json={}).status_code == 404
 assert client.post("/api/profile/verify", json={}).status_code == 404
 assert client.delete("/api/profile").status_code == 404
+for path in (
+    "/create-profile",
+    "/authenticate",
+    "/how-it-works",
+    "/about",
+    "/finish",
+    "/typing-twin",
+):
+    assert client.get(path).status_code == 404, path
 
 # A full game, end to end, with no database at all.
 party = client.post("/api/game/party", json={"level": "word"}).json()
