@@ -27,9 +27,15 @@ does not start either for you. Before running it:
 # from the repo root
 docker compose -f docker-compose.test.yml up -d
 uv run alembic upgrade head
-RATE_LIMIT_MAX_ATTEMPTS=50 \
+ENABLE_ACCOUNTS=true RATE_LIMIT_MAX_ATTEMPTS=50 \
   uv run uvicorn keystroke_dynamics.main:app --host 127.0.0.1 --port 8000
 ```
+
+`ENABLE_ACCOUNTS=true` mounts the account system (register/login/
+profile, and the account pages) -- `create-profile.spec.ts`,
+`authenticate.spec.ts`, and `typing-twin.spec.ts` all need it; it's
+`false` by default (public-launch mode, no database). `party.spec.ts`
+runs either way, since the anonymous game has no such flag.
 
 `RATE_LIMIT_MAX_ATTEMPTS` (an existing, already environment-configurable
 setting -- see `.env.example`) is raised here only for this one locally-run

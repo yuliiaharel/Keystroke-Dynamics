@@ -45,7 +45,14 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
 
 
 def test_party_page_has_a_strict_csp_with_no_inline_scripts(client: TestClient) -> None:
+    # style-src keeps 'unsafe-inline' (the page's dynamic ring colors
+    # and layout tweaks use the style attribute, same as the approved
+    # mockup) -- script-src is where "no inline scripts" actually
+    # matters, and that one must stay clean.
     resp = client.get("/party")
     csp = resp.headers["content-security-policy"]
     assert "script-src 'self'" in csp
-    assert "unsafe-inline" not in csp
+    for directive in csp.split(";"):
+        if directive.strip().startswith("script-src"):
+            assert "unsafe-inline" not in directive
+            assert "unsafe-eval" not in directive
