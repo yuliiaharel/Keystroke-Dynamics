@@ -46,6 +46,28 @@ assert home.status_code == 200
 assert "/static/js/party.js" in home.text
 assert home.headers["content-security-policy"].startswith("default-src 'self'")
 
+# No old nav/page survives into this page's own body -- Party is the
+# only thing a visitor sees in this mode. Checked by href/class, not
+# visible text -- this page's own brand button is legitimately named
+# "Typing Twin", so a plain substring check for that phrase would be
+# a false positive.
+for old_marker in (
+    'href="/create-profile"',
+    'href="/authenticate"',
+    'href="/how-it-works"',
+    'href="/about"',
+    'href="/finish"',
+    'href="/typing-twin"',
+    "site-header",  # base.html's own header class -- this page doesn't extend it
+    "static/css/styles.css",  # the old pages' own stylesheet
+):
+    assert old_marker not in home.text, old_marker
+
+# The game's old path redirects to its new one instead of 404ing.
+party_redirect = client.get("/party", follow_redirects=False)
+assert party_redirect.status_code == 308, party_redirect.status_code
+assert party_redirect.headers["location"] == "/"
+
 for path in ("/api/register", "/api/login", "/api/logout"):
     assert client.post(path, json={}).status_code == 404, path
 assert client.post("/api/profile/samples", json={}).status_code == 404
