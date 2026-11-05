@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Typing Twin Party</title>
+<meta name="description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then gather some friends around one keyboard and try to pass as each other.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Typing Twin Party">
+<meta property="og:description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then gather some friends around one keyboard and try to pass as each other.">
+{% if public_base_url %}
+<meta property="og:url" content="{{ public_base_url }}{{ request.url.path }}">
+<meta property="og:image" content="{{ public_base_url }}/static/img/party-preview.png">
+{% endif %}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Typing Twin Party">
+<meta name="twitter:description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend.">
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/party.css">
+<script type="module" src="/static/js/party.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <button class="brand" id="home" aria-label="Typing Twin Party home">Typing Twin Party</button>
+    <nav class="tabs" id="tabs"></nav>
+  </header>
+  <main id="app" class="stack" style="gap: 24px"></main>
+</div>
+</body>
+</html>
