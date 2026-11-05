@@ -12,11 +12,19 @@ npm run build         # build the capture module + page scripts into static/js
 npm run test          # unit tests (vitest + jsdom)
 npm run typecheck     # tsc --noEmit
 npm run e2e           # Playwright end-to-end tests
+npm run og-image      # regenerate static/img/party-preview.png
 ```
 
 The built JS must exist before the backend can serve the create-profile
 and authenticate pages -- run `npm run build` at least once after a
 fresh clone, and again after editing anything in `src/`.
+
+`npm run og-image` screenshots `scripts/og-image.html` (three
+decorative signature rings, drawn from the same deterministic sample
+data the party page's own intro view uses) with the chromium build
+Playwright already bundles, rather than adding an image library just
+for this one static asset. The committed PNG only needs regenerating
+if that ring drawing or the sample data changes.
 
 ## End-to-end tests
 

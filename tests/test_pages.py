@@ -56,3 +56,39 @@ def test_party_page_has_a_strict_csp_with_no_inline_scripts(client: TestClient) 
         if directive.strip().startswith("script-src"):
             assert "unsafe-inline" not in directive
             assert "unsafe-eval" not in directive
+
+
+def test_party_page_has_no_og_tags_without_a_configured_public_base_url(
+    client: TestClient,
+) -> None:
+    # No public_base_url (the default -- it's only set once actually
+    # deployed) means no absolute URLs can be built, so these tags
+    # are omitted rather than pointing at something broken.
+    resp = client.get("/party")
+    assert "og:url" not in resp.text
+    assert "og:image" not in resp.text
+
+
+def test_party_page_og_tags_use_absolute_urls_from_public_base_url(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "keystroke_dynamics.api.pages.settings.public_base_url", "https://example.com"
+    )
+    resp = client.get("/party")
+    assert 'property="og:url" content="https://example.com/party"' in resp.text
+    assert (
+        'property="og:image" content="https://example.com/static/img/party-preview.png"'
+        in resp.text
+    )
+
+
+def test_og_preview_image_exists_and_is_1200x630(client: TestClient) -> None:
+    resp = client.get("/static/img/party-preview.png")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    # PNG IHDR: width/height are the 4-byte big-endian ints right
+    # after the 8-byte signature + 4-byte length + "IHDR".
+    width = int.from_bytes(resp.content[16:20], "big")
+    height = int.from_bytes(resp.content[20:24], "big")
+    assert (width, height) == (1200, 630)
