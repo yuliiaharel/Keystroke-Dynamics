@@ -12,7 +12,6 @@ export default defineConfig({
       entry: {
         "create-profile": "src/pages/create-profile.ts",
         authenticate: "src/pages/authenticate.ts",
-        "typing-twin": "src/pages/typing-twin.ts",
         party: "src/pages/party.ts",
       },
       formats: ["es"],

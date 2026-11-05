@@ -126,3 +126,7 @@ details { border-top: 1px solid var(--line); padding-top: 12px; }
 summary { cursor: pointer; font-weight: 700; }
 details .stack { margin-top: 10px; }
 .notice { border: 2px solid var(--accent); border-radius: 10px; padding: 10px 14px; }
+/* Moved from the now-removed typing-twin.css -- party.ts's own error
+   messages (a failed save, a party that disappeared mid-request)
+   use this same class and had no rule for it here. */
+.error { color: var(--bad); font-weight: 600; }
