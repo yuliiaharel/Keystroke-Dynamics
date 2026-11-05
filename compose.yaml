@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: keystroke
+      POSTGRES_PASSWORD: keystroke
+      POSTGRES_DB: keystroke_dynamics
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keystroke -d keystroke_dynamics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs migrations to completion, then exits -- a separate, explicit
+  # step rather than folded into the app's own start command, so a
+  # migration failure is distinguishable from an app startup failure.
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: &app-environment
+      DATABASE_URL: postgresql+psycopg://keystroke:keystroke@db:5432/keystroke_dynamics
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      DEBUG: ${DEBUG:-true}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://127.0.0.1:8000}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

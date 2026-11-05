@@ -44,7 +44,7 @@ git commit -m "Add modernization plan"
 |---|---|
 | Runtime | Python 3.12 or newer, managed with `uv`, with a committed lockfile |
 | Web | FastAPI, Pydantic v2, and Jinja2 templates |
-| Numerics | NumPy for scoring and evaluation; scikit-learn only if a compared model needs it |
+| Numerics | NumPy for scoring and evaluation; SciPy for evaluation only; scikit-learn only if a compared model needs it |
 | Database | Postgres through SQLAlchemy 2 and Alembic, with shared tables and no per-user tables |
 | Passwords | Argon2id through `argon2-cffi` |
 | Frontend | Server-rendered pages plus one small TypeScript module built with Vite; no jQuery or SPA framework |
@@ -255,21 +255,95 @@ Use the CMU Keystroke Dynamics Benchmark Data Set (Killourhy & Maxion, 2009): ht
    - scaled Manhattan distance
    - corrected 3-sigma rule
    - plain Manhattan distance
+   - the three BioKey 2012 variants defined below
 5. Use a fixed random seed wherever randomness is used. Save results to `evaluation/results.md` and a machine-readable JSON file.
 6. Choose a provisional threshold with a method you document. Do not report tuned performance from the same data as if it were held out.
 
+### BioKey 2012 method
+
+Implement this in `evaluation/biokey_2012.py`, using NumPy and SciPy. It is for evaluation only and must not be imported by the app. The source is my 2012 thesis, "Біометричний контроль доступу на базі динамічного клавіатурного паролю". Do not add the thesis file to the repository unless I ask.
+
+**Formulas, as written in the thesis:**
+
+```text
+(1) har(0,0,t) = 1
+    har(r,m,t) =  2^(r/2)  if (m-1)/2^r   <= t < (m-1/2)/2^r
+                 -2^(r/2)  if (m-1/2)/2^r <= t < m/2^r
+                  0        otherwise
+    with 0 <= r <= n-1, 1 <= m <= 2^r, n = log2(N)
+
+(4) V = (1/N) * H(n) * F
+
+(6) min(v_i) = m(v_i) - t[L, 1-P] * sigma(v_i)
+    max(v_i) = m(v_i) + t[L, 1-P] * sigma(v_i)
+
+(7) m_j = ((j-1)/j) * m_(j-1) + (1/j) * v_j
+
+(8) var_j = ((j-2)/(j-1)) * var_(j-1) + (1/(j-1)) * (v_j - m_j)^2
+```
+
+The intervals in (1) are half-open, and `r` stops at `n-1`. Those two points correct small errors in the thesis text and match its flowchart. Treat `sigma` as the standard deviation.
+
+**Decision score:** set `e_i = 0` if `v_i` is inside its range and `e_i = 1` otherwise. The score is the normalized Hamming distance, `sum(e_i) / N`.
+
+**Variants to compare (all at `P = 0.1`):**
+
+| Variant | Features | Variance | Range multiplier |
+|---|---|---|---|
+| `biokey_as_written` | Haar | Formula (8) | One-sided `t(1-P, L-1)` |
+| `biokey_corrected` | Haar | Exact sample variance (Welford) | Two-sided `t(1-P/2, L-1) * sqrt(1 + 1/L)` |
+| `raw_corrected` | Raw timings, no Haar | Exact sample variance (Welford) | Two-sided `t(1-P/2, L-1) * sqrt(1 + 1/L)` |
+
+**Timing signal:** the thesis does not specify how timings become a fixed-length signal, and the original code is not available. Do the following and label it as a reconstruction, not the original method:
+
+1. For each repetition, build the alternating sequence `H, UD, H, UD, ..., H` from the dataset's columns. Leave out `Return` if its timing is not comparable, and document the choice.
+2. Resample to `N = 16` samples using linear interpolation.
+3. Divide by the sequence's sum so that the signal has a common scale.
+4. Report `N = 8` and `N = 32` as sensitivity checks.
+
+Keep the profile fixed during evaluation. Do not apply the thesis's update-after-login step in this benchmark.
+
+**How to report it:**
+
+- Train the BioKey variants on two sizes: the first 200 repetitions (the paper's protocol) and the first 10 repetitions (matching the thesis's enrollment). Use the same genuine and impostor test sets for both.
+- Report mean EER and standard deviation across subjects for each variant and training size.
+- Report the score distribution for genuine and impostor attempts, and the actual share of genuine values outside their ranges, compared with the intended rate.
+- Report false rejections and false acceptances at the thesis's threshold of 0.30. Mark this threshold as taken from the thesis, not tuned here.
+- State that the thesis results came from one user, one password, 5 genuine attempts, and 15 impostors. These benchmark results measure a reconstruction on a different dataset, so they do not confirm or reproduce those exact results.
+
+**Required tests (`tests/test_biokey_2012.py`):**
+
+- `H(3)` matches the thesis's matrix:
+  ```text
+   1    1    1    1    1    1    1    1
+   1    1    1    1   -1   -1   -1   -1
+  √2   √2  -√2  -√2    0    0    0    0
+   0    0    0    0   √2   √2  -√2  -√2
+   2   -2    0    0    0    0    0    0
+   0    0    2   -2    0    0    0    0
+   0    0    0    0    2   -2    0    0
+   0    0    0    0    0    0    2   -2
+  ```
+- `H(n) * H(n)^T` equals `N * I`, and applying `H(n)^T` to `V` recovers `F`.
+- Formula (7) matches `numpy.mean`.
+- Exact variance matches `numpy.var(ddof=1)`, and formula (8) reproduces a hand-calculated value. For inputs 1 and 3, formula (8) gives 1, while the exact variance is 2.
+- The one-sided multiplier matches the thesis's table for spot checks: `L=10, P=0.1` gives 1.38, and `L=5, P=0.05` gives 2.13.
+- Hamming scores cover all in-range values, all out-of-range values, and values exactly on a boundary.
+
 **Sanity check:** the paper's scaled Manhattan EER is about 0.10. If the result is far from that, find out why and tell me before going further. Do not tune the code just to match the number.
 
-**Limitation to state in the results:** this dataset uses one fixed password, while the app accepts longer free text. These numbers validate the scoring method, not how the deployed app performs.
+**Limitation to state in the results:** this dataset uses one fixed password, while the app accepts longer free text. These numbers validate the scoring methods, not how the deployed app performs.
 
 **Done when**
 - The script reproduces its results from a clean checkout plus the downloaded data.
-- `evaluation/results.md` includes the method, the comparison table, the limitation, and the command to reproduce the results.
+- `evaluation/results.md` includes the method, the comparison table, the BioKey findings, the limitation, and the command to reproduce the results.
+- It says clearly which BioKey choices come from the thesis and which are reconstruction.
+- `tests/test_biokey_2012.py` passes.
 - Phase 1 checks pass.
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 3 only. Report the EER table and any difference from the published baseline, then stop.
+Read MODERNIZATION_PLAN.md and carry out Phase 3 only. Report the EER table, the BioKey as-written versus corrected results, and any difference from the published baseline, then stop.
 ```
 
 ---
@@ -448,6 +522,7 @@ gh pr create --base master --head modernize --fill
 ## Later ideas (not part of this work)
 
 - Passkeys in place of passwords
+- Testing BioKey's update-after-login step, including whether an impostor who gets in once can shift the profile
 - A consented dataset of free-text typing from the app itself, to measure real-world performance
 - Handling a profile drifting as someone's typing changes over time
 - Evaluating on mobile touch typing

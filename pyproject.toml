@@ -1,0 +1,61 @@
+[project]
+name = "keystroke-dynamics"
+version = "0.1.0"
+description = "Keystroke-timing biometric demo, rewritten in Python 3"
+authors = [
+    { name = "Yuliia (Synytsia) Harel", email = "1986311+yuliiaharel@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "argon2-cffi>=25.1.0",
+    "fastapi>=0.162.0",
+    "itsdangerous>=2.2.0",
+    "jinja2>=3.1.6",
+    "numpy>=2.5.4",
+    "psycopg[binary]>=3.3.7",
+    "pydantic-settings>=2.16.2",
+    "sqlalchemy>=2",
+    "uvicorn>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "hypothesis>=6.170.14",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.3",
+]
+# SciPy is for evaluation/biokey_2012.py only (t-distribution critical
+# values) -- never imported by the app. Its own group, not `dev`, so
+# `uv sync --no-dev` (what the Dockerfile uses) never installs it.
+evaluation = [
+    "scipy>=1.16.3",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["*.md", "migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's own documented pattern for dependency injection is a
+# `Depends(...)` call as a parameter default; B008 otherwise flags
+# every single route and sub-dependency in api/.
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
