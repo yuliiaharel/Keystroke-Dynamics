@@ -12,11 +12,11 @@ import random
 
 from keystroke_dynamics.core.events import KeyEvent, pair_presses
 from keystroke_dynamics.core.features import extract_features
+from keystroke_dynamics.game.enroll import char_to_code
 from keystroke_dynamics.game.scoring import GAME_MAX_THRESHOLD, GAME_MIN_THRESHOLD, score_sample
 from keystroke_dynamics.game.targets import (
     PERMANENT_TARGET_ID_PREFIX,
     SAMPLE_TARGET_ID_PREFIX,
-    _char_to_code,
     _synthetic_run,
     load_permanent_target,
     sample_targets,
@@ -62,11 +62,6 @@ def test_a_sample_bot_can_be_attacked_and_scored() -> None:
     assert result.score is not None
 
 
-def test_char_to_code_round_trips_through_space() -> None:
-    assert _char_to_code(" ") == "Space"
-    assert _char_to_code("a") == "KeyA"
-
-
 # ---------- permanent target ----------
 
 
@@ -76,7 +71,7 @@ def _record_a_run(phrase: str, hold_ms: float, gap_ms: float) -> list[KeyEvent]:
     for i, ch in enumerate(phrase):
         if i > 0:
             t += gap_ms
-        code = _char_to_code(ch)
+        code = char_to_code(ch)
         events.append(KeyEvent(code=code, action="down", t_ms=t))
         events.append(KeyEvent(code=code, action="up", t_ms=t + hold_ms))
     return events
