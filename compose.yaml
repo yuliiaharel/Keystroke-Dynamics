@@ -26,6 +26,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:-change-me}
       DEBUG: ${DEBUG:-true}
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://127.0.0.1:8000}
+      # This stack runs Postgres, so the account system is what it's
+      # here to exercise -- see PARTY_LAUNCH_PLAN.md Part 1 section 1.
+      ENABLE_ACCOUNTS: ${ENABLE_ACCOUNTS:-true}
     depends_on:
       db:
         condition: service_healthy
