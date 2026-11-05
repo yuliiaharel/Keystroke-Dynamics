@@ -15,9 +15,9 @@ npm run e2e           # Playwright end-to-end tests
 npm run og-image      # regenerate static/img/party-preview.png
 ```
 
-The built JS must exist before the backend can serve the create-profile
-and authenticate pages -- run `npm run build` at least once after a
-fresh clone, and again after editing anything in `src/`.
+The built JS must exist before the backend can serve any page, Party
+included -- run `npm run build` at least once after a fresh clone, and
+again after editing anything in `src/`.
 
 `npm run og-image` screenshots `scripts/og-image.html` (three
 decorative signature rings, drawn from the same deterministic sample
@@ -40,10 +40,12 @@ ENABLE_ACCOUNTS=true RATE_LIMIT_MAX_ATTEMPTS=50 \
 ```
 
 `ENABLE_ACCOUNTS=true` mounts the account system (register/login/
-profile, and the account pages) -- `create-profile.spec.ts`,
-`authenticate.spec.ts`, and `typing-twin.spec.ts` all need it; it's
-`false` by default (public-launch mode, no database). `party.spec.ts`
-runs either way, since the anonymous game has no such flag.
+profile, and the account pages) -- `flow.spec.ts`,
+`no-typed-text-sent.spec.ts`, `retry-resets-capture.spec.ts`, and
+`screenshots.spec.ts` all need it; it's `false` by default
+(public-launch mode, no database). `party.spec.ts` and
+`no-third-party-requests.spec.ts` run either way, since the
+anonymous game has no such flag.
 
 `RATE_LIMIT_MAX_ATTEMPTS` (an existing, already environment-configurable
 setting -- see `.env.example`) is raised here only for this one locally-run
@@ -65,9 +67,15 @@ than `http://127.0.0.1:8000`.
 - `src/capture.ts` -- records key timing (`event.code`, action, and a
   timestamp relative to the first event in the sample). Never reads
   `event.key` or any textarea value, so the typed text itself is never
-  captured.
-- `src/api.ts` -- thin `fetch` wrappers for the JSON API.
-- `src/ui.ts` -- small DOM helpers shared by both pages.
-- `src/pages/create-profile.ts`, `src/pages/authenticate.ts` -- the two
-  page-specific entry points Vite builds.
+  captured. Shared by every page below.
+- `src/api.ts` -- thin `fetch` wrappers for the account system's JSON API.
+- `src/game-api.ts` -- thin `fetch` wrappers for the party game's JSON API
+  (`/api/game/*`).
+- `src/ui.ts` -- small DOM helpers shared by the account pages.
+- `src/pages/create-profile.ts`, `src/pages/authenticate.ts` -- the
+  account system's two page-specific entry points.
+- `src/pages/party.ts` -- the party game's own entry point (ported from
+  `design/typing-twin-party.html`; see `PARTY_LAUNCH_PLAN.md`).
+- `scripts/og-image.html`, `scripts/generate-og-image.mjs` -- generates
+  `static/img/party-preview.png` (`npm run og-image`).
 - `e2e/` -- Playwright specs.

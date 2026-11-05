@@ -1,9 +1,15 @@
 # Keystroke Dynamics
 
-A demo web app that uses *how* you type, not just *what* you type, as an
-additional login signal. You create a profile by typing a passage of text;
-the app learns the timing between your key presses. Later, typing the same
-way is scored alongside your password at login.
+A demo app built around one idea: *how* you type is a signal, not just
+*what* you type. The same scoring engine runs two things:
+
+- **Typing Twin Party** -- an anonymous party game. Type a line a few
+  times, see your rhythm drawn as a signature, then try to pass as your
+  friends on one keyboard. No accounts, no database. This is what a
+  visitor sees by default.
+- **The account-based demo** -- register, build a typing profile, and log
+  in with your password plus your typing as a second signal. Off by
+  default; see [Running the account-based demo too](#running-the-account-based-demo-too).
 
 **This is a research/demo project, not a production biometric system.** Its
 measured accuracy (see [Method and results](#method-and-results) below) is
@@ -12,30 +18,49 @@ matters on its own. See [Known limitations](#known-limitations).
 
 Originally a 2018 Python 2/Flask class project; rewritten from scratch in
 Python 3 following [`MODERNIZATION_PLAN.md`](MODERNIZATION_PLAN.md), which
-also has the full phase-by-phase history of that rewrite.
+also has the full phase-by-phase history of that rewrite. The party game
+was added later -- see [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md).
 
 ## Quick start
 
 With [Docker Compose](https://docs.docker.com/compose/):
 
 ```bash
-cp .env.example .env
 docker compose up --build
 ```
 
-Then open <http://127.0.0.1:8000>. This builds the frontend, starts
-Postgres, runs migrations, and starts the app -- one command, nothing else
-to install.
+Then open <http://127.0.0.1:8000> -- Typing Twin Party. No Postgres, no
+`.env` file, nothing else to install.
+
+### Running the account-based demo too
+
+Needs Postgres, off by default. Layer `compose.accounts.yaml` on top:
+
+```bash
+cp .env.example .env
+docker compose -f compose.yaml -f compose.accounts.yaml up --build
+```
+
+<http://127.0.0.1:8000> is now the account system's home page, and the
+game moves to <http://127.0.0.1:8000/party> (see
+[Party mode](#party-mode) below for why).
 
 ### Running without Docker
 
-Requires Python 3.12+ ([`uv`](https://docs.astral.sh/uv/)), Node.js 22+, and
-a Postgres instance.
+Requires Python 3.12+ ([`uv`](https://docs.astral.sh/uv/)) and Node.js 22+.
 
 ```bash
-cp .env.example .env               # edit DATABASE_URL to point at your Postgres
 uv sync
 cd frontend && npm install && npm run build && cd ..
+uv run uvicorn keystroke_dynamics.main:app --reload
+```
+
+Opens the same Typing Twin Party at <http://127.0.0.1:8000>, no Postgres
+needed. For the account-based demo too, additionally need a Postgres
+instance:
+
+```bash
+cp .env.example .env               # edit DATABASE_URL, set ENABLE_ACCOUNTS=true
 uv run alembic upgrade head
 uv run uvicorn keystroke_dynamics.main:app --reload
 ```
@@ -75,12 +100,14 @@ tests/         pytest (core, api, db, game) -- see "Running the tests" below
 
 ### Party mode
 
-`ENABLE_ACCOUNTS=false` (the default -- see `.env.example`) turns this
-into a different app: an anonymous, no-database party game at `/`, where
-a few friends on one keyboard try to type like each other and get scored
-by the same `core/` engine above, under a signed session cookie instead
-of an account. `ENABLE_ACCOUNTS=true` runs both at once (the game moves
-to `/party`). See [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the
+`ENABLE_ACCOUNTS=false` (the default -- see `.env.example`) is public
+mode: Typing Twin Party, and nothing else, at `/`. No registration/login/
+profile routes, no account pages, no database connection of any kind --
+a few friends type on one keyboard and get scored by the same `core/`
+engine above, under a signed session cookie instead of an account.
+`ENABLE_ACCOUNTS=true` mounts the account system too, and the game moves
+to `/party` so it doesn't collide with the account system's own home
+page at `/`. See [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the
 full design and `src/keystroke_dynamics/game/` for the implementation.
 
 ## Method and results
@@ -91,8 +118,10 @@ variance per feature (Welford's algorithm) -- never the raw timestamps they
 came from. To score a sample, each feature is compared to its stored mean,
 scaled by that feature's own standard deviation (scaled Manhattan distance);
 the average distance across compared features determines match / no-match /
-insufficient-data. See [`/how-it-works`](http://127.0.0.1:8000/how-it-works)
-in the running app for the full description.
+insufficient-data. The running app explains this in two places: Party's own
+How it works tab (public mode, `/`), tuned for a handful of training
+lines, and `/how-it-works` with the account system enabled, describing
+the full benchmark-calibrated method below.
 
 This was evaluated against the CMU Keystroke Dynamics Benchmark Data Set
 (Killourhy & Maxion, 2009), reaching a **mean equal error rate of about
@@ -119,17 +148,13 @@ Full method, numbers, and how to reproduce them:
   scope).
 - You can delete your typing profile (the statistics, not raw data, since
   none is kept) at any time from the Authenticate page.
-- **[Typing Twin](http://127.0.0.1:8000/typing-twin)** is a multiplayer
-  party game built on top of the real scoring engine above (not a separate
-  toy): each real player gets a random, disposable account, enrolled and
-  scored through the same endpoints the rest of the app uses. Attacking
-  another player works without any new backend capability -- the page
-  silently logs in as whichever player is the *target* right before
-  scoring an attempt, since the backend only ever checks whoever is
-  actually logged in, never a header or request field. The three
-  "simulated" practice players are explicitly fake data and never touch
-  the backend. "New party" deletes every real player's profile. See
-  `TODO.md` for the one place its disposable accounts outlive the party.
+- **Typing Twin Party** (public mode, `/`) has its own, separate identity
+  model: a signed session cookie names your *party*, not an account. A
+  party's players, attempts, and generated names live in memory only --
+  no database, ever, in this mode -- and disappear when the party is
+  deleted, expires (2 hours idle), or the process restarts. See the
+  game's own How it works tab, or
+  [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md), for the full model.
 
 ## Known limitations
 
