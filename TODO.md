@@ -33,32 +33,13 @@ What's still open:
    one event at a time instead. Keep for a future batch-enrollment path, or
    remove if none is planned.
 
-5. **Typing Twin (`/typing-twin`) leaves orphan `users` rows, one per real
-   player per party.** Each real player registers a random, disposable
-   account; "New party" deletes every real player's typing profile but not
-   the account itself, since there's no account-deletion endpoint (the app
-   never needed one before this). The orphan rows carry no typing data once
-   the profile is deleted, just a random username and a password hash
-   nobody has. Fine for a demo; would need a real cleanup path (an admin
-   job, or an actual DELETE /api/account) if this saw real traffic. The
-   three simulated "sample" players in a party never touch the backend at
-   all, so they don't add to this.
-
-6. **Typing Twin Party's full e2e suite needs a raised `RATE_LIMIT_MAX_ATTEMPTS`
-   to run locally.** The suite's cumulative login/register calls across all
-   spec files legitimately exceed the production default's 10-per-60s
-   budget (tuned for a real user, not an automated suite exercising several
+5. **The full e2e suite needs a raised `RATE_LIMIT_MAX_ATTEMPTS` to run
+   locally.** The suite's cumulative login/register calls across all spec
+   files legitimately exceed the production default's 10-per-60s budget
+   (tuned for a real user, not an automated suite exercising several
    accounts back to back) -- see `frontend/README.md`'s End-to-end tests
    section. Not a defect in the limiter; just means `npm run e2e` needs
    `RATE_LIMIT_MAX_ATTEMPTS=50` set on the dev server it's pointed at.
-
-7. **`/typing-twin` (the account-based game, item 5/6 above) and `/party`
-   (the new anonymous game, see `PARTY_LAUNCH_PLAN.md`) both still exist,
-   side by side, when `ENABLE_ACCOUNTS=true`.** `/party` is the one meant
-   for the public launch; `/typing-twin`'s disposable-account approach is
-   effectively superseded by it, but nothing has deleted `/typing-twin`,
-   its page, or its e2e spec yet -- an explicit decision, not an oversight
-   (not mine to make unilaterally). Retiring it would also resolve item 5.
 
 See `MODERNIZATION_PLAN.md`'s "Later ideas (not part of this work)" for
 BioKey's update-after-login step and other explicitly out-of-scope ideas.

@@ -934,9 +934,18 @@ function scoresView(): string {
 }
 
 function howView(): string {
+  // The approved mockup's own How It Works content (design/typing-twin-party.html's
+  // howView()), kept here rather than linking out to the old account
+  // system's separate /how-it-works page -- that page doesn't exist
+  // in public mode, and this game has no account-system dependency
+  // either way. The mockup's own "What's in this mockup" aside (about
+  // its local-only JS simulation) is replaced with this game's actual
+  // privacy disclosure, since every player here -- real or simulated
+  // -- is genuinely scored by the backend, not a local approximation.
   return `<section class="stack">
     <h2>How it works</h2>
-    <p>The detector measures two things: how long each key is held, and the time from one key going down to the next, scored by this app's own backend -- see <a href="/how-it-works">How It Works</a> for the actual method. The scoring here is tuned for a handful of training lines instead of a full benchmark profile, so treat the limits as party tuning, never as this app's measured accuracy.</p>
+    <p>The detector measures two things: how long each key is held, and the time from one key going down to the next. For each timing, it works out how far your line is from a player's profile, measured in that timing's usual variation. The average is the distance. This method is called scaled Manhattan distance, scored by this app's own backend for every player -- real or simulated.</p>
+    <p>Each player's limit comes from testing each of their training lines against the others. Below the limit, the typing passes as them. The scoring here is tuned for a handful of training lines instead of a full benchmark profile, so treat the limits as party tuning, not this app's measured accuracy.</p>
     <p>Reading a signature: the shape is scaled to each typist's own median gap, so it shows their relative rhythm and not simply their speed. Signatures can look alike, and a distinctive shape doesn't prove anyone is unique.</p>
     <p>This is a game, not security. A few lines of typing aren't enough to protect anything, and a replay -- run on the server from the target's typical timing, not a secret recording -- shows why rhythm can't be the only check.</p>
     <details>
