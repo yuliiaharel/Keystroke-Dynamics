@@ -63,13 +63,25 @@ src/keystroke_dynamics/
   core/        pure scoring logic (events, features, stats, scoring)
   db/          SQLAlchemy models and queries
   api/         FastAPI routes, auth, rate limiting, request schemas
+  game/        the anonymous party game's own store/scoring/targets
   templates/   Jinja2 pages
   static/      local CSS + the built frontend JS
 frontend/      TypeScript capture module, Vite build, Playwright e2e tests
 migrations/    Alembic
 evaluation/    accuracy benchmark against a public dataset
-tests/         pytest (core, api, db) -- see "Running the tests" below
+scripts/       one-off tooling (the party game's load test, its OG image)
+tests/         pytest (core, api, db, game) -- see "Running the tests" below
 ```
+
+### Party mode
+
+`ENABLE_ACCOUNTS=false` (the default -- see `.env.example`) turns this
+into a different app: an anonymous, no-database party game at `/`, where
+a few friends on one keyboard try to type like each other and get scored
+by the same `core/` engine above, under a signed session cookie instead
+of an account. `ENABLE_ACCOUNTS=true` runs both at once (the game moves
+to `/party`). See [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the
+full design and `src/keystroke_dynamics/game/` for the implementation.
 
 ## Method and results
 
