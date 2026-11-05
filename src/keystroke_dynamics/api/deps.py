@@ -1,17 +1,27 @@
-"""Shared FastAPI dependencies: the current authenticated user,
-same-origin enforcement, and rate limiting."""
+"""Shared FastAPI dependencies for the account system: the current
+authenticated user, plus re-exports of the DB-independent security
+helpers (api/security.py) that auth.py/profile.py already import from
+here."""
 
 from __future__ import annotations
-
-from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from keystroke_dynamics.api.rate_limit import RateLimiter
+from keystroke_dynamics.api.security import rate_limited, require_matching_origin
 from keystroke_dynamics.config import settings
 from keystroke_dynamics.db.models import User
 from keystroke_dynamics.db.session import get_db
+
+__all__ = [
+    "get_current_user",
+    "login_rate_limiter",
+    "rate_limited",
+    "register_rate_limiter",
+    "require_matching_origin",
+    "verify_rate_limiter",
+]
 
 # One limiter per sensitive endpoint, each with its own counters, so
 # a flood of login attempts doesn't eat into the registration or
@@ -21,18 +31,6 @@ _WINDOW_SECONDS = settings.rate_limit_window_seconds
 login_rate_limiter = RateLimiter(_MAX_ATTEMPTS, _WINDOW_SECONDS)
 register_rate_limiter = RateLimiter(_MAX_ATTEMPTS, _WINDOW_SECONDS)
 verify_rate_limiter = RateLimiter(_MAX_ATTEMPTS, _WINDOW_SECONDS)
-
-
-def require_matching_origin(request: Request) -> None:
-    """CSRF defense for all state-changing requests: the Origin header
-    must match this app's own configured origin exactly. The app sets
-    no CORS headers and serves no other origin, so a missing or
-    mismatched Origin always means either a cross-site request or a
-    non-browser client that isn't sending one -- reject both.
-    """
-    origin = request.headers.get("origin")
-    if origin != settings.allowed_origin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "origin mismatch")
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
@@ -49,12 +47,3 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         # account was deleted). Treat it the same as never logging in.
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
     return user
-
-
-def rate_limited(limiter: RateLimiter) -> Callable[[Request], None]:
-    def dependency(request: Request) -> None:
-        key = request.client.host if request.client else "unknown"
-        if not limiter.allow(key):
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "rate limit exceeded")
-
-    return dependency
