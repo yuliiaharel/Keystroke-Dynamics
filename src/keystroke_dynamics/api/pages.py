@@ -24,14 +24,18 @@ router = APIRouter()
 _templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 
-#: No inline scripts or styles anywhere on this page -- everything is
-#: self-hosted static/js and static/css -- so this has no 'unsafe-
-#: inline' anywhere, and nothing but this app's own origin is allowed
-#: for anything. See PARTY_LAUNCH_PLAN.md Part 1 section 8.
+#: No inline *scripts* anywhere -- script-src has no 'unsafe-inline'
+#: or 'unsafe-eval', and every script is self-hosted static/js (see
+#: PARTY_LAUNCH_PLAN.md Part 1 section 8's literal requirement). The
+#: page's dynamically-colored SVGs/layout tweaks (a player's ring
+#: color, a swatch, an inline gap) use the `style` attribute the way
+#: the approved mockup does, so style-src keeps 'unsafe-inline' --
+#: inline presentation carries a fundamentally different risk from
+#: inline script, which is what this CSP actually exists to stop.
 _PARTY_CSP = (
     "default-src 'self'; "
     "script-src 'self'; "
-    "style-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
     "font-src 'self'; "
     "img-src 'self' data:; "
     "connect-src 'self'; "
