@@ -50,16 +50,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build and start the Compose stack
+      # The default stack: public mode, no Postgres. Must open Party
+      # at "/" -- see PARTY_LAUNCH_PLAN.md Part 1.
+      - name: Build and start the default (public-mode) stack
         run: docker compose up --build -d --wait
 
       - name: Health check
         run: curl --fail http://127.0.0.1:8000/health
 
+      - name: Party is served at "/"
+        run: curl --fail http://127.0.0.1:8000/ | grep -q 'static/js/party.js'
+
       - name: Compose logs (on failure)
         if: failure()
         run: docker compose logs
 
-      - name: Tear down
+      - name: Tear down the public-mode stack
         if: always()
         run: docker compose down -v
+
+      # The documented accounts-on variant -- compose.accounts.yaml
+      # layers Postgres + the account system on top.
+      - name: Build and start the accounts-on stack
+        run: docker compose -f compose.yaml -f compose.accounts.yaml up --build -d --wait
+
+      - name: Health check (accounts-on)
+        run: curl --fail http://127.0.0.1:8000/health
+
+      - name: Account home page and Party both served
+        run: |
+          curl --fail http://127.0.0.1:8000/ | grep -q 'Keystroke Dynamics'
+          curl --fail http://127.0.0.1:8000/party | grep -q 'static/js/party.js'
+
+      - name: Compose logs (accounts-on, on failure)
+        if: failure()
+        run: docker compose -f compose.yaml -f compose.accounts.yaml logs
+
+      - name: Tear down the accounts-on stack
+        if: always()
+        run: docker compose -f compose.yaml -f compose.accounts.yaml down -v
