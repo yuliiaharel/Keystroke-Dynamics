@@ -148,3 +148,15 @@ class ReplayResponse(BaseModel):
     #: own median notes, already exposed for drawing their signature
     #: ring. Nothing else about the target goes with a replay.
     notes: list[NoteView]
+
+
+class RecordTargetRequest(BaseModel):
+    """Only reachable when settings.debug is true (see api/game.py) --
+    a local-only way to record a permanent target (PARTY_LAUNCH_PLAN.md
+    Part 1 section 7). `lines` maps level -> 3-8 training runs, the
+    same shape POST /api/game/players takes, just across every level
+    at once instead of one party's own.
+    """
+
+    name: str = Field(min_length=1, max_length=24)
+    lines: dict[Level, list[list[KeyEventSchema]]]
