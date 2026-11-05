@@ -1,8 +1,8 @@
-/* Typing Twin: a game built around the real scoring engine. Scoped
-   under .typing-twin-page rather than :root/body -- this file's own
-   theme (pink/teal, rounded display font) must not leak into the
-   shared header/nav/footer from base.html, which keep the main
-   site's palette (see static/css/styles.css). */
+/* Typing Twin Party: a game built around the real scoring engine.
+   Scoped under .typing-twin-page rather than :root/body -- this
+   file's own theme (pink/teal, rounded display font) must not leak
+   into the shared header/nav/footer from base.html, which keep the
+   main site's palette (see static/css/styles.css). */
 
 .typing-twin-page {
   --paper: #edebfa;
@@ -15,6 +15,12 @@
   --good: #1b7f4b;
   --bad: #b3261e;
   --on-accent: #ffffff;
+  --p0: #c2185b;
+  --p1: #007c89;
+  --p2: #6a3fc9;
+  --p3: #b35c00;
+  --p4: #1b7f4b;
+  --p5: #1f5fbf;
   --display: "Bagel Fat One", "Arial Rounded MT Bold", system-ui, sans-serif;
   --body-font: "Atkinson Hyperlegible", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -38,6 +44,12 @@
     --good: #5bd68f;
     --bad: #ff8a80;
     --on-accent: #23102a;
+    --p0: #ff77a8;
+    --p1: #48d1dc;
+    --p2: #b69bff;
+    --p3: #ffb562;
+    --p4: #5bd68f;
+    --p5: #7fb2ff;
   }
 }
 :root[data-theme="dark"] .typing-twin-page {
@@ -51,6 +63,12 @@
   --good: #5bd68f;
   --bad: #ff8a80;
   --on-accent: #23102a;
+  --p0: #ff77a8;
+  --p1: #48d1dc;
+  --p2: #b69bff;
+  --p3: #ffb562;
+  --p4: #5bd68f;
+  --p5: #7fb2ff;
 }
 
 .typing-twin-page * {
@@ -60,7 +78,7 @@
 .typing-twin-page .wrap {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
 }
 .typing-twin-page header {
   display: flex;
@@ -72,14 +90,20 @@
 .typing-twin-page .brand {
   font: 400 24px/1 var(--display);
   color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+.typing-twin-page .brand:hover {
+  background: none;
 }
 .typing-twin-page h1 {
-  font: 400 clamp(32px, 7vw, 56px) / 1.02 var(--display);
+  font: 400 clamp(32px, 7vw, 60px) / 1.02 var(--display);
   margin: 0;
   text-wrap: balance;
 }
 .typing-twin-page h2 {
-  font: 400 clamp(24px, 5vw, 30px) / 1.1 var(--display);
+  font: 400 clamp(24px, 5vw, 32px) / 1.1 var(--display);
   margin: 0;
   text-wrap: balance;
 }
@@ -136,9 +160,30 @@
   font-size: 15px;
   padding: 7px 12px;
 }
+.typing-twin-page button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .typing-twin-page :focus-visible {
   outline: 3px solid var(--twin);
   outline-offset: 2px;
+}
+.typing-twin-page input,
+.typing-twin-page select {
+  font: 400 17px var(--body-font);
+  color: var(--ink);
+  background: var(--sheet);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+  max-width: 100%;
+}
+.typing-twin-page label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  color: var(--muted);
 }
 .typing-twin-page .row {
   display: flex;
@@ -146,6 +191,138 @@
   flex-wrap: wrap;
   align-items: center;
 }
+.typing-twin-page .row.end {
+  align-items: flex-end;
+}
+.typing-twin-page nav.tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.typing-twin-page nav.tabs button {
+  border-color: transparent;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+.typing-twin-page nav.tabs button[aria-current="page"] {
+  border-color: var(--ink);
+}
+
+.typing-twin-page .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .typing-twin-page .hero {
+    grid-template-columns: 1fr;
+  }
+}
+.typing-twin-page .hero-rings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.typing-twin-page .hero-rings > :first-child {
+  grid-column: 1 / -1;
+  max-width: 300px;
+  justify-self: center;
+  width: 100%;
+}
+.typing-twin-page .ring svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.typing-twin-page .ring-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.typing-twin-page .ring-fill {
+  opacity: 0.16;
+}
+.typing-twin-page .ring-guide {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.typing-twin-page .ring-tick {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.typing-twin-page .ring-compare {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.typing-twin-page .levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .typing-twin-page .levels {
+    grid-template-columns: 1fr;
+  }
+}
+.typing-twin-page .level {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--sheet);
+  border-color: var(--line);
+  padding: 12px 14px;
+}
+.typing-twin-page .level:hover {
+  border-color: var(--accent);
+  background: var(--sheet);
+}
+.typing-twin-page .level span {
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.typing-twin-page .players {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 12px;
+}
+.typing-twin-page .card {
+  background: var(--sheet);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.typing-twin-page .card h3 {
+  overflow-wrap: anywhere;
+}
+.typing-twin-page .card .tag {
+  font: 400 12px var(--mono);
+  color: var(--muted);
+}
+.typing-twin-page .card .row button {
+  flex: 1 1 auto;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+.typing-twin-page .card.add {
+  border: 2px dashed var(--line);
+  background: transparent;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  min-height: 240px;
+}
+
 .typing-twin-page .roll-box {
   overflow-x: auto;
   background: var(--sheet);
@@ -200,6 +377,7 @@
   border-radius: 3px;
   margin-right: 6px;
 }
+
 .typing-twin-page .typer {
   background: var(--sheet);
   border: 2px solid var(--line);
@@ -218,15 +396,11 @@
   font: 400 clamp(18px, 3.2vw, 24px) / 1.5 var(--mono);
   overflow-wrap: anywhere;
 }
-.typing-twin-page .phrase .done {
-  color: var(--ink);
-}
 .typing-twin-page .phrase .todo {
   color: var(--muted);
   opacity: 0.75;
 }
 .typing-twin-page .phrase .cur {
-  color: var(--ink);
   border-bottom: 3px solid var(--accent);
   font-weight: 600;
 }
@@ -246,7 +420,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .typing-twin-page .typer.oops {
+  .typing-twin-page .typer.oops,
+  .typing-twin-page .verdict {
     animation: none;
   }
 }
@@ -267,7 +442,7 @@
 }
 .typing-twin-page .dots {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   font: 600 13px var(--mono);
 }
@@ -286,15 +461,27 @@
   border-color: var(--accent);
   color: var(--on-accent);
 }
+
+.typing-twin-page .split {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .typing-twin-page .split {
+    grid-template-columns: 1fr;
+  }
+  .typing-twin-page .split .ring {
+    max-width: 320px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
 .typing-twin-page .traits {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-@media (max-width: 640px) {
-  .typing-twin-page .traits {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 .typing-twin-page .trait {
   background: var(--sheet);
@@ -303,48 +490,35 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 .typing-twin-page .trait b {
-  font: 400 24px/1.1 var(--display);
+  font: 400 25px/1.1 var(--display);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
-.typing-twin-page .tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.typing-twin-page .verdict {
+  font: 400 clamp(40px, 8vw, 68px) / 1 var(--display);
+  margin: 0;
+  animation: typing-twin-pop 0.28s ease-out;
 }
-@media (max-width: 640px) {
-  .typing-twin-page .tabs {
-    grid-template-columns: 1fr;
+@keyframes typing-twin-pop {
+  from {
+    transform: scale(0.9);
   }
-}
-.typing-twin-page .tab {
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border-color: var(--line);
-  background: var(--sheet);
-  padding: 12px 14px;
-}
-.typing-twin-page .tab span {
-  font-weight: 400;
-  font-size: 15px;
-  color: var(--muted);
-}
-.typing-twin-page .tab[aria-pressed="true"] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-.typing-twin-page .result {
-  border-top: 2px solid var(--ink);
-  padding-top: 16px;
+  to {
+    transform: scale(1);
+  }
 }
 .typing-twin-page .v-good {
   color: var(--good);
 }
 .typing-twin-page .v-bad {
   color: var(--bad);
+}
+.typing-twin-page .result {
+  border-top: 2px solid var(--ink);
+  padding-top: 16px;
 }
 .typing-twin-page .gauge svg {
   display: block;
@@ -401,16 +575,51 @@
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
-.typing-twin-page .record {
+.typing-twin-page td.hit {
+  color: var(--bad);
+  font-weight: 700;
+}
+.typing-twin-page td.safe {
+  color: var(--good);
+}
+
+.typing-twin-page .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 @media (max-width: 640px) {
-  .typing-twin-page .record {
+  .typing-twin-page .board {
     grid-template-columns: 1fr;
   }
 }
+.typing-twin-page .chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.typing-twin-page .c-axis {
+  stroke: var(--line);
+}
+.typing-twin-page .c-limit {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.typing-twin-page .c-text {
+  font: 400 11px var(--mono);
+  fill: var(--muted);
+}
+.typing-twin-page .c-own {
+  fill: var(--twin);
+}
+.typing-twin-page .c-attack {
+  fill: var(--accent);
+}
+.typing-twin-page .c-replay {
+  fill: var(--ink);
+}
+
 .typing-twin-page details {
   border-top: 1px solid var(--line);
   padding-top: 12px;
@@ -426,4 +635,8 @@
   border: 2px solid var(--accent);
   border-radius: 10px;
   padding: 10px 14px;
+}
+.typing-twin-page .error {
+  color: var(--bad);
+  font-weight: 600;
 }

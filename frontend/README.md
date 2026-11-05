@@ -27,8 +27,20 @@ does not start either for you. Before running it:
 # from the repo root
 docker compose -f docker-compose.test.yml up -d
 uv run alembic upgrade head
-uv run uvicorn keystroke_dynamics.main:app --host 127.0.0.1 --port 8000
+RATE_LIMIT_MAX_ATTEMPTS=50 \
+  uv run uvicorn keystroke_dynamics.main:app --host 127.0.0.1 --port 8000
 ```
+
+`RATE_LIMIT_MAX_ATTEMPTS` (an existing, already environment-configurable
+setting -- see `.env.example`) is raised here only for this one locally-run
+dev server, not the app's actual default (still 10, unchanged). The full
+suite's own login/register traffic, across every spec file, legitimately
+exceeds the production default's 10-per-60s budget -- that default is
+tuned for a real user, not an automated suite exercising several accounts
+back to back (playwright.config.ts already pins `workers: 1`, since the
+suite shares this one server process and its rate limiters are in-memory,
+global, and keyed by client IP; `workers: 1` only fixes collisions between
+*parallel* spec files, not the suite's own cumulative volume run serially).
 
 Then, in another terminal, from `frontend/`: `npm run e2e`. Override
 the target with `E2E_BASE_URL` if the app is running somewhere other

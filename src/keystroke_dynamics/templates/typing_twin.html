@@ -11,34 +11,41 @@
 <div class="typing-twin-page">
   <div class="wrap">
     <header>
-      <div class="brand">Typing Twin</div>
-      <div class="row" id="head-actions"></div>
+      <button class="brand" id="home" aria-label="Typing Twin home">Typing Twin</button>
+      <nav class="tabs" id="tabs"></nav>
     </header>
     <p class="small muted">
-      A game, not a toy demo: enrollment and every attempt here are scored by
-      this app's real backend (the same Argon2id accounts, Postgres-backed
-      profiles, and scaled-Manhattan scoring described on
-      <a href="/how-it-works">How It Works</a>) under a random, disposable
-      account created just for this play session. See the privacy note at
-      the bottom of the page for exactly what that means.
+      A party game, not a toy demo: every real player's enrollment and every
+      attempt against them is scored by this app's real backend (the same
+      Argon2id accounts, Postgres-backed profiles, and scaled-Manhattan
+      scoring described on <a href="/how-it-works">How It Works</a>), each
+      under their own random, disposable account. The three simulated
+      practice players are fake data generated in your browser and never
+      touch the backend. See the privacy note at the bottom of the page.
     </p>
     <main id="app" class="stack" style="gap: 24px"></main>
     <details>
       <summary>Privacy</summary>
       <div class="stack">
         <p class="small">
-          Playing registers a random, anonymous account (a generated
-          username and password, never shown to you and not reusable) and
-          signs in with it, the same as any other account on this site.
-          Only which key you press and when leaves your browser -- never
-          the characters you type. The server stores a running mean and
-          variance per key/key-pair for that account, not your raw
-          keystrokes, exactly as described in the main app's own privacy
-          notes. Selecting <strong>Start over</strong> deletes that typing
-          profile immediately. The account record itself (just a random
-          username and a password hash, with no typing data left on it)
-          is not deleted, since this app has no account-deletion endpoint
-          -- see <a href="https://github.com/yuliiaharel/Keystroke-Dynamics">the
+          Each real player you add registers a random, anonymous account (a
+          generated username and password, never shown to anyone and not
+          reusable) the first time they type. Only which key is pressed and
+          when leaves the browser -- never the characters typed. The server
+          stores a running mean and variance per key/key-pair for that
+          account, not raw keystrokes, exactly as described in the main
+          app's own privacy notes. As play moves between players, this page
+          silently signs in as whichever player's profile the next attempt
+          needs to check -- the account being scored is always the one
+          that's actually logged in, the same rule every other page on this
+          site follows.
+        </p>
+        <p class="small">
+          Selecting <strong>New party</strong> deletes every real player's
+          typing profile. Their account records (a random username and a
+          password hash, with no typing data left on them) are not deleted,
+          since this app has no account-deletion endpoint -- see
+          <a href="https://github.com/yuliiaharel/Keystroke-Dynamics">the
           repository</a> if that matters to you.
         </p>
       </div>

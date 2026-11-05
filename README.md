@@ -107,12 +107,17 @@ Full method, numbers, and how to reproduce them:
   scope).
 - You can delete your typing profile (the statistics, not raw data, since
   none is kept) at any time from the Authenticate page.
-- **[Typing Twin](http://127.0.0.1:8000/typing-twin)** is a game built on
-  top of the real scoring engine above (not a separate toy): it creates a
-  random, disposable account for the play session, enrolls and scores you
-  through the same endpoints the rest of the app uses, and deletes the
-  profile when you select Start over. See `TODO.md` for the one place its
-  disposable accounts outlive the session.
+- **[Typing Twin](http://127.0.0.1:8000/typing-twin)** is a multiplayer
+  party game built on top of the real scoring engine above (not a separate
+  toy): each real player gets a random, disposable account, enrolled and
+  scored through the same endpoints the rest of the app uses. Attacking
+  another player works without any new backend capability -- the page
+  silently logs in as whichever player is the *target* right before
+  scoring an attempt, since the backend only ever checks whoever is
+  actually logged in, never a header or request field. The three
+  "simulated" practice players are explicitly fake data and never touch
+  the backend. "New party" deletes every real player's profile. See
+  `TODO.md` for the one place its disposable accounts outlive the party.
 
 ## Known limitations
 
