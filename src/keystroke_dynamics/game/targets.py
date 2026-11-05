@@ -104,9 +104,7 @@ def _decode_feature_key(s: str) -> FeatureKey:
     return ("flight", parts[1], parts[2])
 
 
-def save_permanent_target(
-    path: Path, *, name: str, lines: dict[str, list[list[KeyEvent]]]
-) -> None:
+def save_permanent_target(path: Path, *, name: str, lines: dict[str, list[list[KeyEvent]]]) -> None:
     """Writes a committed permanent-target file: one entry per line
     (word/sentence/long), each holding only a derived profile,
     calibrated threshold, and median notes -- never a raw event or

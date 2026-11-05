@@ -28,12 +28,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+from keystroke_dynamics.api import game as game_api  # noqa: E402
 from keystroke_dynamics.api.deps import (  # noqa: E402
     login_rate_limiter,
     register_rate_limiter,
     verify_rate_limiter,
 )
 from keystroke_dynamics.db.session import get_db  # noqa: E402
+from keystroke_dynamics.game.rate_limit import game_rate_limiter  # noqa: E402
 from keystroke_dynamics.main import app  # noqa: E402
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -80,12 +82,21 @@ def _clean_tables():
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiters():
-    # The rate limiters are process-global singletons (see api/deps.py)
-    # so one test's calls to a rate-limited endpoint don't eat into
-    # another's budget -- this is test isolation, not something the
-    # app itself ever does.
-    for limiter in (login_rate_limiter, register_rate_limiter, verify_rate_limiter):
+    # The rate limiters are process-global singletons (see api/deps.py
+    # and game/rate_limit.py) so one test's calls to a rate-limited
+    # endpoint don't eat into another's budget -- this is test
+    # isolation, not something the app itself ever does.
+    limiters = (login_rate_limiter, register_rate_limiter, verify_rate_limiter, game_rate_limiter)
+    for limiter in limiters:
         limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _clear_game_store():
+    # The in-memory game store (api/game.py's module-global _store) is
+    # also process-global -- same reasoning as the rate limiters above.
+    yield
+    game_api._store._parties.clear()  # noqa: SLF001
 
 
 @pytest.fixture
