@@ -17,10 +17,15 @@ import random
 from functools import cache
 from pathlib import Path
 
-from keystroke_dynamics.core.events import KeyEvent, pair_presses
-from keystroke_dynamics.core.features import FeatureKey, extract_features
+from keystroke_dynamics.core.events import KeyEvent
+from keystroke_dynamics.core.features import FeatureKey
 from keystroke_dynamics.core.stats import RunningStats
-from keystroke_dynamics.game.scoring import build_profile, calibrate_threshold
+from keystroke_dynamics.game.enroll import (
+    build_profile_and_threshold,
+    char_to_code,
+    median_notes,
+    phrase_from_run,
+)
 from keystroke_dynamics.game.store import Note, Player
 
 #: Where permanent target files live -- committed to the repo, never
@@ -45,54 +50,30 @@ SAMPLE_BOTS: list[tuple[str, str, float]] = [
 SAMPLE_TRAINING_RUNS = 6
 
 
-def _char_to_code(ch: str) -> str:
-    return "Space" if ch == " " else f"Key{ch.upper()}"
-
-
 def _synthetic_run(phrase: str, rng: random.Random, speed: float) -> list[KeyEvent]:
     """One deterministic, speed-scaled typing of `phrase`: the same
     down/hold/gap shape real captured events have. Only the *input* is
     synthetic -- it's still run through the real core.events/
-    core.features pipeline below, like any other sample. Not a second
-    scoring path.
+    core.features pipeline (via game.enroll), like any other sample.
+    Not a second scoring path.
     """
     events: list[KeyEvent] = []
     t = 0.0
     for i, ch in enumerate(phrase):
         if i > 0:
             t += speed * rng.uniform(70, 240)
-        code = _char_to_code(ch)
+        code = char_to_code(ch)
         hold = speed * rng.uniform(45, 105)
         events.append(KeyEvent(code=code, action="down", t_ms=t))
         events.append(KeyEvent(code=code, action="up", t_ms=t + hold))
     return events
 
 
-def _median_notes(phrase: str, runs: list[list[KeyEvent]]) -> list[Note]:
-    """The median down-to-down gap and hold duration at each position
-    across runs -- never one run's raw timing on its own. Mirrors the
-    mockup's own medianNotes()."""
-    presses_per_run = [pair_presses(run) for run in runs]
-    t = 0.0
-    notes: list[Note] = []
-    for i, ch in enumerate(phrase):
-        if i > 0:
-            gaps = sorted(
-                presses[i].down_t_ms - presses[i - 1].down_t_ms for presses in presses_per_run
-            )
-            t += gaps[len(gaps) // 2]
-        durations = sorted(presses[i].up_t_ms - presses[i].down_t_ms for presses in presses_per_run)
-        notes.append(Note(ch=ch, start_ms=t, dur_ms=durations[len(durations) // 2]))
-    return notes
-
-
 def _build_target_player(
     id_: str, name: str, color: int, phrase: str, runs: list[list[KeyEvent]]
 ) -> Player:
-    training_features = [extract_features(pair_presses(run)) for run in runs]
-    profile = build_profile(training_features)
-    threshold = calibrate_threshold(training_features, phrase=phrase)
-    notes = _median_notes(phrase, runs)
+    profile, threshold = build_profile_and_threshold(phrase, runs)
+    notes = median_notes(phrase, runs)
     return Player(id=id_, name=name, color=color, profile=profile, threshold=threshold, notes=notes)
 
 
@@ -140,7 +121,7 @@ def save_permanent_target(
     """
     lines_out: dict[str, object] = {}
     for level, runs in lines.items():
-        phrase = _phrase_from_run(runs[0])
+        phrase = phrase_from_run(runs[0])
         player = _build_target_player("ignored", name, 0, phrase, runs)
         lines_out[level] = {
             "threshold": player.threshold,
@@ -154,15 +135,6 @@ def save_permanent_target(
         }
     data = {"name": name, "lines": lines_out}
     path.write_text(json.dumps(data, indent=2))
-
-
-def _phrase_from_run(run: list[KeyEvent]) -> str:
-    """save_permanent_target doesn't get the phrase as a separate
-    argument -- the recorder's own events already say what was typed,
-    so this recovers it straight from one run's key codes (in down
-    order), rather than asking the caller to repeat it."""
-    codes = (p.code for p in pair_presses(run))
-    return "".join(" " if code == "Space" else code.removeprefix("Key").lower() for code in codes)
 
 
 def load_permanent_target(level: str) -> Player | None:
