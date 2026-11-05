@@ -29,6 +29,7 @@ from typing import Literal, Protocol
 
 from keystroke_dynamics.core.features import FeatureKey
 from keystroke_dynamics.core.stats import RunningStats
+from keystroke_dynamics.game.levels import Level
 
 Mode = Literal["attack", "self", "disguise", "replay"]
 
@@ -58,7 +59,7 @@ class Player:
 class Attempt:
     id: str
     typist_name: str
-    typist_id: str | None  # None for Guest
+    typist_id: str | None  # None for Guest, REPLAY_TYPIST_ID for a server-run replay
     target_id: str
     target_name: str
     mode: Mode
@@ -69,12 +70,23 @@ class Attempt:
     counted: bool
     passed: bool | None
     created_at: float = field(default_factory=time.monotonic)
+    #: The client-supplied idempotency key for POST /api/game/attempts
+    #: (see api/game.py) -- None for attempts that don't need one
+    #: (server-initiated replays). A retried submission with the same
+    #: (typist_id, client_attempt_id) returns the original Attempt
+    #: instead of scoring and recording a duplicate.
+    client_attempt_id: str | None = None
+
+
+#: Attempt.typist_id for a server-run replay (game/replay.py) -- never
+#: a real player, but distinct from Guest (None) in attempt history.
+REPLAY_TYPIST_ID = "replay"
 
 
 @dataclass
 class Party:
     id: str
-    level: str
+    level: Level
     players: dict[str, Player] = field(default_factory=dict)
     attempts: list[Attempt] = field(default_factory=list)
     created_at: float = field(default_factory=time.monotonic)
@@ -93,7 +105,7 @@ class PartyFullError(Exception):
 
 
 class GameStore(Protocol):
-    def create_party(self, level: str) -> Party: ...
+    def create_party(self, level: Level) -> Party: ...
     def get_party(self, party_id: str) -> Party | None: ...
     def touch(self, party_id: str) -> None: ...
     def delete_party(self, party_id: str) -> None: ...
@@ -134,7 +146,7 @@ class InMemoryGameStore:
                 del self._parties[pid]
             return len(expired)
 
-    def create_party(self, level: str) -> Party:
+    def create_party(self, level: Level) -> Party:
         self.sweep_expired()
         with self._lock:
             if len(self._parties) >= self._party_limit:
