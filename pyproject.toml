@@ -32,6 +32,12 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.17.3",
 ]
+# SciPy is for evaluation/biokey_2012.py only (t-distribution critical
+# values) -- never imported by the app. Its own group, not `dev`, so
+# `uv sync --no-dev` (what the Dockerfile uses) never installs it.
+evaluation = [
+    "scipy>=1.16.3",
+]
 
 [tool.ruff]
 line-length = 100

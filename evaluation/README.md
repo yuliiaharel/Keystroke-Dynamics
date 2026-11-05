@@ -1,8 +1,16 @@
 # Benchmark evaluation
 
-Measures the scoring methods in `core/scoring.py` against the CMU Keystroke
-Dynamics Benchmark Data Set (Killourhy & Maxion, 2009):
-https://www.cs.cmu.edu/~keystroke/
+Measures the scoring methods in `core/scoring.py`, plus the BioKey 2012
+method (`biokey_2012.py`, evaluation only, never imported by the app),
+against the CMU Keystroke Dynamics Benchmark Data Set (Killourhy & Maxion,
+2009): https://www.cs.cmu.edu/~keystroke/
+
+BioKey 2012 needs SciPy, which isn't installed by default (it's not an app
+dependency -- see pyproject.toml's `evaluation` dependency group):
+
+```bash
+uv sync --group evaluation
+```
 
 ## Get the dataset
 
