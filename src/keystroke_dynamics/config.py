@@ -17,11 +17,28 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    #: Whether the account system (register/login/profile routes, the
+    #: old account-based pages, and Postgres) is mounted at all. False
+    #: is the public-launch mode PARTY_LAUNCH_PLAN.md Part 1 adds: the
+    #: app must start and a full game must be playable with no
+    #: DATABASE_URL and no database connection whatsoever. The anonymous
+    #: game (api/game.py) never depends on this flag either way -- it
+    #: has its own in-memory store and never touches accounts or
+    #: Postgres, in either mode.
+    enable_accounts: bool = False
+
     #: Same-origin check for state-changing requests (CSRF defense;
-    #: see api/deps.py:require_matching_origin). The app serves no
+    #: see api/security.py:require_matching_origin). The app serves no
     #: separate frontend origin, so this is simply where it itself is
     #: reachable.
     allowed_origin: str = "http://127.0.0.1:8000"
+
+    #: The absolute, public HTTPS URL this app is reachable at once
+    #: deployed -- used only for absolute URLs in link-preview metadata
+    #: (Open Graph/Twitter tags, the preview image). Required outside
+    #: local development, same as session_secret -- see the validator
+    #: below.
+    public_base_url: str | None = None
 
     #: Request body / event-count limits (core.events.validate takes
     #: max_events directly; max_body_bytes is enforced by middleware
@@ -35,6 +52,19 @@ class Settings(BaseSettings):
     #: fine for one instance, not a real multi-process guarantee.
     rate_limit_max_attempts: int = 10
     rate_limit_window_seconds: float = 60.0
+
+    #: In-memory game store limits (game/store.py) -- see
+    #: PARTY_LAUNCH_PLAN.md Part 1 section 2. Same in-memory/per-process
+    #: caveat as the rate limiters above: this is deliberately a
+    #: single-worker app (see main.py's docstring on why).
+    game_party_limit: int = 500
+    game_players_per_party_limit: int = 12
+    game_attempts_per_party_limit: int = 200
+    game_idle_expiry_seconds: float = 2 * 60 * 60
+    #: Separate from the account system's rate limiters (different
+    #: endpoints, different abuse shape) but the same mechanism.
+    game_rate_limit_max_attempts: int = 20
+    game_rate_limit_window_seconds: float = 60.0
 
     @model_validator(mode="after")
     def _require_a_real_secret_outside_local_development(self) -> "Settings":
