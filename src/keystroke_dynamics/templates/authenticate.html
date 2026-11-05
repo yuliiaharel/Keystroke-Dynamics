@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Authenticate – Keystroke Dynamics{% endblock %}
+{% block head %}
+<script type="module" src="/static/js/authenticate.js"></script>
+{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <h2>Authentication</h2>
+  <p class="privacy-note">
+    <strong>Privacy:</strong> only which key you press and when leaves your
+    browser — never the characters you type. Your typing is compared to the
+    statistics stored for your account; it never replaces your password.
+  </p>
+  <blockquote class="sample-phrase">
+    A long time ago, in a galaxy far, far away... It is a dark time for the
+    Rebellion. Although the Death Star has been destroyed, Imperial troops
+    have driven the Rebel forces from their hidden base.
+  </blockquote>
+  <form id="auth-form">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" required autofocus>
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required>
+
+    <label for="sample-text">Type the passage above</label>
+    <textarea id="sample-text" rows="6" placeholder="Type the passage above…"></textarea>
+
+    <button type="submit" class="button button--primary">Log in</button>
+  </form>
+  <p id="form-error" class="error" hidden></p>
+  <p id="result" class="result" hidden></p>
+</section>
+
+<section id="delete-section" class="panel" hidden>
+  <h2>Delete my typing profile</h2>
+  <p>
+    This removes the stored timing statistics for your account. It does not
+    delete your account or password.
+  </p>
+  <button id="delete-button" class="button button--danger" type="button">Delete profile</button>
+  <p id="delete-error" class="error" hidden></p>
+</section>
+
+{% endblock %}

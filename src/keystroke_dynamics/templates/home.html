@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Keystroke Dynamics{% endblock %}
+{% block content %}
+<section class="panel">
+  <h2>About this project</h2>
+  <p>
+    Keystroke Dynamics authenticates you partly by <em>how</em> you type, not
+    just <em>what</em> you type. It has two parts:
+  </p>
+  <ol>
+    <li><strong>Create a profile</strong> — register an account and type a
+      sample passage. The app learns the timing between your key presses.</li>
+    <li><strong>Authenticate</strong> — log in and type again. Your password
+      is still checked; your typing pattern is an additional signal.</li>
+  </ol>
+  <div class="cta-row">
+    <a class="button button--primary" href="/create-profile">Get started</a>
+    <a class="button" href="/authenticate">Check authenticity</a>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>What is keystroke dynamics?</h2>
+  <p>
+    <a href="https://en.wikipedia.org/wiki/Keystroke_dynamics">Keystroke
+    dynamics</a> is the detailed timing of when each key is pressed and
+    released as someone types. See <a href="/how-it-works">How It Works</a>
+    for the actual method this app uses and its measured accuracy.
+  </p>
+</section>
+{% endblock %}

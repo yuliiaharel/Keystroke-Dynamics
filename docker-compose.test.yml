@@ -1,0 +1,14 @@
+# Postgres for running tests locally (CI uses a GitHub Actions
+# service container instead -- see .github/workflows/ci.yml). This is
+# NOT the app's own dev stack; that's compose.yaml, added in Phase 6.
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: keystroke
+      POSTGRES_PASSWORD: keystroke
+      POSTGRES_DB: keystroke_dynamics_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data # throwaway: never needs to persist

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Create Profile – Keystroke Dynamics{% endblock %}
+{% block head %}
+<script type="module" src="/static/js/create-profile.js"></script>
+{% endblock %}
+{% block content %}
+
+<section id="step1" class="panel">
+  <h2>Step 1. Create an account</h2>
+  <form id="register-form">
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" pattern="[A-Za-z0-9_\-]{3,32}"
+           minlength="3" maxlength="32" required autofocus>
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" minlength="8" maxlength="256" required>
+
+    <button type="submit" class="button button--primary">Next step</button>
+  </form>
+  <p id="register-error" class="error" hidden></p>
+</section>
+
+<section id="step2" class="panel" hidden>
+  <h2>Step 2. Type the passage below</h2>
+  <p class="privacy-note">
+    <strong>Privacy:</strong> only which key you press and when — never the
+    characters you type — leaves your browser. The server stores a running
+    mean and variance per key pair, not your raw keystrokes. You can delete
+    these statistics at any time from the <a href="/authenticate">Authenticate</a>
+    page.
+  </p>
+  <blockquote class="sample-phrase">
+    A long time ago, in a galaxy far, far away... It is a period of civil
+    war. Rebel spaceships, striking from a hidden base, have won their first
+    victory against the evil Galactic Empire.
+  </blockquote>
+  <form id="sample-form">
+    <textarea id="sample-text" rows="6" placeholder="Type the passage above…" required></textarea>
+    <p id="sample-count" class="hint">0 key events recorded</p>
+    <button type="submit" class="button button--primary">Submit sample</button>
+  </form>
+  <p id="sample-error" class="error" hidden></p>
+</section>
+
+<section id="step-done" class="panel panel--success" hidden>
+  <h2>Profile created</h2>
+  <p>Your keystroke profile has been saved.</p>
+  <a class="button button--primary" href="/authenticate">Begin authentication</a>
+</section>
+
+{% endblock %}
