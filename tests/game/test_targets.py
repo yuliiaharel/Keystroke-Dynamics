@@ -34,6 +34,23 @@ def test_sample_targets_returns_the_three_labeled_bots() -> None:
     assert len({t.id for t in targets}) == 3  # distinct ids
 
 
+def test_sample_targets_have_a_distinct_stable_score_id() -> None:
+    # Never derived from the game-facing id (PARTY_LAUNCH_PLAN.md
+    # section 10), and stable across calls -- sample_targets() is
+    # cached, so these are the same objects every time, not a fresh
+    # random id per call.
+    first = sample_targets("sentence", PHRASE)
+    second = sample_targets("sentence", PHRASE)
+    assert len({t.score_id for t in first}) == 3
+    assert all(t.score_id != t.id for t in first)
+    assert [t.score_id for t in first] == [t.score_id for t in second]
+
+
+def test_sample_targets_have_their_training_line_count() -> None:
+    for target in sample_targets("sentence", PHRASE):
+        assert target.training_line_count == 6  # SAMPLE_TRAINING_RUNS
+
+
 def test_sample_targets_is_deterministic() -> None:
     first = sample_targets("word", "nukiae")
     second = sample_targets("word", "nukiae")
@@ -93,6 +110,16 @@ def test_save_and_load_permanent_target_round_trips(tmp_path, monkeypatch) -> No
     assert target.id == f"{PERMANENT_TARGET_ID_PREFIX}yuliia"
     assert GAME_MIN_THRESHOLD <= target.threshold <= GAME_MAX_THRESHOLD
     assert len(target.notes) == len("nukiae")
+    assert target.training_line_count == 5
+
+    # load_permanent_target() rebuilds a fresh Player from the file on
+    # every call, unlike sample_targets()'s caching -- score_id must
+    # still come back the same both times, or score_attempts rows
+    # would scatter this one target across different target_ids.
+    again = load_permanent_target("word")
+    assert again is not None
+    assert again.score_id == target.score_id
+    assert target.score_id != target.id
 
 
 def test_permanent_target_file_holds_no_raw_events(tmp_path) -> None:
@@ -108,7 +135,10 @@ def test_permanent_target_file_holds_no_raw_events(tmp_path) -> None:
     raw = json.loads(path.read_text())
     assert set(raw.keys()) == {"name", "lines"}
     line = raw["lines"]["word"]
-    assert set(line.keys()) == {"threshold", "profile", "notes"}
+    # training_line_count is just an int (score_attempts.training_lines,
+    # PARTY_LAUNCH_PLAN.md section 10) -- not a raw event either.
+    assert set(line.keys()) == {"threshold", "profile", "notes", "training_line_count"}
+    assert line["training_line_count"] == 5
     for stats in line["profile"].values():
         assert set(stats.keys()) == {"count", "mean", "m2"}
         assert stats["count"] == 5  # folded, not a list of 5 raw values
