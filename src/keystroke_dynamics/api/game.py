@@ -287,7 +287,9 @@ def create_attempt(
         None,
     )
     if duplicate is not None:
-        return AttemptResponse(attempt=AttemptView.from_core(duplicate), verdict_text=verdict.text)
+        return AttemptResponse(
+            attempt=AttemptView.from_core(duplicate), verdict_text=verdict.text, clue=verdict.clue
+        )
 
     attempt = Attempt(
         id=str(uuid.uuid4()),
@@ -299,13 +301,16 @@ def create_attempt(
         distance=verdict.distance,
         threshold=target.threshold,
         ratio=verdict.ratio,
+        pace=verdict.pace,
         word=verdict.word,
         counted=verdict.counted,
         passed=verdict.passed,
         client_attempt_id=body.client_attempt_id,
     )
     store.add_attempt(party.id, attempt)
-    return AttemptResponse(attempt=AttemptView.from_core(attempt), verdict_text=verdict.text)
+    return AttemptResponse(
+        attempt=AttemptView.from_core(attempt), verdict_text=verdict.text, clue=verdict.clue
+    )
 
 
 @router.post("/replay", dependencies=_STATE_CHANGING)
@@ -340,6 +345,7 @@ def create_replay(
         distance=verdict.distance,
         threshold=target.threshold,
         ratio=verdict.ratio,
+        pace=verdict.pace,
         word=verdict.word,
         counted=verdict.counted,
         passed=verdict.passed,
@@ -348,6 +354,7 @@ def create_replay(
     return ReplayResponse(
         attempt=AttemptView.from_core(attempt),
         verdict_text=verdict.text,
+        clue=verdict.clue,
         notes=[NoteView.from_core(n) for n in target.notes],
     )
 

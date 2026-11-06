@@ -15,8 +15,33 @@ from keystroke_dynamics.game.store import Mode, Player
 
 #: A disguise attempt's typing pace must stay within this fraction of
 #: the typist's own usual pace, or it's disqualified before scoring
-#: even happens -- matches the approved mockup's rule exactly.
+#: even happens -- matches the approved mockup's rule exactly. Also
+#: the "right speed" band _clue() uses below, so the two never
+#: disagree about what counts as fast or slow.
 DISGUISE_PACE_TOLERANCE = 0.15
+
+
+def _clue(*, distance: float, threshold: float, pace: float) -> str:
+    """One-line, honest diagnosis of why a result landed where it
+    did -- design/typing-twin-touch.html's own result screen shows
+    this alongside pace, per PARTY_LAUNCH_PLAN.md section 8. Derived
+    only from the real numbers, never from which mode this is or
+    which side a given outcome favors, so it can never claim a good
+    fit on a result the distance itself contradicts (the plan's "never
+    say everything fits on a failed attempt").
+
+    This game has no touch-position ("place") dimension -- a physical
+    keyboard has no tap coordinates (core/features.py extracts only
+    hold and flight timings) -- so unlike the touch mockup's three-way
+    clue, rhythm is the only thing besides pace worth naming here.
+    """
+    fast = pace < 1 - DISGUISE_PACE_TOLERANCE
+    slow = pace > 1 + DISGUISE_PACE_TOLERANCE
+    off = distance > threshold
+    if not fast and not slow:
+        return "Right speed, wrong rhythm" if off else "Right speed, and the rhythm fits"
+    speed = "Too fast" if fast else "Too slow"
+    return f"{speed}, and the rhythm is off too" if off else f"{speed}, but the rhythm fits"
 
 
 @dataclass(frozen=True)
@@ -29,6 +54,13 @@ class Verdict:
     passed: bool | None
     distance: float | None
     ratio: float | None
+    #: This attempt's duration over the target's own usual duration
+    #: for the line, where 1.0 is the same pace. None exactly when
+    #: distance is None (see _clue's docstring -- nothing scoreable to
+    #: show pace alongside).
+    pace: float | None
+    #: One-line diagnosis from _clue(), or None alongside distance.
+    clue: str | None
 
 
 def usual_duration_ms(player: Player) -> float:
@@ -56,6 +88,16 @@ def judge(
     distance = result.score
     ratio = distance / target.threshold if distance is not None else None
 
+    # Every mode's result shows pace and a clue alongside the score
+    # (PARTY_LAUNCH_PLAN.md section 8) -- computed once here, not
+    # reconstructed per mode. usual=0 (a player with no notes)
+    # defaults pace to 1.0 ("on pace") rather than leaving it
+    # undefined, matching the disguise gate's own long-standing
+    # fallback below; it's never shown (pace is None alongside
+    # distance=None, the only case left unhandled here).
+    usual = usual_duration_ms(target)
+    pace = run_duration_ms / usual if usual else 1.0
+
     if distance is None:
         return Verdict(
             "Too messy",
@@ -64,7 +106,10 @@ def judge(
             passed=None,
             distance=None,
             ratio=None,
+            pace=None,
+            clue=None,
         )
+    clue = _clue(distance=distance, threshold=target.threshold, pace=pace)
 
     if mode == "self":
         if distance <= target.threshold:
@@ -75,6 +120,8 @@ def judge(
                 passed=True,
                 distance=distance,
                 ratio=ratio,
+                pace=pace,
+                clue=clue,
             )
         return Verdict(
             "Who are you?",
@@ -83,15 +130,15 @@ def judge(
             passed=False,
             distance=distance,
             ratio=ratio,
+            pace=pace,
+            clue=clue,
         )
 
     if mode == "disguise":
-        usual = usual_duration_ms(target)
-        pace_ratio = run_duration_ms / usual if usual else 1.0
-        pace_ok = (1 - DISGUISE_PACE_TOLERANCE) <= pace_ratio <= (1 + DISGUISE_PACE_TOLERANCE)
+        pace_ok = (1 - DISGUISE_PACE_TOLERANCE) <= pace <= (1 + DISGUISE_PACE_TOLERANCE)
         if not pace_ok:
-            word = "Too fast" if pace_ratio < 1 else "Too slow"
-            pct = abs(round((pace_ratio - 1) * 100))
+            word = "Too fast" if pace < 1 else "Too slow"
+            pct = abs(round((pace - 1) * 100))
             return Verdict(
                 word,
                 f"Your pace was {pct}% off. Disguises must stay within 15% of your usual pace.",
@@ -99,6 +146,8 @@ def judge(
                 passed=None,
                 distance=distance,
                 ratio=ratio,
+                pace=pace,
+                clue=clue,
             )
         if distance > target.threshold:
             return Verdict(
@@ -108,6 +157,8 @@ def judge(
                 passed=False,
                 distance=distance,
                 ratio=ratio,
+                pace=pace,
+                clue=clue,
             )
         return Verdict(
             "Still you",
@@ -116,6 +167,8 @@ def judge(
             passed=True,
             distance=distance,
             ratio=ratio,
+            pace=pace,
+            clue=clue,
         )
 
     if mode == "replay":
@@ -129,6 +182,8 @@ def judge(
                 passed=True,
                 distance=distance,
                 ratio=ratio,
+                pace=pace,
+                clue=clue,
             )
         return Verdict(
             "Replay failed",
@@ -137,6 +192,8 @@ def judge(
             passed=False,
             distance=distance,
             ratio=ratio,
+            pace=pace,
+            clue=clue,
         )
 
     # mode == "attack"
@@ -148,6 +205,8 @@ def judge(
             passed=True,
             distance=distance,
             ratio=ratio,
+            pace=pace,
+            clue=clue,
         )
     return Verdict(
         "Caught!",
@@ -156,4 +215,6 @@ def judge(
         passed=False,
         distance=distance,
         ratio=ratio,
+        pace=pace,
+        clue=clue,
     )

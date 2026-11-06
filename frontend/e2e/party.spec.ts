@@ -63,6 +63,15 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   const attackResult = page.locator("#result");
   await expect(attackResult).toBeVisible({ timeout: 10000 });
   await expect(attackResult).toContainText(/Fooled it!|Caught!|Too messy/);
+  // Pace and a one-line clue show on every scoreable result
+  // (PARTY_LAUNCH_PLAN.md section 8) -- "Too messy" is the one
+  // outcome that hides both, so only assert this when the attack
+  // actually got scored.
+  const resultText = (await attackResult.textContent()) ?? "";
+  if (!resultText.includes("Too messy")) {
+    await expect(page.locator("#clue")).toBeVisible();
+    await expect(attackResult).toContainText("Pace");
+  }
 
   // Replay: the server runs it from Alice's own median timing, never
   // a raw recording, and it reliably passes against her own limit.
@@ -71,6 +80,7 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   await page.click("#replay");
   await expect(page.locator("#result")).toBeVisible({ timeout: 15000 });
   await expect(page.locator("#result")).toContainText("Replay wins");
+  await expect(page.locator("#clue")).toBeVisible();
 
   // Rename Bob.
   await page.click('button[data-tab="room"]');

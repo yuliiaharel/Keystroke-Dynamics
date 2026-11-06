@@ -231,6 +231,10 @@ def test_attack_against_a_real_player_with_matching_rhythm_fools_it(client: Test
     body = resp.json()
     assert body["attempt"]["word"] == "Fooled it!"
     assert body["attempt"]["passed"] is True
+    # Pace and clue (PARTY_LAUNCH_PLAN.md section 8): present on every
+    # scoreable attempt, not just disguise mode.
+    assert isinstance(body["attempt"]["pace"], float)
+    assert isinstance(body["clue"], str)
 
 
 def test_attack_against_a_sample_bot(client: TestClient) -> None:
