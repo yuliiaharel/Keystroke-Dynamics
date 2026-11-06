@@ -1,6 +1,10 @@
 # DigitalOcean App Platform spec -- see DEPLOY.md for the exact steps
-# to actually create the app from this file, and for the two values
-# below ("REPLACE_ME...") that can't be known until the app exists.
+# to actually create the app from this file. ALLOWED_ORIGIN/
+# PUBLIC_BASE_URL below are this app's own real, already-deployed URL
+# -- they held the placeholder https://REPLACE_ME.ondigitalocean.app
+# only during first deploy, before DigitalOcean had assigned one (see
+# DEPLOY.md's "First deploy"); update both if this app ever moves to
+# a different domain.
 #
 # Checked against DigitalOcean's current documentation (not training
 # data, which has the App Platform instance-size slugs wrong -- see
@@ -13,7 +17,12 @@
 # --schema-only` (doctl 2.3.0) -- passed, no errors. That flag checks
 # the spec's shape only, with no DigitalOcean account needed; the
 # deeper check (repo access, real resource creation) needs
-# `doctl auth init` with a real API token -- see DEPLOY.md.
+# `doctl auth init` with a real API token -- see DEPLOY.md. Don't use
+# `doctl apps create`/`apps update` to actually apply this spec,
+# though -- see DEPLOY.md's "First deploy" and "Updating a secret
+# without erasing it" for why the control panel is the documented
+# path for creating the app, connecting GitHub, and setting the two
+# SECRET-type values below.
 name: typing-twin-party
 services:
   - name: web
@@ -55,9 +64,52 @@ services:
         scope: RUN_TIME
       # No value here, ever -- see config.py's own startup check,
       # which refuses to start without a real one outside debug mode.
-      # DigitalOcean prompts for and encrypts this the first time the
-      # app spec is submitted (`doctl apps create`/the control panel);
-      # never put the real value in this file.
+      # Set this in the control panel (Settings -> the web component
+      # -> Environment Variables), never through a submitted spec --
+      # see DEPLOY.md's "First deploy" and its "Updating a secret
+      # without erasing it" warning.
       - key: SESSION_SECRET
+        type: SECRET
+        scope: RUN_TIME
+      # PARTY_LAUNCH_PLAN.md section 10: optional -- empty/absent
+      # means score collection is off and the game works normally
+      # with no opt-in shown at all. When set, this is the app
+      # database role's own connection string (INSERT/DELETE on
+      # score_attempts only, plus column-level SELECT on the four
+      # columns its own deletes filter by -- see DEPLOY.md's "Score
+      # database setup" for the exact grants and
+      # tests/scores/test_db_role.py for what confirms them). Same
+      # control-panel-only rule as SESSION_SECRET above.
+      - key: SCORES_DATABASE_URL
+        type: SECRET
+        scope: RUN_TIME
+jobs:
+  # Runs the score table's own migrations (never the account system's
+  # -- PARTY_LAUNCH_PLAN.md Part 2 item 1: "a pre-deploy step that
+  # runs only the score table migrations... with a separate database
+  # role for migrations") before every deploy, using the same image
+  # as the web service. Skips cleanly when SCORES_DATABASE_URL isn't
+  # set here at all -- score collection being off must never block a
+  # deploy. Verified locally (see Dockerfile's commit) both ways:
+  # applies the migration when set, prints a one-line skip message
+  # and exits 0 when not.
+  - name: scores-migration
+    kind: PRE_DEPLOY
+    github:
+      repo: yuliiaharel/Keystroke-Dynamics
+      branch: master
+    dockerfile_path: Dockerfile
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    run_command: >-
+      sh -c 'if [ -z "$SCORES_DATABASE_URL" ]; then
+      echo "SCORES_DATABASE_URL not set, skipping score migrations";
+      else alembic -c alembic_scores.ini upgrade head; fi'
+    envs:
+      # The MIGRATION role's connection string -- never the app
+      # role's (that one lacks the privileges to create or alter a
+      # table at all, by design) and never the same secret value as
+      # the web service's own SCORES_DATABASE_URL above. See
+      # DEPLOY.md for the exact role this needs.
+      - key: SCORES_DATABASE_URL
         type: SECRET
         scope: RUN_TIME
