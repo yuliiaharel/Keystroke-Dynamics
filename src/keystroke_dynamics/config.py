@@ -10,6 +10,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _EXAMPLE_SESSION_SECRET = "change-me"
 _LOCAL_ALLOWED_ORIGIN = "http://127.0.0.1:8000"
 
+#: DEPLOY.md's own bootstrap placeholder for the not-yet-known
+#: *.ondigitalocean.app hostname (see its "First deploy" section) --
+#: checked as a substring, not an exact match, since it appears
+#: embedded in a full URL (https://REPLACE_ME.ondigitalocean.app), not
+#: on its own.
+_UNSET_URL_PLACEHOLDER = "REPLACE_ME"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -92,8 +99,28 @@ class Settings(BaseSettings):
                 f"ALLOWED_ORIGIN is missing or still the local-development default "
                 f"({_LOCAL_ALLOWED_ORIGIN!r}) -- set it to this app's own public URL"
             )
+        elif _UNSET_URL_PLACEHOLDER in self.allowed_origin:
+            problems.append(
+                f"ALLOWED_ORIGIN still contains the deploy-time placeholder "
+                f"({_UNSET_URL_PLACEHOLDER!r}) -- see DEPLOY.md's first-deploy steps"
+            )
+        elif not self.allowed_origin.startswith("https://"):
+            problems.append(
+                f"ALLOWED_ORIGIN must be an https:// URL outside local development "
+                f"(got {self.allowed_origin!r})"
+            )
         if not self.public_base_url:
             problems.append("PUBLIC_BASE_URL is missing -- set it to this app's own public URL")
+        elif _UNSET_URL_PLACEHOLDER in self.public_base_url:
+            problems.append(
+                f"PUBLIC_BASE_URL still contains the deploy-time placeholder "
+                f"({_UNSET_URL_PLACEHOLDER!r}) -- see DEPLOY.md's first-deploy steps"
+            )
+        elif not self.public_base_url.startswith("https://"):
+            problems.append(
+                f"PUBLIC_BASE_URL must be an https:// URL outside local development "
+                f"(got {self.public_base_url!r})"
+            )
         if problems:
             raise ValueError(
                 "; ".join(problems) + ". Set real values, or set DEBUG=true for local "
