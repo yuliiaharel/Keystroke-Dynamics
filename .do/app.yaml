@@ -1,0 +1,63 @@
+# DigitalOcean App Platform spec -- see DEPLOY.md for the exact steps
+# to actually create the app from this file, and for the two values
+# below ("REPLACE_ME...") that can't be known until the app exists.
+#
+# Checked against DigitalOcean's current documentation (not training
+# data, which has the App Platform instance-size slugs wrong -- see
+# the instance_size_slug comment below): the app spec reference at
+# https://docs.digitalocean.com/products/app-platform/reference/app-spec/
+# and pricing at
+# https://docs.digitalocean.com/products/app-platform/details/pricing/
+#
+# Also validated with `doctl apps spec validate .do/app.yaml
+# --schema-only` (doctl 2.3.0) -- passed, no errors. That flag checks
+# the spec's shape only, with no DigitalOcean account needed; the
+# deeper check (repo access, real resource creation) needs
+# `doctl auth init` with a real API token -- see DEPLOY.md.
+name: typing-twin-party
+services:
+  - name: web
+    github:
+      repo: yuliiaharel/Keystroke-Dynamics
+      branch: master
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 8000
+    instance_count: 1
+    # The current (not legacy) slug for 1 shared vCPU / 512 MiB --
+    # DigitalOcean's own app-spec reference still documents the old
+    # "basic-xxs" as this field's default, but that slug is on the
+    # legacy pricing plan (apps created before 7 May 2024 only, being
+    # phased out). apps-s-1vcpu-0.5gb is the current equivalent: same
+    # 512 MiB and $5/month, more bandwidth, no autoscaling (matches
+    # the single always-on instance this app is designed for --
+    # game/store.py's state lives in one process's memory).
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    health_check:
+      http_path: /health
+    envs:
+      - key: DEBUG
+        value: "false"
+        scope: RUN_TIME
+      - key: ENABLE_ACCOUNTS
+        value: "false"
+        scope: RUN_TIME
+      # Both of these are this app's own live URL once deployed --
+      # can't be known before the app exists (DigitalOcean assigns the
+      # *.ondigitalocean.app domain on first deploy). DEPLOY.md's
+      # first-deploy steps cover setting the real values and
+      # redeploying.
+      - key: ALLOWED_ORIGIN
+        value: "https://REPLACE_ME.ondigitalocean.app"
+        scope: RUN_TIME
+      - key: PUBLIC_BASE_URL
+        value: "https://REPLACE_ME.ondigitalocean.app"
+        scope: RUN_TIME
+      # No value here, ever -- see config.py's own startup check,
+      # which refuses to start without a real one outside debug mode.
+      # DigitalOcean prompts for and encrypts this the first time the
+      # app spec is submitted (`doctl apps create`/the control panel);
+      # never put the real value in this file.
+      - key: SESSION_SECRET
+        type: SECRET
+        scope: RUN_TIME

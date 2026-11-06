@@ -1,5 +1,8 @@
 # Keystroke Dynamics
 
+**Live:** [typing-twin-party.ondigitalocean.app](https://typing-twin-party.ondigitalocean.app)
+*(placeholder -- not deployed yet; see [`DEPLOY.md`](DEPLOY.md))*
+
 A demo app built around one idea: *how* you type is a signal, not just
 *what* you type. The same scoring engine runs two things:
 
@@ -10,6 +13,8 @@ A demo app built around one idea: *how* you type is a signal, not just
 - **The account-based demo** -- register, build a typing profile, and log
   in with your password plus your typing as a second signal. Off by
   default; see [Running the account-based demo too](#running-the-account-based-demo-too).
+
+![The room in Typing Twin Party: real and simulated players' typing signatures, each with an Attack button](docs/screenshot-room.png)
 
 **This is a research/demo project, not a production biometric system.** Its
 measured accuracy (see [Method and results](#method-and-results) below) is
@@ -31,6 +36,10 @@ docker compose up --build
 
 Then open <http://127.0.0.1:8000> -- Typing Twin Party. No Postgres, no
 `.env` file, nothing else to install.
+
+To put this on a public URL instead of running it locally, see
+[`DEPLOY.md`](DEPLOY.md) (DigitalOcean App Platform, public mode,
+~$5/month).
 
 ### Running the account-based demo too
 
