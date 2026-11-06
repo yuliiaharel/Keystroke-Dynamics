@@ -20,6 +20,7 @@ import psycopg
 import pytest
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from psycopg import sql
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -86,3 +87,64 @@ def scores_db_session():
         yield db
     finally:
         db.close()
+
+
+#: Exactly what DEPLOY.md instructs granting to the real app role on
+#: Neon (PARTY_LAUNCH_PLAN.md section 10: "The app's database user may
+#: only insert and delete rows in this table") -- test_db_role.py
+#: proves this grant set is actually sufficient (the app still works)
+#: and actually restrictive (nothing else is possible), against a
+#: real Postgres role, not a mock.
+APP_ROLE_NAME = "scores_app_role_test"
+APP_ROLE_PASSWORD = "test-only-password-not-used-anywhere-real"  # noqa: S105
+
+
+def _create_or_reset_app_role() -> None:
+    # CREATE ROLE is DDL -- its PASSWORD clause doesn't accept a bound
+    # parameter the way a normal DML statement would (postgres parses
+    # the whole statement before execution, with no placeholder
+    # support in this position), so the password is composed as a
+    # literal via psycopg.sql instead of string-formatted directly.
+    admin_scores_url = SCORES_TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(admin_scores_url, autocommit=True) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname = %s", (APP_ROLE_NAME,)
+        ).fetchone()
+        if exists is None:
+            conn.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {}").format(
+                    sql.Identifier(APP_ROLE_NAME), sql.Literal(APP_ROLE_PASSWORD)
+                )
+            )
+        # Idempotent, and re-run every session: harmless if already
+        # granted, and necessary the first time after each fresh
+        # CREATE TABLE (a brand-new test database on another machine,
+        # say, has the role but not yet the grant on this table).
+        conn.execute(f"GRANT CONNECT ON DATABASE {SCORES_TEST_DATABASE_NAME} TO {APP_ROLE_NAME}")
+        conn.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE_NAME}")
+        conn.execute(f"GRANT INSERT, DELETE ON score_attempts TO {APP_ROLE_NAME}")
+        # A DELETE with a WHERE clause needs SELECT on the columns the
+        # WHERE references, even with no general read access (Postgres
+        # has to be able to evaluate the filter) -- scores/writer.py's
+        # deletes filter by party_id/typist_id/target_id, and
+        # scores/retention.py's by created_on. This column-level grant
+        # covers exactly those four and nothing else: the app role
+        # still can't read a single score, outcome, or any other
+        # column.
+        conn.execute(
+            f"GRANT SELECT (party_id, typist_id, target_id, created_on) "  # noqa: S608
+            f"ON score_attempts TO {APP_ROLE_NAME}"
+        )
+
+
+@pytest.fixture(scope="session")
+def scores_app_role_url(_migrated_scores_database: None) -> str:
+    """A real, restricted Postgres role -- login, INSERT and DELETE on
+    score_attempts, plus column-level SELECT on exactly the four
+    columns its own deletes filter by (see the grant comment above;
+    no other column, and no other table, is readable) -- not a mock
+    of one. Depends on _migrated_scores_database explicitly (not just
+    its autouse order) since the table must exist before GRANT can
+    name it."""
+    _create_or_reset_app_role()
+    return f"postgresql://{APP_ROLE_NAME}:{APP_ROLE_PASSWORD}@localhost:5433/{SCORES_TEST_DATABASE_NAME}"
