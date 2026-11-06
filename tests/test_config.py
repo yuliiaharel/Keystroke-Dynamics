@@ -86,3 +86,24 @@ def test_reports_every_missing_field_at_once() -> None:
     assert "SESSION_SECRET" in message
     assert "ALLOWED_ORIGIN" in message
     assert "PUBLIC_BASE_URL" in message
+
+
+# ---------- scores_database_url (PARTY_LAUNCH_PLAN.md section 10) ----------
+
+
+def test_scores_database_url_defaults_to_off() -> None:
+    assert Settings(**_REAL_VALUES).scores_database_url is None
+
+
+def test_empty_scores_database_url_normalizes_to_none() -> None:
+    # SCORES_DATABASE_URL="" in an env file must mean "off", exactly
+    # like leaving it unset -- never a value Settings treats as "set
+    # to the empty string".
+    settings = Settings(**{**_REAL_VALUES, "scores_database_url": ""})
+    assert settings.scores_database_url is None
+
+
+def test_a_real_scores_database_url_is_kept() -> None:
+    url = "postgresql+psycopg://user:pass@neon.example.com/scores"
+    settings = Settings(**{**_REAL_VALUES, "scores_database_url": url})
+    assert settings.scores_database_url == url
