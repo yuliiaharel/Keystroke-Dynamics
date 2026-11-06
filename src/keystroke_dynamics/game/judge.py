@@ -57,10 +57,17 @@ class Verdict:
     #: This attempt's duration over the target's own usual duration
     #: for the line, where 1.0 is the same pace. None exactly when
     #: distance is None (see _clue's docstring -- nothing scoreable to
-    #: show pace alongside).
+    #: show pace alongside). This is the UI's own display rule, not
+    #: shared with game/scores's pace column -- see pace_ratio() below.
     pace: float | None
     #: One-line diagnosis from _clue(), or None alongside distance.
     clue: str | None
+    #: How many features were actually compared -- game/scoring.py's
+    #: ScoreResult.compared_features, surfaced here for
+    #: PARTY_LAUNCH_PLAN.md section 10's score_attempts.compared_features.
+    #: Meaningful even when distance is None (it's exactly why: fewer
+    #: than game/scoring.py's own minimum).
+    compared_features: int
 
 
 def usual_duration_ms(player: Player) -> float:
@@ -73,6 +80,22 @@ def usual_duration_ms(player: Player) -> float:
         return 0.0
     last = player.notes[-1]
     return last.start_ms + last.dur_ms
+
+
+def pace_ratio(run_duration_ms: float, target: Player) -> float | None:
+    """This attempt's duration over target's own usual duration, or
+    None if the target has no notes to compare against (shouldn't
+    normally happen).
+
+    Used directly by game/scores's own pace column, which -- unlike
+    Verdict.pace above -- is recorded even for an attempt whose
+    distance couldn't be scored: pace is independently useful research
+    data (e.g. pace-bucketed false-accept/-reject rates,
+    PARTY_LAUNCH_PLAN.md section 10's own analysis requirements) that
+    has nothing to do with whether the rhythm itself was usable.
+    """
+    usual = usual_duration_ms(target)
+    return run_duration_ms / usual if usual else None
 
 
 def judge(
@@ -90,13 +113,13 @@ def judge(
 
     # Every mode's result shows pace and a clue alongside the score
     # (PARTY_LAUNCH_PLAN.md section 8) -- computed once here, not
-    # reconstructed per mode. usual=0 (a player with no notes)
-    # defaults pace to 1.0 ("on pace") rather than leaving it
-    # undefined, matching the disguise gate's own long-standing
-    # fallback below; it's never shown (pace is None alongside
+    # reconstructed per mode. A None raw pace (target has no notes)
+    # defaults to 1.0 ("on pace") rather than leaving it undefined,
+    # matching the disguise gate's own long-standing fallback below;
+    # it's never shown either way (Verdict.pace is None alongside
     # distance=None, the only case left unhandled here).
-    usual = usual_duration_ms(target)
-    pace = run_duration_ms / usual if usual else 1.0
+    raw_pace = pace_ratio(run_duration_ms, target)
+    pace = raw_pace if raw_pace is not None else 1.0
 
     if distance is None:
         return Verdict(
@@ -108,6 +131,7 @@ def judge(
             ratio=None,
             pace=None,
             clue=None,
+            compared_features=result.compared_features,
         )
     clue = _clue(distance=distance, threshold=target.threshold, pace=pace)
 
@@ -122,6 +146,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
+                compared_features=result.compared_features,
             )
         return Verdict(
             "Who are you?",
@@ -132,6 +157,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
+            compared_features=result.compared_features,
         )
 
     if mode == "disguise":
@@ -148,6 +174,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
+                compared_features=result.compared_features,
             )
         if distance > target.threshold:
             return Verdict(
@@ -159,6 +186,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
+                compared_features=result.compared_features,
             )
         return Verdict(
             "Still you",
@@ -169,6 +197,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
+            compared_features=result.compared_features,
         )
 
     if mode == "replay":
@@ -184,6 +213,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
+                compared_features=result.compared_features,
             )
         return Verdict(
             "Replay failed",
@@ -194,6 +224,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
+            compared_features=result.compared_features,
         )
 
     # mode == "attack"
@@ -207,6 +238,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
+            compared_features=result.compared_features,
         )
     return Verdict(
         "Caught!",
@@ -217,4 +249,5 @@ def judge(
         ratio=ratio,
         pace=pace,
         clue=clue,
+        compared_features=result.compared_features,
     )
