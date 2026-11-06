@@ -26,6 +26,14 @@ GAME_MIN_THRESHOLD = 1.3
 GAME_MAX_THRESHOLD = 3.5
 GAME_THRESHOLD_MULTIPLIER = 1.2
 
+#: PARTY_LAUNCH_PLAN.md section 10's score_attempts.scoring_version:
+#: "Set in code, and changed whenever scoring or game settings
+#: change." Bump this alongside any change to the constants above,
+#: core/scoring.py's own defaults (not currently used by the game,
+#: but would be if that ever changed), or game/levels.py's phrases --
+#: anything that would make an old row not comparable to a new one.
+SCORING_VERSION = "1"
+
 
 def line_feature_count(phrase: str) -> int:
     """How many distinct (hold + flight) features one correct typing
