@@ -28,7 +28,7 @@ from keystroke_dynamics.config import settings
 from keystroke_dynamics.core.events import InvalidSampleError, KeyEvent, pair_presses, validate
 from keystroke_dynamics.core.features import extract_features
 from keystroke_dynamics.game.enroll import build_profile_and_threshold, median_notes
-from keystroke_dynamics.game.judge import judge
+from keystroke_dynamics.game.judge import judge, pace_ratio
 from keystroke_dynamics.game.levels import LEVELS
 from keystroke_dynamics.game.names import InvalidNameError, generate_name, validate_custom_name
 from keystroke_dynamics.game.rate_limit import game_rate_limiter
@@ -58,10 +58,23 @@ from keystroke_dynamics.game.store import (
     Player,
 )
 from keystroke_dynamics.game.targets import (
+    SAMPLE_TARGET_ID_PREFIX,
     TARGETS_DIR,
     load_permanent_target,
     sample_targets,
     save_permanent_target,
+)
+from keystroke_dynamics.scores.consent import CONSENT_EXPLANATION, CONSENT_LABEL, CONSENT_VERSION
+from keystroke_dynamics.scores.recording import (
+    ScoreTargetKind,
+    build_score_row,
+    should_record_score,
+)
+from keystroke_dynamics.scores.writer import (
+    DeleteByPartyId,
+    DeleteByPlayerScoreId,
+    InsertRow,
+    score_writer,
 )
 
 router = APIRouter(prefix="/api/game")
@@ -128,6 +141,18 @@ def _resolve_target(party: Party, target_id: str) -> Player | None:
     return None
 
 
+def _score_target_kind(party: Party, target: Player) -> ScoreTargetKind:
+    """score_attempts.target_kind's own vocabulary (never
+    game/schemas.py's PlayerView.kind TargetKind, a different label
+    set for the frontend) -- derived from the same ids _resolve_target
+    already distinguishes by, not stored anywhere on Player itself."""
+    if target.id in party.players:
+        return "player"
+    if target.id.startswith(SAMPLE_TARGET_ID_PREFIX):
+        return "simulated"
+    return "permanent"
+
+
 def _party_view(party: Party) -> PartyView:
     phrase = LEVELS[party.level].phrase
     bots = sample_targets(party.level, phrase)
@@ -142,6 +167,9 @@ def _party_view(party: Party) -> PartyView:
         players=[PlayerView.from_player(p, kind="player") for p in party.players.values()],
         targets=targets,
         attempts=[AttemptView.from_core(a) for a in party.attempts],
+        scores_enabled=bool(settings.scores_database_url),
+        consent_label=CONSENT_LABEL,
+        consent_explanation=CONSENT_EXPLANATION,
     )
 
 
@@ -176,6 +204,12 @@ def reset_party(
 ) -> None:
     store.delete_party(party.id)
     request.session.pop("party_id", None)
+    if settings.scores_database_url:
+        # party.score_id, not party.id -- the random id score_attempts
+        # rows actually carry (PARTY_LAUNCH_PLAN.md section 10). Still
+        # readable here: deleting from the store's internal dict
+        # doesn't clear this local Party object's own attributes.
+        score_writer.enqueue(DeleteByPartyId(party.score_id))
 
 
 @router.post("/players", dependencies=_STATE_CHANGING)
@@ -200,6 +234,11 @@ def create_player(
 
     profile, threshold = build_profile_and_threshold(phrase, runs)
     notes = median_notes(phrase, runs)
+    # Consent is captured once, here, at enrollment -- never
+    # re-askable later, and ignored outright when score collection is
+    # off (PARTY_LAUNCH_PLAN.md section 10), same as the checkbox not
+    # being shown at all in that case.
+    shares_scores = bool(settings.scores_database_url) and body.share_scores
     player = Player(
         id=str(uuid.uuid4()),
         name=name,
@@ -207,6 +246,9 @@ def create_player(
         profile=profile,
         threshold=threshold,
         notes=notes,
+        training_line_count=len(runs),
+        shares_scores=shares_scores,
+        consent_version=CONSENT_VERSION if shares_scores else None,
     )
     try:
         store.add_player(party.id, player)
@@ -248,8 +290,13 @@ def delete_player(
     party: Party = Depends(_party_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> None:
+    # Read before deleting: once gone from the store, there's no
+    # other way to find this player's score_id.
+    player = party.players.get(player_id)
     if not store.delete_player(party.id, player_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "player not found")
+    if settings.scores_database_url and player is not None:
+        score_writer.enqueue(DeleteByPlayerScoreId(player.score_id))
 
 
 @router.post("/attempts", dependencies=_STATE_CHANGING)
@@ -308,6 +355,43 @@ def create_attempt(
         client_attempt_id=body.client_attempt_id,
     )
     store.add_attempt(party.id, attempt)
+
+    if settings.scores_database_url:
+        typist_player = party.players[body.typist_id] if body.typist_id else None
+        typist_consents = typist_player.shares_scores if typist_player else body.guest_shares_scores
+        target_kind = _score_target_kind(party, target)
+        target_consents = target.shares_scores if target_kind == "player" else True
+        if should_record_score(
+            typist_consents=typist_consents,
+            target_kind=target_kind,
+            target_consents=target_consents,
+        ):
+            consent_version = (
+                typist_player.consent_version
+                if typist_player and typist_player.consent_version
+                else CONSENT_VERSION
+            )
+            row = build_score_row(
+                verdict=verdict,
+                pace=pace_ratio(run_duration_ms, target),
+                mode=body.mode,
+                target_kind=target_kind,
+                line_id=party.level,
+                party_id=party.score_id,
+                # A Guest has no Player object to carry a stable
+                # score_id -- each Guest attempt gets its own fresh,
+                # disposable random id instead, never reused, so
+                # Guest attempts can't even be correlated with each
+                # other through this column (there's no "Delete me"
+                # for a Guest either, consistent with that).
+                typist_id=typist_player.score_id if typist_player else str(uuid.uuid4()),
+                target_id=target.score_id,
+                training_lines=target.training_line_count,
+                limit_value=target.threshold,
+                consent_version=consent_version,
+            )
+            score_writer.enqueue(InsertRow(row))
+
     return AttemptResponse(
         attempt=AttemptView.from_core(attempt), verdict_text=verdict.text, clue=verdict.clue
     )
@@ -351,6 +435,37 @@ def create_replay(
         passed=verdict.passed,
     )
     store.add_attempt(party.id, attempt)
+
+    if settings.scores_database_url:
+        # The replay bot isn't a real person -- there's no typist
+        # consent to require (should_record_score's own doc on why).
+        target_kind = _score_target_kind(party, target)
+        target_consents = target.shares_scores if target_kind == "player" else True
+        if should_record_score(
+            typist_consents=True, target_kind=target_kind, target_consents=target_consents
+        ):
+            consent_version = (
+                target.consent_version
+                if target_kind == "player" and target.consent_version
+                else CONSENT_VERSION
+            )
+            row = build_score_row(
+                verdict=verdict,
+                pace=pace_ratio(run_duration_ms, target),
+                mode="replay",
+                target_kind=target_kind,
+                line_id=party.level,
+                party_id=party.score_id,
+                # No real typist -- a fresh, disposable random id,
+                # same reasoning as a Guest attacker's typist_id above.
+                typist_id=str(uuid.uuid4()),
+                target_id=target.score_id,
+                training_lines=target.training_line_count,
+                limit_value=target.threshold,
+                consent_version=consent_version,
+            )
+            score_writer.enqueue(InsertRow(row))
+
     return ReplayResponse(
         attempt=AttemptView.from_core(attempt),
         verdict_text=verdict.text,

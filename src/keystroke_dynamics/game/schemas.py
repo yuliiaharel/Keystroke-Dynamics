@@ -111,6 +111,15 @@ class PartyView(BaseModel):
     #: merged in here for the frontend's convenience.
     targets: list[PlayerView]
     attempts: list[AttemptView]
+    #: PARTY_LAUNCH_PLAN.md section 10: "If it's empty, collection is
+    #: off, and the game works normally without showing the opt-in."
+    #: The frontend shows the consent checkbox only when this is
+    #: True -- never derives it from anything else.
+    scores_enabled: bool
+    #: scores/consent.py's current wording -- exposed here so the
+    #: frontend never carries its own, possibly-stale copy.
+    consent_label: str
+    consent_explanation: str
 
 
 class CreatePlayerRequest(BaseModel):
@@ -118,6 +127,12 @@ class CreatePlayerRequest(BaseModel):
     name: str | None = None
     #: 3-8 training lines, per PARTY_LAUNCH_PLAN.md Part 1 section 5.
     training_lines: list[list[KeyEventSchema]] = Field(min_length=3, max_length=8)
+    #: PARTY_LAUNCH_PLAN.md section 10's opt-in checkbox, unchecked by
+    #: default on the client and never a condition of playing --
+    #: ignored outright when score collection is off (settings.
+    #: scores_database_url unset), same as the checkbox not being
+    #: shown at all in that case.
+    share_scores: bool = False
 
 
 class RenamePlayerRequest(BaseModel):
@@ -134,6 +149,14 @@ class AttemptRequest(BaseModel):
     #: (typist_id, client_attempt_id) returns the original result
     #: instead of being scored and recorded twice.
     client_attempt_id: str = Field(min_length=1, max_length=64)
+    #: The same opt-in as CreatePlayerRequest.share_scores, but for a
+    #: Guest attacker, who has no enrolled Player to have opted in at
+    #: creation time -- PARTY_LAUNCH_PLAN.md section 10: "for a Guest
+    #: before their first attack, show an unchecked option." Ignored
+    #: entirely when typist_id is set (a real player's own stored
+    #: choice is authoritative then, not anything re-askable per
+    #: attempt) or when score collection is off.
+    guest_shares_scores: bool = False
 
 
 class AttemptResponse(BaseModel):
