@@ -65,6 +65,20 @@ def _clean_score_attempts():
         conn.execute(text("TRUNCATE score_attempts"))
 
 
+@pytest.fixture(autouse=True)
+def _use_test_db_for_scores_db_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    """scores/db.py's scores_session() (what the real writer uses by
+    default) builds its engine from settings.scores_database_url --
+    None in every test process here, since setting that env var would
+    also change what tests/test_config.py's own tests see. Point its
+    module-level cache at this package's test engine/session factory
+    directly instead, for every test under tests/scores/."""
+    import keystroke_dynamics.scores.db as scores_db
+
+    monkeypatch.setattr(scores_db, "_engine", _scores_engine)
+    monkeypatch.setattr(scores_db, "_SessionLocal", _ScoresSessionLocal)
+
+
 @pytest.fixture
 def scores_db_session():
     db = _ScoresSessionLocal()
