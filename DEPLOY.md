@@ -77,24 +77,72 @@ doctl apps list --format ID,DefaultIngress
 ```
 
 Copy the `DefaultIngress` value (`https://typing-twin-party-xxxxx.ondigitalocean.app`).
-Edit `.do/app.yaml`, replacing both `REPLACE_ME.ondigitalocean.app`
-placeholders with that real hostname, then:
+
+**Don't submit `.do/app.yaml` directly with `apps update` here** --
+that file deliberately has no value for `SESSION_SECRET` (see step 1),
+and `apps update` takes the submitted spec as the complete, authoritative
+state: a `SECRET`-type env with no value **clears** the one DigitalOcean
+already encrypted and stored, rather than leaving it alone. (Learned
+this the hard way: the app crash-looped again, this time on a missing
+`SESSION_SECRET` it had already been given.) Every update after the
+first has to start from the *live* spec instead:
 
 ```bash
-doctl apps update <app-id> --spec .do/app.yaml
+doctl apps spec get <app-id> --show > /tmp/live-spec.yaml
 ```
 
-The app redeploys and should come up healthy this time. Confirm:
+Edit `/tmp/live-spec.yaml` (not the repo's file), replacing both
+`REPLACE_ME.ondigitalocean.app` placeholders with the real hostname.
+Leave the `SESSION_SECRET` entry's `value: EV[1:...]` exactly as it
+is. Then:
+
+```bash
+doctl apps update <app-id> --spec /tmp/live-spec.yaml
+```
+
+The app redeploys and should come up healthy this time (give it a
+minute or two -- check with `doctl apps list-deployments <app-id>`).
+Confirm:
 
 ```bash
 curl https://<your-app>.ondigitalocean.app/health
 ```
 
-**Do not commit** the edited `.do/app.yaml` with your real domain baked
-into `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` unless you're fine with that
-being public -- it's not a secret, just specific to your deployment.
-(If you later attach a custom domain -- see below -- update these two
-values again to match it, and redeploy.)
+Once it's healthy, update the **committed** `.do/app.yaml` to match
+(the two real URL values -- never the `SESSION_SECRET` line, which
+must stay valueless in the repo) and open a normal PR, so the repo and
+the live app agree. This is safe to commit: the hostname isn't a
+secret, just specific to your deployment.
+
+**Every future change via `apps update`** -- a new domain, a different
+instance size, anything -- follows this same pattern: fetch the live
+spec with `--show`, edit that, submit that. Never submit the repo's
+`.do/app.yaml` straight to `apps update` once the app exists with a
+secret already set.
+
+**What actually happened deploying this app, for when it happens
+again:** copying the `EV[1:...]` value back in (as above) did *not*
+reliably work -- several `apps update` submissions that included it
+unmodified still produced a running container with an empty
+`SESSION_SECRET`, each time auto-rolled-back by DigitalOcean after
+failing health checks. The control panel's own "Undeployed changes:
+your live deployment and app spec are out of sync" warning is a
+symptom of this -- the *proposed* spec (what you're editing) and the
+*active* one (what's actually running, after being auto-rolled-back)
+had drifted apart. What worked:
+
+1. **For a plain redeploy with no config change**: `doctl apps
+   create-deployment <app-id>` -- re-deploys the already-stored spec
+   as-is, no spec file involved at all, so there's nothing to corrupt.
+2. **For an actual `SESSION_SECRET` problem**: edit it directly in the
+   control panel (Settings → the `web` component → Environment
+   Variables) rather than through any CLI spec file, then
+   `create-deployment` if saving doesn't trigger one itself. Typing a
+   fresh value in directly sidesteps whatever the CLI round-trip
+   issue was. A fresh secret is fine to use -- it only invalidates
+   existing sessions, and in party mode a session is just which party
+   a browser belongs to, nothing worth preserving across a
+   redeploy.
 
 ## Keeping CI in the loop
 
@@ -160,8 +208,16 @@ This domain is bought and intended for this app, but **not wired up
 yet** -- the steps below haven't been run. The live app is currently
 still on its `*.ondigitalocean.app` domain. To switch:
 
-1. Add it to `.do/app.yaml`'s `services[0]` sibling level (not present
-   by default):
+1. Fetch the *live* spec -- **not** the repo's `.do/app.yaml` directly
+   (see the warning in "First deploy" step 2: submitting it straight
+   to `apps update` clears the already-encrypted `SESSION_SECRET`):
+
+   ```bash
+   doctl apps spec get <app-id> --show > /tmp/live-spec.yaml
+   ```
+
+2. Edit `/tmp/live-spec.yaml`: add a `domains:` key at the spec's top
+   level (a sibling of `name:`/`services:`, not present by default):
 
    ```yaml
    domains:
@@ -173,18 +229,19 @@ still on its `*.ondigitalocean.app` domain. To switch:
 
    (Drop the `www` alias if you don't want it -- it's optional.)
 
-2. **Update `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL`** in the same file to
+3. **Update `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL`** in the same file to
    `https://typingtwin.com` (not the `www` version -- pick the one you
    set as `PRIMARY` above). Skipping this means the Origin check
    (`api/security.py`) rejects every request from the new domain, and
    link previews keep pointing at the old `.ondigitalocean.app` one.
+   Leave `SESSION_SECRET`'s `value: EV[1:...]` untouched.
 
-3. `doctl apps update <app-id> --spec .do/app.yaml` (same command as
-   every other spec change -- see the first-deploy section above for
-   why `DEBUG` has to already be `false` and the app already healthy
-   before this matters).
+4. `doctl apps update <app-id> --spec /tmp/live-spec.yaml`, then once
+   it's healthy, update the **committed** `.do/app.yaml` to match (the
+   `domains:` block and the two URL values, never `SESSION_SECRET`)
+   and open a normal PR.
 
-4. At your domain registrar/DNS provider for `typingtwin.com`, add:
+5. At your domain registrar/DNS provider for `typingtwin.com`, add:
 
    | Type | Host | Value |
    |---|---|---|
@@ -201,16 +258,18 @@ still on its `*.ondigitalocean.app` domain. To switch:
    one of those instead). DNS propagation can take anywhere from
    minutes to a day depending on the registrar and your previous TTL.
 
-5. Confirm: `curl https://typingtwin.com/health`, then a full page
+6. Confirm: `curl https://typingtwin.com/health`, then a full page
    load -- DigitalOcean also auto-provisions a Let's Encrypt
    certificate for the domain once DNS resolves to it, which can take
    a few extra minutes after step 4 before HTTPS works.
 
 ### Reverting to the `*.ondigitalocean.app` domain
 
-Remove the `domains:` block (or set its `type` back to `DEFAULT`) and
-set `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` back to the `ondigitalocean.app`
-URL, then redeploy (step 3 above).
+Same live-spec pattern as above (steps 1-4): fetch the live spec,
+remove the `domains:` block (or set its `type` back to `DEFAULT`), set
+`ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` back to the `ondigitalocean.app`
+URL, leave `SESSION_SECRET` untouched, then `apps update` with that
+edited file -- never the repo's `.do/app.yaml` directly.
 
 ## Verifying a deploy without spending anything
 
