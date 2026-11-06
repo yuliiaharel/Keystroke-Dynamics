@@ -154,26 +154,63 @@ curl -X POST \
 
 ## Changing the domain
 
-1. Edit `.do/app.yaml`'s `domains:` (not present by default -- add it):
+### typingtwin.com
+
+This domain is bought and intended for this app, but **not wired up
+yet** -- the steps below haven't been run. The live app is currently
+still on its `*.ondigitalocean.app` domain. To switch:
+
+1. Add it to `.do/app.yaml`'s `services[0]` sibling level (not present
+   by default):
 
    ```yaml
    domains:
-     - domain: your-domain.com
+     - domain: typingtwin.com
        type: PRIMARY
+     - domain: www.typingtwin.com
+       type: ALIAS
    ```
 
-2. `doctl apps update <app-id> --spec .do/app.yaml`
-3. Point your domain's DNS at the two public ingress IPs App Platform
-   gives you (control panel → app → **Settings** → **Domains**), or a
-   CNAME if you're using a subdomain.
-4. **Update `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL`** in the same spec to
-   the new domain and redeploy (step 2 again) -- otherwise the Origin
-   check (`api/security.py`) will reject every request from the new
-   domain, and link previews will point at the old one.
+   (Drop the `www` alias if you don't want it -- it's optional.)
 
-To revert to the `*.ondigitalocean.app` domain, remove the `domains:`
-block (or set its `type` back to `DEFAULT`) and update
-`ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` back, then redeploy.
+2. **Update `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL`** in the same file to
+   `https://typingtwin.com` (not the `www` version -- pick the one you
+   set as `PRIMARY` above). Skipping this means the Origin check
+   (`api/security.py`) rejects every request from the new domain, and
+   link previews keep pointing at the old `.ondigitalocean.app` one.
+
+3. `doctl apps update <app-id> --spec .do/app.yaml` (same command as
+   every other spec change -- see the first-deploy section above for
+   why `DEBUG` has to already be `false` and the app already healthy
+   before this matters).
+
+4. At your domain registrar/DNS provider for `typingtwin.com`, add:
+
+   | Type | Host | Value |
+   |---|---|---|
+   | A | `@` | `162.159.140.98` |
+   | A | `@` | `172.66.0.96` |
+   | AAAA | `@` | `2606:4700:7::60` |
+   | AAAA | `@` | `2a06:98c1:58::60` |
+   | CNAME | `www` | `typingtwin.com.` (or the same A/AAAA records) |
+
+   These four IPs are DigitalOcean App Platform's shared static ingress
+   addresses (confirmed current as of this writing --
+   <https://docs.digitalocean.com/products/app-platform/how-to/add-ip-address/>
+   covers both this and dedicated per-app IPs, if you'd rather use
+   one of those instead). DNS propagation can take anywhere from
+   minutes to a day depending on the registrar and your previous TTL.
+
+5. Confirm: `curl https://typingtwin.com/health`, then a full page
+   load -- DigitalOcean also auto-provisions a Let's Encrypt
+   certificate for the domain once DNS resolves to it, which can take
+   a few extra minutes after step 4 before HTTPS works.
+
+### Reverting to the `*.ondigitalocean.app` domain
+
+Remove the `domains:` block (or set its `type` back to `DEFAULT`) and
+set `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` back to the `ondigitalocean.app`
+URL, then redeploy (step 3 above).
 
 ## Verifying a deploy without spending anything
 
