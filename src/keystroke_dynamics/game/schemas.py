@@ -69,6 +69,12 @@ class AttemptView(BaseModel):
     distance: float | None
     threshold: float
     ratio: float | None
+    #: This attempt's duration over the target's own usual duration,
+    #: where 1.0 is the same pace -- shown as its own measure
+    #: alongside distance (PARTY_LAUNCH_PLAN.md section 8), kept in
+    #: history the same way distance/ratio are. None exactly when
+    #: distance is None.
+    pace: float | None
     #: Short result label ("Caught!", "That's you", ...) -- the
     #: longer explanation is verdict_text in the response, not
     #: persisted history (matches the approved mockup: attempt
@@ -88,6 +94,7 @@ class AttemptView(BaseModel):
             distance=attempt.distance,
             threshold=attempt.threshold,
             ratio=attempt.ratio,
+            pace=attempt.pace,
             word=attempt.word,
             counted=attempt.counted,
             passed=attempt.passed,
@@ -135,6 +142,10 @@ class AttemptResponse(BaseModel):
     #: stored in attempt history, matching the mockup's own
     #: last-result-vs-history split.
     verdict_text: str
+    #: One-line diagnosis from game/judge.py's _clue() -- same
+    #: this-response-only treatment as verdict_text, and None exactly
+    #: when attempt.distance is None.
+    clue: str | None
 
 
 class ReplayRequest(BaseModel):
@@ -144,6 +155,7 @@ class ReplayRequest(BaseModel):
 class ReplayResponse(BaseModel):
     attempt: AttemptView
     verdict_text: str
+    clue: str | None
     #: What the browser needs to animate the replay -- the target's
     #: own median notes, already exposed for drawing their signature
     #: ring. Nothing else about the target goes with a replay.

@@ -69,6 +69,11 @@ class Attempt:
     word: str
     counted: bool
     passed: bool | None
+    #: This attempt's duration over the target's own usual duration
+    #: for the line (game/judge.py's pace) -- None exactly when
+    #: distance is None. Defaulted so existing callers/tests that
+    #: don't care about pace don't need updating.
+    pace: float | None = None
     created_at: float = field(default_factory=time.monotonic)
     #: The client-supplied idempotency key for POST /api/game/attempts
     #: (see api/game.py) -- None for attempts that don't need one

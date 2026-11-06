@@ -66,7 +66,11 @@ interface LastResult {
   attempt: AttemptView;
   text: string;
   target: PlayerView;
-  paceRatio: number;
+  //: From the response's own `clue` (game/judge.py's _clue()) --
+  //: not attempt.pace's sibling, since clue (like verdict_text) is
+  //: this-response-only, never persisted history. Null exactly when
+  //: attempt.distance is null ("Too messy").
+  clue: string | null;
 }
 
 interface State {
@@ -446,7 +450,7 @@ async function submitRunAsAttempt(run: Run): Promise<void> {
       attempt: resp.attempt,
       text: resp.verdict_text,
       target,
-      paceRatio: duration(run) / (usualDurationMs(target) || 1),
+      clue: resp.clue,
     };
     await refreshParty();
   } catch (error) {
@@ -609,7 +613,7 @@ async function runReplay(): Promise<void> {
               attempt: resp.attempt,
               text: resp.verdict_text,
               target,
-              paceRatio: 1,
+              clue: resp.clue,
             };
             if (resp.attempt.counted) {
               buzz(resp.attempt.mode === "replay" && resp.attempt.passed === true);
@@ -844,11 +848,20 @@ function roomView(): string {
 function resultHTML(): string {
   const L = S.last;
   if (!L) return "";
-  const { attempt, text, target } = L;
+  const { attempt, text, target, clue } = L;
   const good = attempt.mode === "attack" ? attempt.passed === false : attempt.passed === true;
-  const compare =
-    attempt.distance !== null
-      ? `<div class="split">
+  // Pace and a one-line clue, shown on every scoreable result
+  // (PARTY_LAUNCH_PLAN.md section 8, following
+  // design/typing-twin-touch.html) -- hidden together with the
+  // distance gauge below on a "Too messy" result, where
+  // attempt.distance/pace and clue are all null: there's no honest
+  // clue to give about a line that broke up before it could be
+  // scored at all.
+  const details =
+    attempt.distance !== null && attempt.pace !== null
+      ? `<h3 id="clue">${esc(clue ?? "")}</h3>
+    <div class="trait"><span class="eyebrow">Pace</span><b>${attempt.pace.toFixed(2)}&times;</b><span class="small muted">${esc(target.name)}'s usual time, where 1&times; is the same speed</span></div>
+    <div class="split">
       <div class="ring">${ringSVG(target.notes, target.color, notesFromRun(L.run), target.name)}</div>
       <div class="stack">
         <div class="legend"><span><i class="swatch" style="background:var(--p${target.color})"></i>${esc(target.name)}</span><span><i class="swatch" style="background:var(--ink)"></i>This attempt (dashed)</span></div>
@@ -859,7 +872,7 @@ function resultHTML(): string {
   return `<section class="result stack" id="result" aria-live="polite">
     <p class="verdict ${good ? "v-good" : "v-bad"}">${esc(attempt.word)}</p>
     <p>${esc(text)}</p>
-    ${compare}
+    ${details}
   </section>`;
 }
 
@@ -925,12 +938,12 @@ function scoresView(): string {
     .slice(0, 12)
     .map(
       (a: AttemptView) =>
-        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
+        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
     )
     .join("");
   return `<section class="stack"><h2>Scores</h2><p class="muted">From this party only. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
     ${board}
-    <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+    <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Pace</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function howView(): string {

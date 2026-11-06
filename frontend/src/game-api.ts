@@ -35,6 +35,9 @@ export interface AttemptView {
   distance: number | null;
   threshold: number;
   ratio: number | null;
+  /** This attempt's duration over the target's own usual duration,
+   * where 1.0 is the same pace. Null exactly when distance is null. */
+  pace: number | null;
   word: string;
   counted: boolean;
   passed: boolean | null;
@@ -52,11 +55,16 @@ export interface PartyView {
 export interface AttemptResponse {
   attempt: AttemptView;
   verdict_text: string;
+  /** One-line diagnosis (game/judge.py's _clue()) -- same
+   * this-response-only treatment as verdict_text. Null exactly when
+   * attempt.distance is null. */
+  clue: string | null;
 }
 
 export interface ReplayResponse {
   attempt: AttemptView;
   verdict_text: string;
+  clue: string | null;
   notes: NoteView[];
 }
 
