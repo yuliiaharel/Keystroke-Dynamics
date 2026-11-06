@@ -50,6 +50,11 @@ export interface PartyView {
   players: PlayerView[];
   targets: PlayerView[];
   attempts: AttemptView[];
+  /** PARTY_LAUNCH_PLAN.md section 10: show the opt-in only when this
+   * is true -- never inferred any other way. */
+  scores_enabled: boolean;
+  consent_label: string;
+  consent_explanation: string;
 }
 
 export interface AttemptResponse {
@@ -108,8 +113,13 @@ export function resetParty(): Promise<void> {
 export function createPlayer(
   name: string | null,
   trainingLines: CapturedEvent[][],
+  shareScores: boolean,
 ): Promise<PlayerView> {
-  return request("POST", "/api/game/players", { name, training_lines: trainingLines });
+  return request("POST", "/api/game/players", {
+    name,
+    training_lines: trainingLines,
+    share_scores: shareScores,
+  });
 }
 
 export function renamePlayer(id: string, name: string): Promise<PlayerView> {
@@ -126,6 +136,9 @@ export function submitAttempt(params: {
   mode: "attack" | "self" | "disguise";
   events: CapturedEvent[];
   clientAttemptId: string;
+  /** Ignored by the server unless typistId is null (a Guest) -- see
+   * AttemptRequest.guest_shares_scores. */
+  guestSharesScores: boolean;
 }): Promise<AttemptResponse> {
   return request("POST", "/api/game/attempts", {
     typist_id: params.typistId,
@@ -133,6 +146,7 @@ export function submitAttempt(params: {
     mode: params.mode,
     events: params.events,
     client_attempt_id: params.clientAttemptId,
+    guest_shares_scores: params.guestSharesScores,
   });
 }
 
