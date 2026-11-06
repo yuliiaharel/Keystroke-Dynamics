@@ -1,0 +1,81 @@
+"""The score_attempts table: PARTY_LAUNCH_PLAN.md section 10's one
+append-only table, on its own database (settings.scores_database_url),
+written only by the background writer (scores/writer.py). This
+module's Base is deliberately separate from db/models.py's -- a
+completely different database, with its own migrations
+(migrations_scores/) and its own restricted database role that may
+only INSERT and DELETE rows here, nothing else.
+
+The column set is exhaustive and intentionally not open to
+extension -- see tests/scores/test_models.py's test that fails if a
+column outside PARTY_LAUNCH_PLAN.md's own list is added. In
+particular, there is no name, IP address, user agent, key timing, key
+identity, or profile-statistics column, and party_id/typist_id/
+target_id are random ids created only for this table (game/store.py's
+Player.score_id/Party.score_id, or scores/target_ids.py for the
+sample bots and the permanent target) -- never derived from, or
+stored with, a session, cookie, name, or game id.
+"""
+
+from __future__ import annotations
+
+import datetime
+
+from sqlalchemy import CheckConstraint, Date, Float, Integer, String, Uuid
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ScoreAttempt(Base):
+    __tablename__ = "score_attempts"
+    __table_args__ = (
+        CheckConstraint("device_type IN ('keyboard', 'touch')", name="ck_device_type"),
+        CheckConstraint("line_id IN ('word', 'sentence', 'long')", name="ck_line_id"),
+        CheckConstraint("mode IN ('attack', 'self', 'disguise', 'replay')", name="ck_mode"),
+        CheckConstraint(
+            "target_kind IN ('player', 'simulated', 'permanent')", name="ck_target_kind"
+        ),
+        CheckConstraint("outcome IN ('pass', 'fail', 'unusable')", name="ck_outcome"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    #: Date only, no time -- see PARTY_LAUNCH_PLAN.md section 10's
+    #: table definition. Never a timestamp: a time-of-day would be one
+    #: more thing that, combined with other signals, narrows down who
+    #: this row could be. Indexed: the daily retention task
+    #: (scores/retention.py) deletes by this column.
+    created_on: Mapped[datetime.date] = mapped_column(Date, index=True)
+    #: Set in code (SCORING_VERSION below) and changed whenever
+    #: scoring or game settings change.
+    scoring_version: Mapped[str] = mapped_column(String)
+    #: The consent wording version the typist agreed to -- captured
+    #: once, at the moment they opted in (game/store.py's
+    #: Player.consent_version), not whatever's current when this row
+    #: happens to get written.
+    consent_version: Mapped[str] = mapped_column(String)
+    device_type: Mapped[str] = mapped_column(String)
+    line_id: Mapped[str] = mapped_column(String)
+    mode: Mapped[str] = mapped_column(String)
+    target_kind: Mapped[str] = mapped_column(String)
+    party_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    typist_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    target_id: Mapped[str] = mapped_column(Uuid(as_uuid=False))
+    training_lines: Mapped[int] = mapped_column(Integer)
+    compared_features: Mapped[int] = mapped_column(Integer)
+    #: Nullable exactly when the attempt was unusable (INSUFFICIENT_DATA
+    #: -- too messy to score at all). rhythm and total currently hold
+    #: the same value (this game has no touch-position dimension to
+    #: combine rhythm with -- see game/judge.py's _clue() docstring);
+    #: place stays null until the touch version exists.
+    rhythm: Mapped[float | None] = mapped_column(Float)
+    place: Mapped[float | None] = mapped_column(Float)
+    total: Mapped[float | None] = mapped_column(Float)
+    limit_value: Mapped[float] = mapped_column(Float)
+    #: Nullable only in the (shouldn't-normally-happen) case where the
+    #: target has no notes to compare against -- see
+    #: game/judge.py:pace_ratio().
+    pace: Mapped[float | None] = mapped_column(Float)
+    outcome: Mapped[str] = mapped_column(String)
