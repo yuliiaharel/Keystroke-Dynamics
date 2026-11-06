@@ -51,9 +51,17 @@ class ScoreResult:
     compared_features: int
 
 
-def _effective_std(stats: RunningStats, min_std_ms: float) -> float:
-    """Never zero, so dividing by it is always safe."""
-    return max(stats.std or 0.0, min_std_ms)
+def _effective_std(stats: RunningStats, min_std_ms: float, min_std_ratio: float = 0.0) -> float:
+    """Never zero, so dividing by it is always safe.
+
+    min_std_ratio is 0.0 for every existing caller (the default), so
+    this is identical to max(std, min_std_ms) for all of them --
+    min_std_ratio * mean is then always 0 and never the max. It exists
+    for game/scoring.py, whose much smaller training samples need a
+    floor that scales with a feature's own mean, not just a flat
+    millisecond value (see PARTY_LAUNCH_PLAN.md Part 1 section 5).
+    """
+    return max(stats.std or 0.0, min_std_ms, min_std_ratio * stats.mean)
 
 
 def scaled_manhattan_score(
@@ -62,6 +70,7 @@ def scaled_manhattan_score(
     *,
     min_feature_count: int = DEFAULT_MIN_FEATURE_COUNT,
     min_std_ms: float = DEFAULT_MIN_STD_MS,
+    min_std_ratio: float = 0.0,
     min_compared_features: int = DEFAULT_MIN_COMPARED_FEATURES,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> ScoreResult:
@@ -69,6 +78,10 @@ def scaled_manhattan_score(
     profile, computes abs(sample_value - profile_mean) / profile_std.
     The score is the average of those distances; lower means more
     similar. MATCH when score <= threshold.
+
+    min_std_ratio: an additional floor on the standard deviation, as a
+    fraction of the feature's own mean (0.0 by default -- see
+    _effective_std).
     """
     distances: list[float] = []
 
@@ -76,7 +89,7 @@ def scaled_manhattan_score(
         stats = profile.get(feature.key)
         if stats is None or stats.count < min_feature_count:
             continue  # never treat a missing/undertrained feature as zero
-        std = _effective_std(stats, min_std_ms)
+        std = _effective_std(stats, min_std_ms, min_std_ratio)
         distances.append(abs(feature.value_ms - stats.mean) / std)
 
     if not distances or len(distances) < min_compared_features:

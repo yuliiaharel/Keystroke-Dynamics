@@ -6,7 +6,8 @@
     "build": "vite build",
     "test": "vitest run",
     "e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "og-image": "node scripts/generate-og-image.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
