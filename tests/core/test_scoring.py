@@ -80,6 +80,45 @@ def test_effective_std_uses_actual_std_when_above_the_floor() -> None:
     assert high.score < low.score
 
 
+def test_min_std_ratio_defaults_to_zero_and_never_changes_existing_behavior() -> None:
+    # Every existing caller gets min_std_ratio's default (0.0); confirm
+    # it's a true no-op by comparing against a call that doesn't pass
+    # the parameter at all.
+    profile = make_profile({HOLD_A: [49.0, 50.0, 51.0]})
+    with_default = scaled_manhattan_score(
+        [Feature(HOLD_A, 60.0)], profile, min_feature_count=1, min_compared_features=1
+    )
+    explicit_zero = scaled_manhattan_score(
+        [Feature(HOLD_A, 60.0)],
+        profile,
+        min_feature_count=1,
+        min_compared_features=1,
+        min_std_ratio=0.0,
+    )
+    assert with_default.score == explicit_zero.score
+
+
+def test_min_std_ratio_floors_std_as_a_fraction_of_the_mean() -> None:
+    # Mean 1000, std 1.0 -- min_std_ms (1.0) and plain std (1.0) both
+    # floor at 1.0, but 12% of the mean (120.0) is far larger and must
+    # win, pulling the score down a lot relative to not using it.
+    profile = make_profile({HOLD_A: [999.0, 1000.0, 1001.0]})
+    without_ratio = scaled_manhattan_score(
+        [Feature(HOLD_A, 1100.0)], profile, min_feature_count=1, min_compared_features=1
+    )
+    with_ratio = scaled_manhattan_score(
+        [Feature(HOLD_A, 1100.0)],
+        profile,
+        min_feature_count=1,
+        min_compared_features=1,
+        min_std_ratio=0.12,
+    )
+    assert without_ratio.score is not None
+    assert with_ratio.score is not None
+    assert with_ratio.score == pytest.approx(100.0 / 120.0)
+    assert with_ratio.score < without_ratio.score
+
+
 def test_scaled_manhattan_zero_compared_features_returns_insufficient_data() -> None:
     result = scaled_manhattan_score([Feature(HOLD_A, 50.0)], {}, min_compared_features=0)
     assert result.decision == Decision.INSUFFICIENT_DATA

@@ -1,0 +1,116 @@
+<!doctype html>
+<!--
+  Not served to any visitor -- a build-time-only page, screenshotted
+  by generate-og-image.mjs into static/img/party-preview.png (the
+  Open Graph / Twitter preview image, PARTY_LAUNCH_PLAN.md Part 1
+  section 9). Rings are drawn from the same deterministic synthetic
+  data party.ts's intro view uses for its decorative rings -- never
+  a real person's signature, and the caption says so explicitly.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: #edebfa;
+    font-family: -apple-system, system-ui, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 28px;
+  }
+  h1 {
+    font-size: 56px; color: #c2185b; margin: 0;
+  }
+  .rings { display: flex; gap: 48px; }
+  .ring { width: 220px; height: 220px; }
+  .ring svg { width: 100%; height: 100%; display: block; }
+  .ring-line { fill: none; stroke-width: 3; stroke-linejoin: round; }
+  .ring-fill { opacity: .16; }
+  .ring-guide { fill: none; stroke: #cfcbea; stroke-width: 1; }
+  .ring-tick { stroke-width: 2.5; stroke-linecap: round; }
+  caption { font-size: 22px; color: #5d5a86; }
+</style>
+</head>
+<body>
+  <h1>Typing Twin Party</h1>
+  <div class="rings" id="rings"></div>
+  <caption>Example signatures from simulated typists -- not a real person's rhythm.</caption>
+  <script>
+    function hash(s) {
+      let h = 2166136261;
+      for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+      return h;
+    }
+    function median(a) {
+      const s = [...a].sort((x, y) => x - y);
+      return s.length ? s[Math.floor(s.length / 2)] : 0;
+    }
+    function decorativeNotes(text, seed, speed, count) {
+      let state = (hash(seed) % 2147483646) + 1;
+      const rnd = () => (state = (state * 16807) % 2147483647) / 2147483647;
+      const unit = (key) => (hash(seed + "|" + key) % 1000) / 1000;
+      const runs = [];
+      for (let r = 0; r < count; r++) {
+        let t = 0;
+        const keys = [];
+        [...text].forEach((ch, i) => {
+          if (i > 0) t += speed * (70 + 170 * unit(text[i - 1] + ch)) * (0.9 + rnd() * 0.2);
+          const hold = (55 + 60 * unit(ch)) * (0.9 + rnd() * 0.2);
+          keys.push({ ch, down: t, up: t + hold });
+        });
+        runs.push(keys);
+      }
+      const len = runs[0].length;
+      let t = 0;
+      const notes = [];
+      for (let i = 0; i < len; i++) {
+        if (i > 0) t += median(runs.map((r) => r[i].down - r[i - 1].down));
+        notes.push({ ch: runs[0][i].ch, start_ms: t, dur_ms: median(runs.map((r) => r[i].up - r[i].down)) });
+      }
+      return notes;
+    }
+    function ringPoints(notes) {
+      const gaps = notes.map((n, i) => (i === 0 ? null : n.start_ms - notes[i - 1].start_ms));
+      const med = median(gaps.filter((g) => g !== null)) || 1;
+      const holdMed = median(notes.map((n) => n.dur_ms)) || 1;
+      const N = notes.length;
+      const cx = 120, cy = 120, base = 44, scale = 40;
+      return notes.map((n, i) => {
+        const g = gaps[i] === null ? 1 : Math.min(2.6, gaps[i] / med);
+        const a = -Math.PI / 2 + (i / N) * Math.PI * 2;
+        const r = base + g * scale;
+        const h = Math.min(2.2, n.dur_ms / holdMed);
+        return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r, a, h };
+      });
+    }
+    function smoothPath(pts) {
+      const n = pts.length;
+      let d = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+      for (let i = 0; i < n; i++) {
+        const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+        const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+        const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+        d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+      }
+      return d + "Z";
+    }
+    function ringSVG(notes, color) {
+      const pts = ringPoints(notes);
+      let g = `<circle class="ring-guide" cx="120" cy="120" r="84"/>`;
+      pts.forEach((p) => {
+        const r1 = 22, r2 = r1 + p.h * 10;
+        g += `<line class="ring-tick" stroke="${color}" x1="${(120 + Math.cos(p.a) * r1).toFixed(1)}" y1="${(120 + Math.sin(p.a) * r1).toFixed(1)}" x2="${(120 + Math.cos(p.a) * r2).toFixed(1)}" y2="${(120 + Math.sin(p.a) * r2).toFixed(1)}"/>`;
+      });
+      const d = smoothPath(pts);
+      g += `<path class="ring-fill" fill="${color}" d="${d}"/><path class="ring-line" stroke="${color}" d="${d}"/>`;
+      return `<svg viewBox="0 0 240 240">${g}</svg>`;
+    }
+    const PHRASE = "quiet rhythm hides in every small habit of your hands";
+    const SAMPLES = [["Quick Fingers", 0.72, "#c2185b"], ["Steady Hands", 1.05, "#007c89"], ["Two-Finger Typist", 1.4, "#6a3fc9"]];
+    document.getElementById("rings").innerHTML = SAMPLES.map(
+      ([name, speed, color]) => `<div class="ring">${ringSVG(decorativeNotes(PHRASE, name, speed, 6), color)}</div>`
+    ).join("");
+  </script>
+</body>
+</html>
