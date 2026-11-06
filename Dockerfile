@@ -22,8 +22,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
-COPY alembic.ini ./
+# alembic_scores.ini/migrations_scores/ (PARTY_LAUNCH_PLAN.md section
+# 10) are a separate migration run from alembic.ini/migrations/ (the
+# account system's) -- .do/app.yaml's pre-deploy job runs them with
+# this same image, overriding CMD below with its own run_command.
+COPY alembic.ini alembic_scores.ini ./
 COPY migrations/ migrations/
+COPY migrations_scores/ migrations_scores/
 COPY src/ src/
 COPY --from=frontend-builder /repo/src/keystroke_dynamics/static/js src/keystroke_dynamics/static/js
 RUN uv sync --locked --no-dev
