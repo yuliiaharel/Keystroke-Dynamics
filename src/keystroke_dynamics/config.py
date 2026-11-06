@@ -76,6 +76,34 @@ class Settings(BaseSettings):
     game_rate_limit_max_attempts: int = 20
     game_rate_limit_window_seconds: float = 60.0
 
+    #: PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
+    #: for opted-in score collection -- empty/None means collection is
+    #: off and the game works normally with no opt-in shown at all.
+    #: Deliberately independent of database_url/enable_accounts: the
+    #: account system and score collection are two unrelated optional
+    #: databases, either, both, or neither of which may be configured.
+    scores_database_url: str | None = None
+    #: Bounded in-memory queue between a request and the background
+    #: batch writer (scores/writer.py) -- see that module for why a
+    #: full queue drops rows rather than blocking.
+    scores_queue_max_size: int = 1000
+    #: How often the background writer drains the queue, and how long
+    #: it waits for a mostly-empty queue to fill a bit before writing
+    #: a small batch anyway.
+    scores_writer_batch_interval_seconds: float = 2.0
+    #: Delete score rows older than this many days (default ~12
+    #: months) -- scores/retention.py's daily background task.
+    scores_retention_days: int = 365
+
+    @model_validator(mode="after")
+    def _normalize_empty_scores_database_url(self) -> "Settings":
+        # An empty string (e.g. SCORES_DATABASE_URL="" in an env file)
+        # must mean "off", exactly like None -- every other check in
+        # this module treats "falsy" and "unset" as the same thing.
+        if self.scores_database_url == "":
+            self.scores_database_url = None
+        return self
+
     @model_validator(mode="after")
     def _require_real_deployment_settings_outside_local_development(self) -> "Settings":
         # debug doubles as "this is local development" elsewhere already
