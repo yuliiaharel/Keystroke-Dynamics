@@ -9,7 +9,7 @@ import pytest
 from keystroke_dynamics.core.events import KeyEvent, pair_presses
 from keystroke_dynamics.core.features import extract_features
 from keystroke_dynamics.game.enroll import build_profile_and_threshold, char_to_code, median_notes
-from keystroke_dynamics.game.judge import _clue, judge, usual_duration_ms
+from keystroke_dynamics.game.judge import _clue, judge, pace_ratio, usual_duration_ms
 from keystroke_dynamics.game.store import Player
 
 PHRASE = "nukiae"
@@ -188,6 +188,24 @@ def test_too_messy_has_no_pace_or_clue() -> None:
     )
     assert verdict.pace is None
     assert verdict.clue is None
+    # compared_features is still meaningful on a "too messy" result --
+    # it's exactly why: fewer than game/scoring.py's own minimum. Zero
+    # here since the sample itself is empty.
+    assert verdict.compared_features == 0
+
+
+def test_pace_ratio_is_none_with_no_notes() -> None:
+    empty = Player(id="p2", name="Empty", color=0, profile={}, threshold=1.5, notes=[])
+    assert pace_ratio(500.0, empty) is None
+
+
+def test_pace_ratio_is_always_available_even_on_a_too_messy_result() -> None:
+    # Unlike Verdict.pace (the UI's own display rule, None alongside
+    # distance=None), game/scores's own pace column uses pace_ratio()
+    # directly -- it's independently meaningful research data even
+    # when the rhythm itself couldn't be scored at all.
+    target = make_target()
+    assert pace_ratio(usual_duration_ms(target), target) == pytest.approx(1.0)
 
 
 def test_matching_rhythm_at_the_right_pace_gives_a_fitting_clue() -> None:
