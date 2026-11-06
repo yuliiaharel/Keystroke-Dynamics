@@ -4,8 +4,11 @@ in local development)."""
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-#: The placeholder shipped in .env.example -- never a real secret.
+#: The placeholders shipped in .env.example -- never real deployment
+#: values. Same local-development-only status as _EXAMPLE_SESSION_SECRET
+#: below: fine while debug=true, rejected outside it.
 _EXAMPLE_SESSION_SECRET = "change-me"
+_LOCAL_ALLOWED_ORIGIN = "http://127.0.0.1:8000"
 
 
 class Settings(BaseSettings):
@@ -67,17 +70,34 @@ class Settings(BaseSettings):
     game_rate_limit_window_seconds: float = 60.0
 
     @model_validator(mode="after")
-    def _require_a_real_secret_outside_local_development(self) -> "Settings":
+    def _require_real_deployment_settings_outside_local_development(self) -> "Settings":
         # debug doubles as "this is local development" elsewhere already
         # (see main.py's https_only=not settings.debug); reused here so
-        # a deployment that forgets to set a real secret fails loudly at
-        # startup instead of silently signing sessions with a value
-        # anyone can read in this repo's own .env.example.
-        if not self.debug and self.session_secret in ("", _EXAMPLE_SESSION_SECRET):
+        # a deployment that forgets one of these fails loudly at startup
+        # instead of silently running with a value anyone can read in
+        # this repo's own .env.example, or with no absolute URL to build
+        # link-preview metadata from at all (api/pages.py already
+        # tolerates public_base_url=None, but only as a local-dev
+        # fallback -- a real deployment should never actually hit it).
+        if self.debug:
+            return self
+        problems = []
+        if self.session_secret in ("", _EXAMPLE_SESSION_SECRET):
+            problems.append(
+                f"SESSION_SECRET is missing or still the .env.example placeholder "
+                f"({_EXAMPLE_SESSION_SECRET!r})"
+            )
+        if self.allowed_origin in ("", _LOCAL_ALLOWED_ORIGIN):
+            problems.append(
+                f"ALLOWED_ORIGIN is missing or still the local-development default "
+                f"({_LOCAL_ALLOWED_ORIGIN!r}) -- set it to this app's own public URL"
+            )
+        if not self.public_base_url:
+            problems.append("PUBLIC_BASE_URL is missing -- set it to this app's own public URL")
+        if problems:
             raise ValueError(
-                "SESSION_SECRET is missing or still the .env.example placeholder "
-                f"({_EXAMPLE_SESSION_SECRET!r}). Set a real secret, or set DEBUG=true "
-                "for local development only."
+                "; ".join(problems) + ". Set real values, or set DEBUG=true for local "
+                "development only."
             )
         return self
 

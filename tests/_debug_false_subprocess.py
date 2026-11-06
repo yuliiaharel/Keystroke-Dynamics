@@ -16,6 +16,7 @@ os.environ["ENABLE_ACCOUNTS"] = "false"
 os.environ["DEBUG"] = "false"
 os.environ["SESSION_SECRET"] = "a-real-looking-secret-not-the-example-placeholder"
 os.environ["ALLOWED_ORIGIN"] = "http://testserver"
+os.environ["PUBLIC_BASE_URL"] = "http://testserver"
 os.environ.pop("DATABASE_URL", None)
 
 from fastapi.testclient import TestClient  # noqa: E402
