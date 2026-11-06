@@ -42,16 +42,16 @@ services:
       - key: ENABLE_ACCOUNTS
         value: "false"
         scope: RUN_TIME
-      # Both of these are this app's own live URL once deployed --
-      # can't be known before the app exists (DigitalOcean assigns the
-      # *.ondigitalocean.app domain on first deploy). DEPLOY.md's
-      # first-deploy steps cover setting the real values and
-      # redeploying.
+      # This app's own live URL -- the *.ondigitalocean.app domain
+      # DigitalOcean assigned on first deploy (see DEPLOY.md's
+      # two-step first-deploy bootstrap for why this couldn't be
+      # filled in before the app existed). Update both if this app
+      # ever moves to a custom domain -- see DEPLOY.md.
       - key: ALLOWED_ORIGIN
-        value: "https://REPLACE_ME.ondigitalocean.app"
+        value: "https://typing-twin-party-t9ilf.ondigitalocean.app"
         scope: RUN_TIME
       - key: PUBLIC_BASE_URL
-        value: "https://REPLACE_ME.ondigitalocean.app"
+        value: "https://typing-twin-party-t9ilf.ondigitalocean.app"
         scope: RUN_TIME
       # No value here, ever -- see config.py's own startup check,
       # which refuses to start without a real one outside debug mode.
