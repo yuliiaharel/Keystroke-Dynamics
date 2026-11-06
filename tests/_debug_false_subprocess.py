@@ -15,15 +15,18 @@ import os
 os.environ["ENABLE_ACCOUNTS"] = "false"
 os.environ["DEBUG"] = "false"
 os.environ["SESSION_SECRET"] = "a-real-looking-secret-not-the-example-placeholder"
-os.environ["ALLOWED_ORIGIN"] = "http://testserver"
-os.environ["PUBLIC_BASE_URL"] = "http://testserver"
+# https://, not http:// -- config.py's startup check now requires an
+# https:// origin/public URL outside debug mode, same as a real
+# deployment.
+os.environ["ALLOWED_ORIGIN"] = "https://testserver"
+os.environ["PUBLIC_BASE_URL"] = "https://testserver"
 os.environ.pop("DATABASE_URL", None)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from keystroke_dynamics.main import app  # noqa: E402
 
-client = TestClient(app, headers={"origin": "http://testserver"})
+client = TestClient(app, headers={"origin": "https://testserver"})
 
 assert client.get("/health").status_code == 200
 
