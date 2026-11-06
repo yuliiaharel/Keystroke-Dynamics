@@ -44,6 +44,21 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   await page.goto("/party");
   await page.click('[data-level="sentence"]');
 
+  // The opt-in checkbox's presence must track the server's own
+  // scores_enabled, not any hardcoded assumption -- this suite runs
+  // against both the default (off) stack and, run locally with
+  // SCORES_DATABASE_URL set, an on one (PARTY_LAUNCH_PLAN.md section
+  // 10: "the game works normally without showing the opt-in" when
+  // off).
+  const party = await page.evaluate(() => fetch("/api/game/party").then((r) => r.json()));
+  const checkbox = page.locator("#enroll-share-scores");
+  if (party.scores_enabled) {
+    await expect(checkbox).toBeVisible();
+    await expect(checkbox).not.toBeChecked(); // never pre-checked
+  } else {
+    await expect(checkbox).toHaveCount(0);
+  }
+
   await enrollPlayer(page, "Alice");
   await page.click("#to-room");
   await page.click("#add-player");
@@ -58,7 +73,19 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   // Bob attacks Alice -- scored by the real backend against Alice's
   // actual stored profile.
   await page.locator("article.card", { hasText: "Alice" }).locator("[data-attack]").click();
+  // "Who's typing?" defaults to whoever was just enrolled (Bob), not
+  // Guest -- select Guest explicitly to exercise "for a Guest before
+  // their first attack", then confirm the checkbox is gone again once
+  // a real enrolled player is typing instead.
+  const guestCheckbox = page.locator("#guest-share-scores");
+  await page.selectOption("#who", { label: "Guest" });
+  if (party.scores_enabled) {
+    await expect(guestCheckbox).toBeVisible();
+  } else {
+    await expect(guestCheckbox).toHaveCount(0);
+  }
   await page.selectOption("#who", { label: "Bob" });
+  await expect(guestCheckbox).toHaveCount(0);
   await typeLine(page);
   const attackResult = page.locator("#result");
   await expect(attackResult).toBeVisible({ timeout: 10000 });
