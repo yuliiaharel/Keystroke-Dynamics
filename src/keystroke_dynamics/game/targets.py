@@ -27,6 +27,7 @@ from keystroke_dynamics.game.enroll import (
     phrase_from_run,
 )
 from keystroke_dynamics.game.store import Note, Player
+from keystroke_dynamics.scores.target_ids import score_id_for_target
 
 #: Where permanent target files live -- committed to the repo, never
 #: raw events (see save_permanent_target). Empty until a recording is
@@ -74,7 +75,15 @@ def _build_target_player(
 ) -> Player:
     profile, threshold = build_profile_and_threshold(phrase, runs)
     notes = median_notes(phrase, runs)
-    return Player(id=id_, name=name, color=color, profile=profile, threshold=threshold, notes=notes)
+    return Player(
+        id=id_,
+        name=name,
+        color=color,
+        profile=profile,
+        threshold=threshold,
+        notes=notes,
+        training_line_count=len(runs),
+    )
 
 
 @cache
@@ -130,6 +139,11 @@ def save_permanent_target(path: Path, *, name: str, lines: dict[str, list[list[K
             "notes": [
                 {"ch": n.ch, "start_ms": n.start_ms, "dur_ms": n.dur_ms} for n in player.notes
             ],
+            # score_attempts.training_lines (PARTY_LAUNCH_PLAN.md
+            # section 10) when this target is opted-in-attacked -- the
+            # raw lines themselves are never kept, same as a real
+            # player, but the count is cheap to persist.
+            "training_line_count": player.training_line_count,
         }
     data = {"name": name, "lines": lines_out}
     path.write_text(json.dumps(data, indent=2))
@@ -164,4 +178,12 @@ def load_permanent_target(level: str) -> Player | None:
         profile=profile,
         threshold=line["threshold"],
         notes=notes,
+        training_line_count=line.get("training_line_count", 0),
+        # This function rebuilds a fresh Player from the file on every
+        # call (unlike sample_targets(), which is cached) -- without
+        # this, every call would hand out a *different* random
+        # score_id, useless for a target_id that score_attempts rows
+        # need to stay consistent across the process's life. See
+        # scores/target_ids.py.
+        score_id=score_id_for_target(target_id),
     )
