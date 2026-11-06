@@ -14,14 +14,19 @@ What's still open:
    feature still needs `min_feature_count` (5) samples before scoring uses
    it, so the practical impact is limited, but there's no explicit floor.
 
-2. **Rate limiting is keyed by `request.client.host`.** Already documented
-   as in-memory/per-process in `api/rate_limit.py`; additionally, behind a
-   reverse proxy or shared NAT, every client behind it shares one IP and
+2. **Rate limiting is keyed by `api/security.py`'s `client_ip()`.** Already
+   documented as in-memory/per-process in `api/rate_limit.py`. On
+   DigitalOcean App Platform (this app's actual deployment target) that
+   function reads DigitalOcean's own `Do-Connecting-Ip` header, which the
+   client can't set -- see its docstring for why `X-Forwarded-For` is
+   deliberately never used, even from a "trusted" proxy. Behind any other
+   reverse proxy or shared NAT, though, `client_ip()` falls back to
+   `request.client.host`: every client behind it shares one IP and
    therefore one rate-limit bucket -- either one bad actor blocks everyone
    behind the same address, or (if the proxy's own IP is all the app ever
    sees) the limit effectively doesn't apply per-client at all. Fine for a
-   direct-to-app local deployment; would need `X-Forwarded-For` handling
-   (from a trusted proxy only) for anything fronted by one.
+   direct-to-app local deployment or DigitalOcean App Platform; a different
+   host would need its own trusted-header support added to `client_ip()`.
 
 3. **`KeyEventSchema.code` has no explicit length bound.** In practice it's
    bounded by `max_body_bytes` (the whole request), but a per-field
