@@ -114,4 +114,6 @@ def test_no_username_availability_endpoint_exists(client: TestClient) -> None:
         "/api/game/attempts",
         "/api/game/replay",
         "/api/game/debug/record-target",
+        # Debug-only, like the route above (MOBILE_PLAN.md Phase 0).
+        "/debug/touch-capture",
     }

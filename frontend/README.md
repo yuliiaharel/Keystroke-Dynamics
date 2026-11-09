@@ -76,6 +76,10 @@ than `http://127.0.0.1:8000`.
   account system's two page-specific entry points.
 - `src/pages/party.ts` -- the party game's own entry point (ported from
   `design/typing-twin-party.html`; see `PARTY_LAUNCH_PLAN.md`).
+- `src/touch-capture.ts`, `src/pages/touch-capture.ts` -- the debug-only
+  touch capture test page (`/debug/touch-capture`, `DEBUG=true` only; see
+  `docs/touch-capture-testing.md`). `e2e/touch-capture.spec.ts` drives it
+  with emulated touches and needs the app running with `DEBUG=true`.
 - `scripts/og-image.html`, `scripts/generate-og-image.mjs` -- generates
   `static/img/party-preview.png` (`npm run og-image`).
 - `e2e/` -- Playwright specs.

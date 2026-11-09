@@ -62,6 +62,19 @@ def party_page(request: Request) -> HTMLResponse:
     return response
 
 
+if settings.debug:
+    # Local-only (MOBILE_PLAN.md Phase 0): a page for checking what a
+    # real phone's browser delivers for taps on the on-page keyboard.
+    # Never registered -- not just rejected -- outside debug mode, same
+    # as api/game.py's debug route. It has no backend: the page makes
+    # no requests, so no tap data reaches the server.
+    @router.get("/debug/touch-capture", response_class=HTMLResponse)
+    def touch_capture_page(request: Request) -> HTMLResponse:
+        response = templates.TemplateResponse(request, "touch_capture.html", {})
+        response.headers["Content-Security-Policy"] = _PARTY_CSP
+        return response
+
+
 if PARTY_PATH == "/":
     # The game used to live at /party before public mode moved it to
     # "/" (its only page); redirect old links/bookmarks rather than

@@ -13,6 +13,7 @@ export default defineConfig({
         "create-profile": "src/pages/create-profile.ts",
         authenticate: "src/pages/authenticate.ts",
         party: "src/pages/party.ts",
+        "touch-capture": "src/pages/touch-capture.ts",
       },
       formats: ["es"],
       fileName: (_format, entryName) => `${entryName}.js`,
