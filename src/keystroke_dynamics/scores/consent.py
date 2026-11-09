@@ -22,5 +22,6 @@ CONSENT_LABEL = "Share my scores to help test this"
 CONSENT_EXPLANATION = (
     "Stores a few numbers about this result -- pace, how close it came to "
     "the limit, and whether it passed -- never your name, your keystrokes, "
-    "or anything else that identifies you."
+    "or your IP address. Your attempts in this party are grouped under a "
+    "random ID that isn't linked to your name."
 )
