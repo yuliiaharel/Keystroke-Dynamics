@@ -51,6 +51,32 @@ def test_refuses_to_start_without_a_public_base_url_outside_debug(url: str | Non
         Settings(**{**_REAL_VALUES, "public_base_url": url})
 
 
+def test_refuses_an_allowed_origin_still_containing_the_deploy_placeholder() -> None:
+    # DEPLOY.md's own bootstrap step deliberately sets this during the
+    # app's first deploy, before the real *.ondigitalocean.app
+    # hostname is known -- startup must refuse to run with it left in
+    # place rather than silently serving under a URL nobody owns.
+    with pytest.raises(ValueError, match="ALLOWED_ORIGIN"):
+        Settings(**{**_REAL_VALUES, "allowed_origin": "https://REPLACE_ME.ondigitalocean.app"})
+
+
+def test_refuses_a_public_base_url_still_containing_the_deploy_placeholder() -> None:
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL"):
+        Settings(**{**_REAL_VALUES, "public_base_url": "https://REPLACE_ME.ondigitalocean.app"})
+
+
+@pytest.mark.parametrize("origin", ["http://typingtwin.example.com", "typingtwin.example.com"])
+def test_refuses_a_non_https_allowed_origin_outside_debug(origin: str) -> None:
+    with pytest.raises(ValueError, match="ALLOWED_ORIGIN"):
+        Settings(**{**_REAL_VALUES, "allowed_origin": origin})
+
+
+@pytest.mark.parametrize("url", ["http://typingtwin.example.com", "typingtwin.example.com"])
+def test_refuses_a_non_https_public_base_url_outside_debug(url: str) -> None:
+    with pytest.raises(ValueError, match="PUBLIC_BASE_URL"):
+        Settings(**{**_REAL_VALUES, "public_base_url": url})
+
+
 def test_reports_every_missing_field_at_once() -> None:
     # A deployment that forgot everything should see everything it's
     # missing in one error, not one at a time across repeated restarts.
@@ -60,3 +86,24 @@ def test_reports_every_missing_field_at_once() -> None:
     assert "SESSION_SECRET" in message
     assert "ALLOWED_ORIGIN" in message
     assert "PUBLIC_BASE_URL" in message
+
+
+# ---------- scores_database_url (PARTY_LAUNCH_PLAN.md section 10) ----------
+
+
+def test_scores_database_url_defaults_to_off() -> None:
+    assert Settings(**_REAL_VALUES).scores_database_url is None
+
+
+def test_empty_scores_database_url_normalizes_to_none() -> None:
+    # SCORES_DATABASE_URL="" in an env file must mean "off", exactly
+    # like leaving it unset -- never a value Settings treats as "set
+    # to the empty string".
+    settings = Settings(**{**_REAL_VALUES, "scores_database_url": ""})
+    assert settings.scores_database_url is None
+
+
+def test_a_real_scores_database_url_is_kept() -> None:
+    url = "postgresql+psycopg://user:pass@neon.example.com/scores"
+    settings = Settings(**{**_REAL_VALUES, "scores_database_url": url})
+    assert settings.scores_database_url == url

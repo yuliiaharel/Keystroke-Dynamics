@@ -66,7 +66,11 @@ interface LastResult {
   attempt: AttemptView;
   text: string;
   target: PlayerView;
-  paceRatio: number;
+  //: From the response's own `clue` (game/judge.py's _clue()) --
+  //: not attempt.pace's sibling, since clue (like verdict_text) is
+  //: this-response-only, never persisted history. Null exactly when
+  //: attempt.distance is null ("Too messy").
+  clue: string | null;
 }
 
 interface State {
@@ -77,6 +81,14 @@ interface State {
   target: string | null;
   mode: ApiMode;
   enrollName: string;
+  //: PARTY_LAUNCH_PLAN.md section 10's opt-in, captured once at the
+  //: name-form submit (before enrollment typing starts) and sent with
+  //: createPlayer -- never pre-checked, never required.
+  enrollShareScores: boolean;
+  //: The same opt-in for a Guest attacker (no enrolled Player to
+  //: have opted in at creation time), shown in attackView() and sent
+  //: with every attempt while typingAs stays null.
+  guestSharesScores: boolean;
   enrollRuns: Run[];
   run: Run | null;
   last: LastResult | null;
@@ -97,6 +109,8 @@ const S: State = {
   target: null,
   mode: "attack",
   enrollName: "",
+  enrollShareScores: false,
+  guestSharesScores: false,
   enrollRuns: [],
   run: null,
   last: null,
@@ -391,7 +405,11 @@ async function finishRun(): Promise<void> {
       S.busy = true;
       render();
       try {
-        const player = await gameApi.createPlayer(S.enrollName || null, enrollSamples);
+        const player = await gameApi.createPlayer(
+          S.enrollName || null,
+          enrollSamples,
+          S.enrollShareScores,
+        );
         S.enrollRuns = [];
         enrollSamples.length = 0;
         S.typingAs = player.id;
@@ -440,13 +458,14 @@ async function submitRunAsAttempt(run: Run): Promise<void> {
       mode,
       events: capture.sample(),
       clientAttemptId: crypto.randomUUID(),
+      guestSharesScores: S.guestSharesScores,
     });
     S.last = {
       run,
       attempt: resp.attempt,
       text: resp.verdict_text,
       target,
-      paceRatio: duration(run) / (usualDurationMs(target) || 1),
+      clue: resp.clue,
     };
     await refreshParty();
   } catch (error) {
@@ -609,7 +628,7 @@ async function runReplay(): Promise<void> {
               attempt: resp.attempt,
               text: resp.verdict_text,
               target,
-              paceRatio: 1,
+              clue: resp.clue,
             };
             if (resp.attempt.counted) {
               buzz(resp.attempt.mode === "replay" && resp.attempt.passed === true);
@@ -669,6 +688,8 @@ async function doResetParty(): Promise<void> {
     target: null,
     mode: "attack",
     enrollName: "",
+    enrollShareScores: false,
+    guestSharesScores: false,
     enrollRuns: [],
     run: null,
     last: null,
@@ -736,14 +757,28 @@ function introView(): string {
     </section>`;
 }
 
+function shareScoresCheckboxHTML(id: string, checked: boolean): string {
+  // Not shown at all unless the server says collection is actually
+  // on (PartyView.scores_enabled) -- never inferred any other way,
+  // and never pre-checked (PARTY_LAUNCH_PLAN.md section 10).
+  if (!S.party?.scores_enabled) return "";
+  return `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;max-width:48ch">
+    <input type="checkbox" id="${id}" ${checked ? "checked" : ""} style="margin-top:3px">
+    <span><b>${esc(S.party.consent_label)}</b><br><span class="small muted">${esc(S.party.consent_explanation)}</span></span>
+  </label>`;
+}
+
 function nameView(): string {
   return `<section class="stack" style="max-width:560px">
     <div class="eyebrow">New player</div>
     <h2>Who's typing?</h2>
     <p class="muted">You'll type the line ${LEVELS[S.level!].rounds} times. The first one is a warm-up. Leave the name blank for a generated one.</p>
-    <form id="name-form" class="row end">
-      <label for="player-name">Your name (optional)<input id="player-name" maxlength="24" autocomplete="off"></label>
-      <button class="primary" type="submit">Start typing</button>
+    <form id="name-form" class="stack">
+      <div class="row end">
+        <label for="player-name">Your name (optional)<input id="player-name" maxlength="24" autocomplete="off"></label>
+        <button class="primary" type="submit">Start typing</button>
+      </div>
+      ${shareScoresCheckboxHTML("enroll-share-scores", S.enrollShareScores)}
     </form>
     ${humans().length ? `<button class="quiet" id="to-room" style="align-self:flex-start">Skip and see the room</button>` : ""}
   </section>`;
@@ -844,11 +879,20 @@ function roomView(): string {
 function resultHTML(): string {
   const L = S.last;
   if (!L) return "";
-  const { attempt, text, target } = L;
+  const { attempt, text, target, clue } = L;
   const good = attempt.mode === "attack" ? attempt.passed === false : attempt.passed === true;
-  const compare =
-    attempt.distance !== null
-      ? `<div class="split">
+  // Pace and a one-line clue, shown on every scoreable result
+  // (PARTY_LAUNCH_PLAN.md section 8, following
+  // design/typing-twin-touch.html) -- hidden together with the
+  // distance gauge below on a "Too messy" result, where
+  // attempt.distance/pace and clue are all null: there's no honest
+  // clue to give about a line that broke up before it could be
+  // scored at all.
+  const details =
+    attempt.distance !== null && attempt.pace !== null
+      ? `<h3 id="clue">${esc(clue ?? "")}</h3>
+    <div class="trait"><span class="eyebrow">Pace</span><b>${attempt.pace.toFixed(2)}&times;</b><span class="small muted">${esc(target.name)}'s usual time, where 1&times; is the same speed</span></div>
+    <div class="split">
       <div class="ring">${ringSVG(target.notes, target.color, notesFromRun(L.run), target.name)}</div>
       <div class="stack">
         <div class="legend"><span><i class="swatch" style="background:var(--p${target.color})"></i>${esc(target.name)}</span><span><i class="swatch" style="background:var(--ink)"></i>This attempt (dashed)</span></div>
@@ -859,7 +903,7 @@ function resultHTML(): string {
   return `<section class="result stack" id="result" aria-live="polite">
     <p class="verdict ${good ? "v-good" : "v-bad"}">${esc(attempt.word)}</p>
     <p>${esc(text)}</p>
-    ${compare}
+    ${details}
   </section>`;
 }
 
@@ -877,6 +921,10 @@ function attackView(): string {
   const title = same ? (S.mode === "disguise" ? "Fool your own signature" : "Prove it's you") : `Pass as ${esc(target.name)}`;
   const hint = same ? "Type the line" : "Match the pink bars on the roll";
   const replay = !same ? `<button class="quiet" id="replay" ${S.busy ? "disabled" : ""}>Watch a replay attack</button>` : "";
+  // "for a Guest before their first attack" (PARTY_LAUNCH_PLAN.md
+  // section 10) -- not shown once a real enrolled player is typing;
+  // their own choice from enrollment is what's authoritative then.
+  const guestConsent = !S.typingAs ? shareScoresCheckboxHTML("guest-share-scores", S.guestSharesScores) : "";
   return `<section class="stack">
       <h2>${title}</h2>
       <div class="row end">
@@ -884,6 +932,7 @@ function attackView(): string {
         <label for="tgt">Target<select id="tgt">${opts(S.target, [...humans(), ...(S.party?.targets ?? [])])}</select></label>
         ${modeBtns}
       </div>
+      ${guestConsent}
       ${typerHTML(hint, resultHTML(), replay)}
       ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
     </section>`;
@@ -925,12 +974,12 @@ function scoresView(): string {
     .slice(0, 12)
     .map(
       (a: AttemptView) =>
-        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
+        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
     )
     .join("");
   return `<section class="stack"><h2>Scores</h2><p class="muted">From this party only. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
     ${board}
-    <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+    <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Pace</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function howView(): string {
@@ -951,7 +1000,12 @@ function howView(): string {
     <details>
       <summary>Privacy</summary>
       <div class="stack">
-        <p class="small">Key timing and key identity for this party's line are sent to the server for scoring. Raw timings are discarded right after scoring -- the server keeps a player's timing statistics in memory until they delete themselves, or the party expires or the app restarts. Everyone playing in this same party can see names and signatures. Nothing is written to a database, and anything typed outside the game line isn't accepted.</p>
+        <p class="small">Key timing and key identity for this party's line are sent to the server for scoring. Raw timings are discarded right after scoring -- the server keeps a player's timing statistics in memory until they delete themselves, or the party expires or the app restarts. Everyone playing in this same party can see names and signatures. Anything typed outside the game line isn't accepted.</p>
+        ${
+          S.party?.scores_enabled
+            ? `<p class="small">Sharing scores is optional, off by default, and never required to play. If you opt in, this stores a few numbers about a result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or anything else that identifies you. <b>Delete me</b> and <b>New party</b> remove those stored numbers while the party still exists; once a party ends, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
+            : `<p class="small">Nothing from this party is written to a database.</p>`
+        }
       </div>
     </details>
   </section>`;
@@ -1032,6 +1086,8 @@ document.addEventListener("submit", (e) => {
     e.preventDefault();
     const input = $("player-name") as HTMLInputElement | null;
     S.enrollName = input?.value.trim() ?? "";
+    const shareScores = $("enroll-share-scores") as HTMLInputElement | null;
+    S.enrollShareScores = shareScores?.checked ?? false;
     S.enrollRuns = [];
     enrollSamples.length = 0;
     S.error = null;
@@ -1061,6 +1117,10 @@ document.addEventListener("change", (e) => {
     S.replaying = 0;
     render();
     startRun();
+  } else if (target.id === "guest-share-scores") {
+    // No render()/startRun() -- unlike who/tgt, this doesn't change
+    // what's being typed, just the opt-in sent with the next attempt.
+    S.guestSharesScores = (target as HTMLInputElement).checked;
   }
 });
 

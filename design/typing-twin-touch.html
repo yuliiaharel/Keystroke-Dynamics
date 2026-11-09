@@ -1,0 +1,547 @@
+<title>Typing Twin Touch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one phone-sized column. While typing, a thumb keyboard stays fixed at the bottom of the screen. */
+:root {
+  --paper: #edebfa; --sheet: #f9f8ff; --ink: #1e1a4d; --muted: #5d5a86; --line: #cfcbea; --key: #ffffff; --key-down: #f7c3d7;
+  --accent: #c2185b; --twin: #007c89; --good: #1b7f4b; --bad: #b3261e; --on-accent: #ffffff;
+  --p0: #c2185b; --p1: #007c89; --p2: #6a3fc9; --p3: #b35c00; --p4: #1b7f4b; --p5: #1f5fbf;
+  --display: "Bagel Fat One", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #15132f; --sheet: #201d45; --ink: #efedff; --muted: #a9a6d0; --line: #3a3668; --key: #2b2758; --key-down: #6d2a50;
+  --accent: #ff77a8; --twin: #48d1dc; --good: #5bd68f; --bad: #ff8a80; --on-accent: #23102a;
+  --p0: #ff77a8; --p1: #48d1dc; --p2: #b69bff; --p3: #ffb562; --p4: #5bd68f; --p5: #7fb2ff; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --paper: #15132f; --sheet: #201d45; --ink: #efedff; --muted: #a9a6d0; --line: #3a3668; --key: #2b2758; --key-down: #6d2a50;
+  --accent: #ff77a8; --twin: #48d1dc; --good: #5bd68f; --bad: #ff8a80; --on-accent: #23102a;
+  --p0: #ff77a8; --p1: #48d1dc; --p2: #b69bff; --p3: #ffb562; --p4: #5bd68f; --p5: #7fb2ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 400 17px/1.45 var(--body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 40px; }
+body.typing { padding-bottom: 300px; overscroll-behavior: none; }
+.wrap { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.brand { font: 400 22px/1 var(--display); color: var(--accent); }
+h1 { font: 400 clamp(38px, 11vw, 60px)/1.03 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 400 clamp(26px, 7vw, 34px)/1.1 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 700 18px/1.3 var(--body); margin: 0; }
+p { margin: 0; max-width: 65ch; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.muted { color: var(--muted); } .small { font-size: 15px; }
+.eyebrow { font: 600 13px/1.3 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+button { font: 700 16px/1.2 var(--body); color: var(--ink); background: transparent; border: 2px solid var(--ink); border-radius: 10px; padding: 12px 16px; cursor: pointer; min-height: 46px; touch-action: manipulation; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.quiet { border-color: var(--line); font-weight: 400; font-size: 15px; padding: 8px 12px; min-height: 40px; }
+nav { display: flex; gap: 4px; }
+nav button { border-color: transparent; padding: 8px 10px; min-height: 40px; font-size: 15px; }
+nav button[aria-current="page"] { border-color: var(--ink); }
+:focus-visible { outline: 3px solid var(--twin); outline-offset: 2px; }
+input, select { font: 400 17px var(--body); color: var(--ink); background: var(--sheet); border: 2px solid var(--line); border-radius: 8px; padding: 10px 12px; width: 100%; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--muted); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > button { flex: 1 1 auto; }
+.ring svg, .map svg { display: block; width: 100%; height: auto; }
+.ring-line { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+.ring-fill { opacity: .16; } .ring-guide { fill: none; stroke: var(--line); stroke-width: 1; }
+.ring-tick { stroke-width: 2; stroke-linecap: round; }
+.ring-compare { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 4 3; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.card { background: var(--sheet); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card h3 { overflow-wrap: anywhere; }
+.tag { font: 400 12px var(--mono); color: var(--muted); }
+.card-top { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: center; }
+.m-key { fill: var(--paper); stroke: var(--line); stroke-width: 1; }
+.m-off { fill: transparent; stroke: var(--line); stroke-width: .5; opacity: .6; }
+.m-label { font: 400 8px var(--mono); fill: var(--muted); }
+.m-center { stroke: var(--muted); stroke-width: .7; }
+.m-bad { fill: var(--ink); }
+.phrase { font: 400 clamp(21px, 6vw, 28px)/1.45 var(--mono); overflow-wrap: anywhere; background: var(--sheet); border-radius: 12px; padding: 14px 16px; border: 2px solid var(--line); }
+.phrase .todo { color: var(--muted); opacity: .75; }
+.phrase .cur { border-bottom: 3px solid var(--accent); font-weight: 600; }
+.phrase.oops { border-color: var(--bad); }
+.phrase.oops .cur { color: var(--bad); border-color: var(--bad); }
+.dots { display: flex; gap: 6px; flex-wrap: wrap; font: 600 13px var(--mono); }
+.dot { padding: 4px 10px; border-radius: 99px; border: 1.5px solid var(--line); color: var(--muted); }
+.dot.on { border-color: var(--accent); color: var(--accent); }
+.dot.ok { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#keyboard { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--sheet); border-top: 1px solid var(--line); padding: 8px max(4px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.kb { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 7px; }
+.kb-row { display: flex; gap: 4px; justify-content: center; }
+.key { flex: 0 0 calc((100% - 36px) / 10); height: 54px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--line); border-radius: 7px; font: 400 21px var(--body); color: var(--ink); touch-action: none; }
+.key.space { flex: 0 0 66%; font-size: 15px; color: var(--muted); }
+.key.down { background: var(--key-down); }
+.verdict { font: 400 clamp(46px, 13vw, 72px)/1 var(--display); margin: 0; animation: pop .25s ease-out; }
+@keyframes pop { from { transform: scale(.9); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .verdict { animation: none; } }
+.v-good { color: var(--good); } .v-bad { color: var(--bad); }
+.gauge svg { display: block; width: 100%; height: auto; }
+.g-a { fill: var(--good); } .g-b { fill: var(--bad); } .g-mark { fill: var(--ink); } .g-thr { stroke: var(--ink); stroke-width: 2; }
+.g-text { font: 400 16px var(--mono); fill: var(--muted); } .g-val { font: 600 17px var(--mono); fill: var(--ink); }
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.trait { background: var(--sheet); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.trait b { font: 400 25px/1.1 var(--display); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+ul.tells { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 15px; color: var(--muted); }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.table-box { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font: 600 12px var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+th, td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.notice { border: 2px solid var(--accent); border-radius: 10px; padding: 10px 14px; font-size: 15px; }
+textarea { width: 100%; min-height: 120px; font: 400 12px var(--mono); color: var(--ink); background: var(--sheet); border: 2px solid var(--line); border-radius: 8px; padding: 8px; }
+</style>
+
+<div class="wrap">
+  <header><div class="brand">Typing Twin</div><nav id="nav"></nav></header>
+  <main id="app" class="stack" style="gap:18px"></main>
+</div>
+<div id="keyboard" hidden></div>
+
+<script>
+const PHRASE = "tap the rhythm of your thumbs";
+const ROUNDS = 5;
+const MIN_LIMIT = 1.65;   // Provisional, from a small phone test. Retest with more people.
+const ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+const ADJ = ["Quiet", "Swift", "Lucky", "Brave", "Sleepy", "Jolly", "Clever", "Sunny"];
+const ANIMAL = ["Otter", "Heron", "Fox", "Lynx", "Panda", "Wren", "Moth", "Corgi"];
+const label = c => c === " " ? "space" : c;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = id => document.getElementById(id);
+const S = { view: "intro", players: [], attempts: [], name: "", enroll: [], run: null, target: null, who: "", mode: "attack", last: null, added: null, color: 0, confirm: false, showExport: false };
+
+/* ---------- Scoring ---------- */
+function features(run) {
+  const g = new Map();
+  const add = (k, v) => { if (!g.has(k)) g.set(k, []); g.get(k).push(v); };
+  run.keys.forEach((r, i) => {
+    if (r.up !== null && r.up >= r.down) add("h:" + r.ch, r.up - r.down);
+    if (i > 0 && !r.afterError) {
+      const gap = r.down - run.keys[i - 1].down;
+      if (gap >= 0 && gap <= 2000) add("f:" + run.keys[i - 1].ch + r.ch, gap);
+    }
+    if (r.ch !== " ") add("x:" + r.ch, r.dx);   // The wide space bar makes side-to-side position too noisy.
+    add("y:" + r.ch, r.dy);
+  });
+  const out = new Map();
+  g.forEach((v, k) => out.set(k, v.reduce((a, b) => a + b, 0) / v.length));
+  return out;
+}
+function buildProfile(runs) {
+  const stats = new Map();
+  runs.forEach(run => features(run).forEach((v, k) => {
+    const s = stats.get(k) || { n: 0, mean: 0, m2: 0 };
+    s.n += 1;
+    const d = v - s.mean;
+    s.mean += d / s.n;
+    s.m2 += d * (v - s.mean);
+    stats.set(k, s);
+  }));
+  return stats;
+}
+const isPlace = k => k[0] === "x" || k[0] === "y";
+function spread(k, s) {
+  const sd = s.n > 1 ? Math.sqrt(s.m2 / (s.n - 1)) : 0;
+  return isPlace(k) ? Math.max(sd, 0.08) : Math.max(sd, 12, 0.12 * Math.abs(s.mean));
+}
+function score(run, profile) {
+  const parts = [];
+  features(run).forEach((v, k) => {
+    const s = profile.get(k);
+    if (!s || s.n < 2) return;
+    parts.push({ k, z: Math.abs(v - s.mean) / spread(k, s), diff: v - s.mean });
+  });
+  if (parts.length < 20) return { distance: null, rhythm: null, place: null, parts };
+  const avg = a => a.length ? a.reduce((x, p) => x + p.z, 0) / a.length : 0;
+  return { distance: avg(parts), rhythm: avg(parts.filter(p => !isPlace(p.k))), place: avg(parts.filter(p => isPlace(p.k))), parts };
+}
+function calibrate(runs) {
+  const held = runs.map((r, i) => score(r, buildProfile(runs.filter((_, j) => j !== i))).distance).filter(d => d !== null);
+  return held.length ? Math.min(3.5, Math.max(MIN_LIMIT, Math.max(...held) * 1.2)) : 2;
+}
+function median(a) { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; }
+const duration = r => r.keys[r.keys.length - 1].down - r.keys[0].down;
+const usual = p => p.runs.map(duration).reduce((a, b) => a + b, 0) / p.runs.length;
+function notes(runs) {
+  let t = 0;
+  return [...PHRASE].map((ch, i) => {
+    if (i > 0) t += median(runs.map(r => r.keys[i].down - r.keys[i - 1].down));
+    return { ch, start: t, dur: median(runs.map(r => r.keys[i].up !== null ? r.keys[i].up - r.keys[i].down : 70)) };
+  });
+}
+const runNotes = run => run.keys.map(r => ({ ch: r.ch, start: r.down - run.keys[0].down, dur: r.up !== null ? r.up - r.down : 70 }));
+function makePlayer(name, runs, sample) {
+  const profile = buildProfile(runs);
+  return { id: S.players.length + 1 + "", name, runs, profile, limit: calibrate(runs), sample, color: S.color++ % 6, notes: notes(runs) };
+}
+const byId = id => S.players.find(p => p.id === id);
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; }
+function sampleRuns(seed, speed, bx, by) {
+  let st = hash(seed) % 2147483646 + 1;
+  const rnd = () => (st = (st * 16807) % 2147483647) / 2147483647;
+  const u = k => (hash(seed + "|" + k) % 1000) / 1000;
+  const runs = [];
+  for (let r = 0; r < 5; r++) {
+    let t = 0;
+    const keys = [];
+    [...PHRASE].forEach((ch, i) => {
+      if (i > 0) t += speed * (120 + 260 * u(PHRASE[i - 1] + ch)) * (0.9 + rnd() * 0.2);
+      const hold = (50 + 50 * u(ch)) * (0.9 + rnd() * 0.2);
+      keys.push({ ch, down: t, up: t + hold, afterError: false, dx: bx + (u("x" + ch) - .5) * .35 + (rnd() - .5) * .12, dy: by + (u("y" + ch) - .5) * .35 + (rnd() - .5) * .12 });
+    });
+    runs.push({ keys });
+  }
+  return runs;
+}
+function addSamples() {
+  if (S.players.some(p => p.sample)) return;
+  S.players.push(makePlayer("Sample: Speedy Thumbs", sampleRuns("speedy", 0.75, -.12, .16), true));
+  S.players.push(makePlayer("Sample: One-Finger Pecker", sampleRuns("pecker", 1.45, .1, -.1), true));
+}
+
+/* ---------- Drawings ---------- */
+function ringPts(ns) {
+  const gaps = ns.map((n, i) => i === 0 ? null : n.start - ns[i - 1].start);
+  const m = median(gaps.filter(g => g !== null)) || 1, hm = median(ns.map(n => n.dur)) || 1;
+  return ns.map((n, i) => {
+    const g = gaps[i] === null ? 1 : Math.min(2.6, gaps[i] / m), a = -Math.PI / 2 + (i / ns.length) * Math.PI * 2, r = 44 + g * 40;
+    return { x: 120 + Math.cos(a) * r, y: 120 + Math.sin(a) * r, a, h: Math.min(2.2, n.dur / hm) };
+  });
+}
+function path(pts) {
+  const n = pts.length;
+  let d = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < n; i++) {
+    const a = pts[(i - 1 + n) % n], b = pts[i], c = pts[(i + 1) % n], e = pts[(i + 2) % n];
+    d += ` C${(b.x + (c.x - a.x) / 6).toFixed(1)} ${(b.y + (c.y - a.y) / 6).toFixed(1)} ${(c.x - (e.x - b.x) / 6).toFixed(1)} ${(c.y - (e.y - b.y) / 6).toFixed(1)} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`;
+  }
+  return d + "Z";
+}
+function ringSVG(ns, color, cmp) {
+  const pts = ringPts(ns), col = `var(--p${color})`;
+  let g = `<circle class="ring-guide" cx="120" cy="120" r="84"/>`;
+  pts.forEach(p => { const r2 = 22 + p.h * 10; g += `<line class="ring-tick" stroke="${col}" x1="${(120 + Math.cos(p.a) * 22).toFixed(1)}" y1="${(120 + Math.sin(p.a) * 22).toFixed(1)}" x2="${(120 + Math.cos(p.a) * r2).toFixed(1)}" y2="${(120 + Math.sin(p.a) * r2).toFixed(1)}"/>`; });
+  const d = path(pts);
+  g += `<path class="ring-fill" fill="${col}" d="${d}"/><path class="ring-line" stroke="${col}" d="${d}"/>`;
+  if (cmp) g += `<path class="ring-compare" d="${path(ringPts(cmp))}"/>`;
+  return `<svg viewBox="0 0 240 240" role="img" aria-label="Rhythm signature. The outer shape shows the gap before each tap, and the inner marks show how long each key is held.">${g}</svg>`;
+}
+function keyBox() {
+  const m = new Map(), W = 38, H = 38, G = 2;
+  ROWS.forEach((row, r) => { const off = (400 - row.length * (W + G)) / 2; [...row].forEach((c, i) => m.set(c, { x: off + i * (W + G), y: 4 + r * (H + G), w: W, h: H })); });
+  m.set(" ", { x: 80, y: 4 + 3 * (H + G), w: 240, h: H });
+  return m;
+}
+function mapSVG(profile, color, attempt) {
+  const boxes = keyBox(), col = `var(--p${color})`;
+  const unit = { w: 38, h: 38 };
+  let g = "";
+  boxes.forEach((b, c) => {
+    const used = PHRASE.includes(c);
+    g += `<rect class="${used ? "m-key" : "m-off"}" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="4"/>`;
+    if (!used) return;
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    g += `<text class="m-label" x="${b.x + 3}" y="${b.y + 9}">${c === " " ? "space" : c}</text>`;
+    g += `<path class="m-center" d="M${cx - 3} ${cy} h6 M${cx} ${cy - 3} v6"/>`;
+    const sx = profile.get("x:" + c), sy = profile.get("y:" + c);
+    const px = cx + (sx ? sx.mean : 0) * unit.w, py = cy + (sy ? sy.mean : 0) * unit.h;
+    const rx = sx ? Math.min(14, Math.max(2.5, spread("x:" + c, sx) * unit.w)) : 4, ry = sy ? Math.min(14, Math.max(2.5, spread("y:" + c, sy) * unit.h)) : 4;
+    g += `<ellipse cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="${col}" opacity=".3"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.6" fill="${col}"/>`;
+    if (attempt) {
+      const ax = attempt.get("x:" + c), ay = attempt.get("y:" + c);
+      if (ax !== undefined || ay !== undefined) g += `<rect class="m-bad" x="${(cx + (ax || 0) * unit.w - 2).toFixed(1)}" y="${(cy + (ay || 0) * unit.h - 2).toFixed(1)}" width="4" height="4"/>`;
+    }
+  });
+  return `<svg viewBox="0 0 400 168" role="img" aria-label="Keyboard map showing where this typist lands on each key. The dot is the average tap, and the shaded area is its usual variation.">${g}</svg>`;
+}
+function gaugeSVG(d, t) {
+  const W = 400, end = Math.max(t * 2, d * 1.15), x = v => 8 + (v / end) * (W - 16), px = Math.min(W - 70, Math.max(70, x(d)));
+  return `<svg viewBox="0 0 ${W} 78" role="img" aria-label="Distance ${d.toFixed(2)} against a limit of ${t.toFixed(2)}">
+    <text class="g-val" x="${px}" y="16" text-anchor="middle">distance ${d.toFixed(2)}</text><path class="g-mark" d="M${x(d) - 6} 22 h12 l-6 8 z"/>
+    <rect class="g-a" x="8" y="32" width="${x(t) - 8}" height="12" rx="2"/><rect class="g-b" x="${x(t)}" y="32" width="${W - 8 - x(t)}" height="12" rx="2"/>
+    <line class="g-thr" x1="${x(t)}" x2="${x(t)}" y1="28" y2="48"/><text class="g-text" x="${Math.min(W - 70, Math.max(70, x(t)))}" y="68" text-anchor="middle">limit ${t.toFixed(2)}</text></svg>`;
+}
+
+/* ---------- Touch keyboard ---------- */
+function buildKeyboard() {
+  const rows = ROWS.map(r => `<div class="kb-row">${[...r].map(c => `<div class="key" data-k="${c}">${c}</div>`).join("")}</div>`).join("");
+  $("keyboard").innerHTML = `<div class="kb">${rows}<div class="kb-row"><div class="key space" data-k=" ">space</div></div></div>`;
+}
+function startRun() {
+  S.run = { i: 0, keys: [], errors: 0, pending: false, held: new Map(), finished: false };
+  $("keyboard").hidden = false;
+  document.body.classList.add("typing");
+  drawPhrase();
+}
+function stopTyping() { S.run = null; $("keyboard").hidden = true; document.body.classList.remove("typing"); }
+function drawPhrase(oops) {
+  const p = $("phrase"), r = S.run;
+  if (!p || !r) return;
+  p.classList.toggle("oops", !!oops);
+  p.innerHTML = `<span>${PHRASE.slice(0, r.i)}</span>` + (r.i < PHRASE.length ? `<span class="cur">${PHRASE[r.i] === " " ? "&nbsp;" : PHRASE[r.i]}</span><span class="todo">${PHRASE.slice(r.i + 1)}</span>` : "");
+  if ($("wrong")) $("wrong").textContent = r.errors === 1 ? "1 wrong key" : r.errors + " wrong keys";
+}
+const kb = $("keyboard");
+kb.addEventListener("pointerdown", e => {
+  const key = e.target.closest(".key");
+  e.preventDefault();
+  if (!key || !S.run || S.run.finished) return;
+  try { if (navigator.vibrate) navigator.vibrate(6); } catch (err) { /* Optional. */ }
+  const r = S.run, ch = key.dataset.k, box = key.getBoundingClientRect();
+  const unit = kb.querySelector('.key[data-k="a"]').getBoundingClientRect();
+  key.classList.add("down");
+  if (ch === PHRASE[r.i]) {
+    const rec = { ch, down: e.timeStamp, up: null, afterError: r.pending, dx: (e.clientX - (box.left + box.width / 2)) / unit.width, dy: (e.clientY - (box.top + box.height / 2)) / unit.height };
+    r.keys.push(rec);
+    r.held.set(e.pointerId, { rec, key });
+    r.pending = false;
+    r.i += 1;
+    if (r.i === PHRASE.length) { r.finished = true; setTimeout(finishRun, 280); }
+    drawPhrase();
+  } else {
+    r.errors += 1;
+    r.pending = true;
+    r.held.set(e.pointerId, { rec: null, key });
+    drawPhrase(true);
+  }
+});
+function release(e) {
+  const r = S.run;
+  document.querySelectorAll(".key.down").forEach(k => { if (!r || !r.held.has(e.pointerId) || r.held.get(e.pointerId).key === k) k.classList.remove("down"); });
+  if (!r || !r.held.has(e.pointerId)) return;
+  const h = r.held.get(e.pointerId);
+  if (h.rec && e.type === "pointerup") h.rec.up = e.timeStamp;
+  r.held.delete(e.pointerId);
+}
+document.addEventListener("pointerup", release);
+document.addEventListener("pointercancel", release);
+kb.addEventListener("contextmenu", e => e.preventDefault());
+function finishRun() {
+  const run = S.run;
+  if (!run) return;
+  if (S.view === "enroll") {
+    S.enroll.push(run);
+    if (S.enroll.length === ROUNDS) {
+      const p = makePlayer(S.name, S.enroll.slice(1), false);
+      S.players.push(p);
+      S.who = p.id; S.added = p.id;
+      stopTyping();
+      S.view = "reveal";
+      render();
+    } else { render(); startRun(); }
+    return;
+  }
+  judge(run);
+  stopTyping();
+  S.view = "result";
+  render();
+}
+function judge(run) {
+  const target = byId(S.target), res = score(run, target.profile), d = res.distance, t = target.limit;
+  const who = S.who ? byId(S.who).name : "Guest";
+  const own = S.mode !== "attack";
+  let v;
+  if (d === null) v = { good: false, word: "Too messy", text: "Too many wrong keys broke up the rhythm. Try the line again.", counted: false };
+  else if (own) v = d <= t
+    ? { good: true, word: "That's you", text: S.mode === "grip" ? "It still recognized you with that grip." : "This line sits inside your own range.", counted: true, pass: true }
+    : { good: false, word: "Who are you?", text: S.mode === "grip" ? "The new grip was enough to throw it off." : "It didn't recognize its own typist. That's a false rejection.", counted: true, pass: false };
+  else v = d <= t
+    ? { good: false, word: "Fooled it!", text: `${esc(who)} passed as ${esc(target.name)}.`, counted: true, pass: true }
+    : { good: true, word: "Caught!", text: `It could tell ${esc(who)} isn't ${esc(target.name)}.`, counted: true, pass: false };
+  S.last = { run, res, v, target, who, pace: duration(run) / usual(target) };
+  S.attempts.push({ who, target: target.name, mode: S.mode, total: d, rhythm: res.rhythm, place: res.place, limit: t, pace: duration(run) / usual(target), result: v.word, device: run.pointer || "" });
+}
+function clue(L) {
+  const fast = L.pace < 0.85, slow = L.pace > 1.15, off = L.res.rhythm > L.target.limit;
+  const placeOff = L.res.place > L.target.limit;
+  if (!fast && !slow) return off ? "Right speed, wrong rhythm" : placeOff ? "Right speed and rhythm, wrong tap places" : "Speed, rhythm, and tap places all fit";
+  const speed = fast ? "Too fast" : "Too slow";
+  if (off) return `${speed}, and the rhythm is off too`;
+  return placeOff ? `${speed}, with the right rhythm but wrong tap places` : `${speed}, but the rhythm and tap places fit`;
+}
+function tells(res) {
+  return [...res.parts].sort((a, b) => b.z - a.z).slice(0, 3).map(p => {
+    const c = label(p.k[2]);
+    if (p.k[0] === "h") return `<li>Held <b>${c}</b> ${Math.round(Math.abs(p.diff))} ms ${p.diff > 0 ? "longer" : "shorter"}</li>`;
+    if (p.k[0] === "f") return `<li>The gap from <b>${c}</b> to <b>${label(p.k[3])}</b> was ${Math.round(Math.abs(p.diff))} ms ${p.diff > 0 ? "longer" : "shorter"}</li>`;
+    const pct = Math.round(Math.abs(p.diff) * 100);
+    if (p.k[0] === "x") return `<li>Tapped <b>${c}</b> ${pct}% of a key further ${p.diff > 0 ? "right" : "left"}</li>`;
+    return `<li>Tapped <b>${c}</b> ${pct}% of a key ${p.diff > 0 ? "lower" : "higher"}</li>`;
+  }).join("");
+}
+
+/* ---------- Views ---------- */
+const typingBlock = () => `<div class="phrase" id="phrase"></div><div class="row small muted" style="justify-content:space-between"><span>Use your normal grip</span><span id="wrong"></span></div>`;
+function introView() {
+  const sampleRings = [["speedy", .75, 0], ["pecker", 1.45, 1]].map(([s, sp, c]) => `<div class="ring">${ringSVG(notes(sampleRuns(s, sp, 0, 0)), c)}</div>`).join("");
+  const desktop = window.matchMedia && !matchMedia("(pointer: coarse)").matches;
+  return `<section class="stack">
+    <h1>Your thumbs leave a signature.</h1>
+    <p>Tap a short line on this keyboard. The game maps your rhythm and exactly where your thumbs land, then challenges you to fool it.</p>
+    ${desktop ? `<div class="notice">Open this on your phone for the real thing. A mouse works for trying it out, but it won't produce a touch signature.</div>` : ""}
+    <button class="primary" id="begin">Start, about 1 minute</button>
+    <p class="small muted">Everything stays on this page. Nothing is sent or saved, and refreshing erases it.</p>
+    <div class="pair">${sampleRings}</div>
+    <p class="small muted">Example rhythm signatures from simulated typists.</p>
+  </section>`;
+}
+function nameView() {
+  return `<section class="stack">
+    <div class="eyebrow">New player</div><h2>Who's tapping?</h2>
+    <form id="name-form" class="stack">
+      <label for="player-name">Your name<input id="player-name" maxlength="24" autocomplete="off" value="${esc(ADJ[Math.floor(Math.random() * ADJ.length)] + " " + ANIMAL[Math.floor(Math.random() * ANIMAL.length)])}"></label>
+      <button class="primary" type="submit">Start tapping</button>
+    </form>
+    <p class="small muted">You'll tap the line ${ROUNDS} times. The first is a warm-up.</p>
+    ${S.players.length ? `<button class="quiet" id="to-room">Back to the room</button>` : ""}
+  </section>`;
+}
+function enrollView() {
+  const n = S.enroll.length;
+  const dots = Array.from({ length: ROUNDS }, (_, i) => `<span class="dot ${i < n ? "ok" : i === n ? "on" : ""}">${i === 0 ? "Warm-up" : i}</span>`).join("");
+  return `<section class="stack"><div class="eyebrow">${esc(S.name)}</div><div class="dots">${dots}</div>${typingBlock()}</section>`;
+}
+function traits(p) {
+  const fl = [...p.profile.entries()].filter(([k]) => k[0] === "f").sort((a, b) => a[1].mean - b[1].mean);
+  const xs = [...p.profile.entries()].filter(([k]) => k[0] === "x").map(([, s]) => s.mean), ys = [...p.profile.entries()].filter(([k]) => k[0] === "y").map(([, s]) => s.mean);
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length, mx = mean(xs), my = mean(ys);
+  const pair = k => `${label(k[2])}${k[2] === " " || k[3] === " " ? " → " : ""}${label(k[3])}`;
+  const tile = (t, b, s) => `<div class="trait"><span class="eyebrow">${t}</span><b>${b}</b><span class="small muted">${s}</span></div>`;
+  return `<div class="split">
+    ${tile("Pace", Math.round((PHRASE.length / 5) / (usual(p) / 60000)) + " wpm", "on this line")}
+    ${tile("Typical hold", Math.round(median([...p.profile.entries()].filter(([k]) => k[0] === "h").map(([, s]) => s.mean))) + " ms", "per tap")}
+    ${tile("Side lean", Math.round(Math.abs(mx) * 100) + "% " + (mx >= 0 ? "right" : "left"), "of a key, on average")}
+    ${tile("Height lean", Math.round(Math.abs(my) * 100) + "% " + (my >= 0 ? "low" : "high"), "of a key, on average")}
+    ${tile("Fastest pair", pair(fl[0][0]), Math.round(fl[0][1].mean) + " ms")}
+    ${tile("Slowest pair", pair(fl[fl.length - 1][0]), Math.round(fl[fl.length - 1][1].mean) + " ms")}
+  </div>`;
+}
+function revealView() {
+  const p = byId(S.added);
+  return `<section class="stack">
+    <div class="eyebrow">${esc(p.name)}'s signature</div><h2>This is how you tap.</h2>
+    <div class="ring" style="max-width:300px;width:100%;align-self:center">${ringSVG(p.notes, p.color)}</div>
+    <p class="small muted">Taps run clockwise from the top. The outer shape bulges where you pause, and the inner marks grow on keys you hold longer.</p>
+    <h3>Where you land</h3>
+    <div class="map">${mapSVG(p.profile, p.color)}</div>
+    <p class="small muted">The cross marks each key's center. The dot is your average tap, and the shaded area is its usual variation.</p>
+    ${traits(p)}
+    <div class="stack"><button class="primary" id="to-room">Enter the room</button></div>
+  </section>`;
+}
+function roomView() {
+  const cards = S.players.map(p => `<article class="card">
+    <div class="card-top"><div class="ring">${ringSVG(p.notes, p.color)}</div><div class="stack" style="gap:4px"><h3>${esc(p.name)}</h3><div class="tag">${p.sample ? "Simulated target" : "Limit " + p.limit.toFixed(2)}</div></div></div>
+    <div class="map">${mapSVG(p.profile, p.color)}</div>
+    <div class="row">${p.sample ? `<button class="primary" data-attack="${p.id}">Attack</button>` : `<button class="primary" data-attack="${p.id}">Attack</button><button data-self="${p.id}">Test me</button><button data-grip="${p.id}">New grip</button>`}</div>
+  </article>`).join("");
+  return `<section class="stack">
+    <h2>The room</h2><p class="muted">Pass the phone. Everyone taps the same line.</p>
+    <button class="primary" id="add">Add a player</button>
+    ${cards}
+    <button class="quiet" id="new-party">${S.confirm ? "Erase everyone and start over" : "New party"}</button>
+  </section>`;
+}
+function attackView() {
+  const t = byId(S.target), humans = S.players.filter(p => !p.sample);
+  const own = S.mode !== "attack";
+  const title = S.mode === "grip" ? "Try a different grip" : own ? "Prove it's you" : `Pass as ${esc(t.name)}`;
+  const opts = humans.map(p => `<option value="${p.id}"${S.who === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+  return `<section class="stack">
+    <div class="row" style="justify-content:space-between"><h2 style="flex:1 1 60%">${title}</h2><button class="quiet" id="to-room" style="flex:0 0 auto">Back</button></div>
+    ${own ? (S.mode === "grip" ? `<p class="small muted">Switch thumbs, use one finger, or set the phone on a table.</p>` : "") : `<label for="who">Who's tapping?<select id="who"><option value="">Guest</option>${opts}</select></label>`}
+    ${typingBlock()}
+  </section>`;
+}
+function resultView() {
+  const L = S.last, { res, v, target } = L;
+  const att = res.distance !== null ? features(L.run) : null;
+  const body = att ? `
+    <div class="gauge">${gaugeSVG(res.distance, target.limit)}</div>
+    <h3 id="clue">${clue(L)}</h3>
+    <div class="trait"><span class="eyebrow">Pace</span><b>${L.pace.toFixed(2)}×</b><span class="small muted">${esc(target.name)}'s usual time, where 1× is the same speed</span></div>
+    <div class="split">
+      <div class="trait"><span class="eyebrow">Rhythm</span><b>${res.rhythm.toFixed(2)}</b><span class="small muted">timing distance</span></div>
+      <div class="trait"><span class="eyebrow">Tap place</span><b>${res.place.toFixed(2)}</b><span class="small muted">position distance</span></div>
+    </div>
+    <div class="stack" style="gap:6px"><h3>Biggest giveaways</h3><ul class="tells">${tells(res)}</ul></div>
+    <div class="ring" style="max-width:280px;width:100%;align-self:center">${ringSVG(target.notes, target.color, runNotes(L.run))}</div>
+    <div class="map">${mapSVG(target.profile, target.color, att)}</div>
+    <div class="legend"><span><i class="swatch" style="background:var(--p${target.color})"></i>${esc(target.name)}</span><span><i class="swatch" style="background:var(--ink);border-radius:2px"></i>This attempt</span></div>` : "";
+  return `<section class="stack">
+    <p class="verdict ${v.good ? "v-good" : "v-bad"}">${v.word}</p><p>${v.text}</p>
+    <div class="row"><button class="primary" id="again">Go again</button><button id="to-room">Back to the room</button></div>
+    ${body}
+  </section>`;
+}
+const MODE = { attack: "Attack", self: "Own", grip: "New grip" };
+function scoresView() {
+  const a = S.attempts.filter(x => x.total !== null);
+  const rows = [...a].reverse().map(x => `<tr><td>${esc(x.who)}</td><td>${esc(x.target)}</td><td>${MODE[x.mode]}</td><td>${x.pace.toFixed(2)}×</td><td>${x.rhythm.toFixed(2)}</td><td>${x.place.toFixed(2)}</td><td>${x.total.toFixed(2)}</td><td>${x.limit.toFixed(2)}</td><td>${esc(x.result)}</td></tr>`).join("");
+  const body = a.length ? `<div class="table-box"><table><thead><tr><th>Tapping</th><th>Target</th><th>Type</th><th>Pace</th><th>Rhythm</th><th>Place</th><th>Total</th><th>Limit</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="small muted">This is a small test on one phone, not a measure of accuracy.</p>
+    <button id="copy">Copy test results</button>
+    ${S.showExport ? `<label for="export">Copied results contain scores only, with no key timings.<textarea id="export" readonly>${esc(exportJSON())}</textarea></label>` : ""}` : `<p>No attempts yet. Attack someone in the room and this page fills in.</p>`;
+  return `<section class="stack"><h2>Scores</h2><p class="muted">Compare Rhythm and Place to see which one gives people away.</p>${body}</section>`;
+}
+function exportJSON() {
+  return JSON.stringify({ line: PHRASE, attempts: S.attempts.map(x => ({ who: x.who, target: x.target, mode: x.mode, rhythm: x.rhythm && +x.rhythm.toFixed(3), place: x.place && +x.place.toFixed(3), total: x.total && +x.total.toFixed(3), limit: +x.limit.toFixed(3), pace: +x.pace.toFixed(2), result: x.result })) }, null, 1);
+}
+function howView() {
+  return `<section class="stack"><h2>How it works</h2>
+    <p>The game records when each finger lands, when it lifts, and where it lands on the key. For each measurement, it works out how far your line is from a player's profile, compared with that measurement's usual variation. The average is the distance.</p>
+    <p>Each player's limit comes from testing each of their training lines against the others. The limit is never below 1.65, a provisional value from a small test. Below the limit, the tapping passes as them.</p>
+    <p>Pace compares how long a line took with the target's usual time. It's shown as a clue. The Rhythm score still includes speed, so a very different pace also raises it.</p>
+    <p>This is a game, not security. Touch typing hasn't been benchmarked here, and a different grip or phone can change your signature.</p>
+  </section>`;
+}
+function render() {
+  const inPlay = !["intro", "name", "enroll"].includes(S.view) || (S.view === "name" && S.players.length);
+  const cur = S.view === "scores" ? "scores" : S.view === "how" ? "how" : "room";
+  $("nav").innerHTML = inPlay ? [["room", "Room"], ["scores", "Scores"], ["how", "How"]].map(([k, l]) => `<button data-tab="${k}"${cur === k ? ' aria-current="page"' : ""}>${l}</button>`).join("") : "";
+  $("app").innerHTML = { intro: introView, name: nameView, enroll: enrollView, reveal: revealView, room: roomView, attack: attackView, result: resultView, scores: scoresView, how: howView }[S.view]();
+  if ($("phrase")) drawPhrase();
+}
+function go(v) { stopTyping(); S.view = v; S.confirm = false; render(); window.scrollTo(0, 0); }
+function play(target, mode) { S.target = target; S.mode = mode; if (mode !== "attack") S.who = target; else if (S.who === target) S.who = ""; stopTyping(); S.view = "attack"; render(); startRun(); window.scrollTo(0, 0); }
+document.addEventListener("submit", e => {
+  if (e.target.id !== "name-form") return;
+  e.preventDefault();
+  const n = $("player-name").value.trim() || "Mystery Thumbs";
+  if ($("player-name")) $("player-name").blur();
+  S.name = n; S.enroll = []; S.view = "enroll"; render(); startRun(); window.scrollTo(0, 0);
+});
+document.addEventListener("change", e => { if (e.target.id === "who") S.who = e.target.value; });
+document.addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.id === "begin") { addSamples(); go("name"); }
+  else if (b.id === "add") go("name");
+  else if (b.id === "to-room") go("room");
+  else if (b.dataset.tab) go(b.dataset.tab);
+  else if (b.dataset.attack) play(b.dataset.attack, "attack");
+  else if (b.dataset.self) play(b.dataset.self, "self");
+  else if (b.dataset.grip) play(b.dataset.grip, "grip");
+  else if (b.id === "again") play(S.target, S.mode);
+  else if (b.id === "copy") {
+    S.showExport = true;
+    const text = exportJSON();
+    const done = () => { render(); const c = $("copy"); if (c) c.textContent = "Copied"; };
+    try { navigator.clipboard.writeText(text).then(done).catch(() => { render(); }); } catch (err) { render(); }
+  }
+  else if (b.id === "new-party") {
+    if (!S.confirm) { S.confirm = true; render(); return; }
+    stopTyping();
+    Object.assign(S, { view: "intro", players: [], attempts: [], name: "", enroll: [], target: null, who: "", mode: "attack", last: null, added: null, color: 0, confirm: false, showExport: false });
+    render();
+  }
+});
+buildKeyboard();
+render();
+</script>

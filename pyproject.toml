@@ -41,7 +41,7 @@ evaluation = [
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["*.md", "migrations/versions"]
+extend-exclude = ["*.md", "migrations/versions", "migrations_scores/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

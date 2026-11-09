@@ -22,8 +22,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
-COPY alembic.ini ./
+# alembic_scores.ini/migrations_scores/ (PARTY_LAUNCH_PLAN.md section
+# 10) are a separate migration run from alembic.ini/migrations/ (the
+# account system's) -- .do/app.yaml's pre-deploy job runs them with
+# this same image, overriding CMD below with its own run_command.
+COPY alembic.ini alembic_scores.ini ./
 COPY migrations/ migrations/
+COPY migrations_scores/ migrations_scores/
 COPY src/ src/
 COPY --from=frontend-builder /repo/src/keystroke_dynamics/static/js src/keystroke_dynamics/static/js
 RUN uv sync --locked --no-dev
@@ -38,18 +43,17 @@ EXPOSE 8000
 # memory; a second worker would get its own, independent copy (see
 # main.py's docstring).
 #
-# --proxy-headers --forwarded-allow-ips='*': DigitalOcean App
-# Platform (and every platform this image is meant to run behind)
-# terminates TLS at its own edge and reaches this container only
-# through its own internal proxy -- there is no other inbound path,
-# so trusting that proxy's X-Forwarded-Proto/X-Forwarded-For is safe
-# here specifically. Without this, uvicorn's own default
-# (forwarded-allow-ips=127.0.0.1) ignores both headers unless the
-# proxy connects from localhost, which it doesn't in a container:
-# request.url.scheme would read "http" even on the live HTTPS site
-# (breaking the Secure session cookie -- see main.py's
-# https_only=not settings.debug) and client_ip() (api/security.py)
-# would rate-limit the platform's own proxy address instead of each
-# real visitor's.
+# Deliberately NOT --proxy-headers/--forwarded-allow-ips: that would
+# make uvicorn trust X-Forwarded-For to rewrite request.client, and
+# with --forwarded-allow-ips='*' (the setting that was here before)
+# it uses the *first* entry in that header -- which a client fully
+# controls -- as the trusted client address. api/security.py's
+# client_ip() reads DigitalOcean's own Do-Connecting-Ip header
+# directly instead, which the client cannot set (see that function's
+# docstring), so none of this app's security decisions need uvicorn's
+# own proxy-header handling at all. The Secure session cookie flag
+# (main.py's https_only=not settings.debug) was never affected by
+# this either way -- it's driven by settings.debug directly, not by
+# any detected request scheme.
 CMD ["uvicorn", "keystroke_dynamics.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--workers", "1", "--proxy-headers", "--forwarded-allow-ips=*"]
+     "--workers", "1"]

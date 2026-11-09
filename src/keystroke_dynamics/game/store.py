@@ -53,6 +53,32 @@ class Player:
     threshold: float
     notes: list[Note]
     created_at: float = field(default_factory=time.monotonic)
+    #: A random id, never derived from `id` -- PARTY_LAUNCH_PLAN.md
+    #: section 10's own requirement for score_attempts.typist_id/
+    #: target_id. Its lifetime is simply this Player object's: once a
+    #: player is deleted or their party expires, this value is nowhere
+    #: in memory anymore, which is exactly what makes "Delete me"/
+    #: "New party" able to find and remove their stored rows while
+    #: they're still around, and exactly why nothing can be done once
+    #: they aren't (see api/game.py's scores-deletion calls and
+    #: howView()'s privacy text). For the sample bots and the
+    #: permanent target -- not party-scoped, so there's no Player
+    #: object lifetime to ride -- see scores/target_ids.py instead.
+    score_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    #: Opted in to PARTY_LAUNCH_PLAN.md section 10's score sharing at
+    #: enrollment time. Never pre-checked, never a condition of
+    #: playing, and never changeable later in this launch's scope.
+    shares_scores: bool = False
+    #: The consent wording version this player agreed to, captured
+    #: once at the moment they opted in -- not whatever the current
+    #: code constant is when a later attempt gets recorded, which
+    #: could be a different wording if it changed in between. None
+    #: when shares_scores is False.
+    consent_version: str | None = None
+    #: How many training lines went into this player's profile --
+    #: score_attempts.training_lines. Captured once at enrollment,
+    #: since the raw lines themselves are never kept past it.
+    training_line_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -69,6 +95,11 @@ class Attempt:
     word: str
     counted: bool
     passed: bool | None
+    #: This attempt's duration over the target's own usual duration
+    #: for the line (game/judge.py's pace) -- None exactly when
+    #: distance is None. Defaulted so existing callers/tests that
+    #: don't care about pace don't need updating.
+    pace: float | None = None
     created_at: float = field(default_factory=time.monotonic)
     #: The client-supplied idempotency key for POST /api/game/attempts
     #: (see api/game.py) -- None for attempts that don't need one
@@ -91,6 +122,11 @@ class Party:
     attempts: list[Attempt] = field(default_factory=list)
     created_at: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
+    #: A random id, never derived from `id` -- score_attempts.party_id
+    #: (PARTY_LAUNCH_PLAN.md section 10). Same "rides this object's own
+    #: lifetime, no separate mapping to discard" reasoning as
+    #: Player.score_id above.
+    score_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
 class PartyLimitReached(Exception):
@@ -209,6 +245,12 @@ class InMemoryGameStore:
                 threshold=existing.threshold,
                 notes=existing.notes,
                 created_at=existing.created_at,
+                # A rename must never mint a new score_id or touch
+                # consent -- both are set once, at enrollment.
+                score_id=existing.score_id,
+                shares_scores=existing.shares_scores,
+                consent_version=existing.consent_version,
+                training_line_count=existing.training_line_count,
             )
             party.last_activity = time.monotonic()
             return True

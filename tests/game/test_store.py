@@ -154,10 +154,38 @@ def test_rename_player_changes_the_name_only() -> None:
     store = make_store()
     party = store.create_party("word")
     store.add_player(party.id, make_player("p1", "Quiet Otter"))
+    original = store.get_party(party.id).players["p1"]  # type: ignore[union-attr]
     assert store.rename_player(party.id, "p1", "Loud Otter") is True
     renamed = store.get_party(party.id).players["p1"]  # type: ignore[union-attr]
     assert renamed.name == "Loud Otter"
     assert renamed.threshold == 1.5  # everything else carried over
+    # A rename must never mint a new score_id or touch consent --
+    # score_attempts rows recorded before the rename must still be
+    # reachable by "Delete me" afterward (PARTY_LAUNCH_PLAN.md
+    # section 10), and consent is set once, at enrollment.
+    assert renamed.score_id == original.score_id
+    assert renamed.shares_scores == original.shares_scores
+    assert renamed.consent_version == original.consent_version
+    assert renamed.training_line_count == original.training_line_count
+
+
+def test_each_player_gets_a_distinct_random_score_id() -> None:
+    store = make_store()
+    party = store.create_party("word")
+    store.add_player(party.id, make_player("p1"))
+    store.add_player(party.id, make_player("p2"))
+    players = store.get_party(party.id).players  # type: ignore[union-attr]
+    assert players["p1"].score_id != players["p2"].score_id
+    # Never derived from the game-facing id.
+    assert players["p1"].score_id != players["p1"].id
+
+
+def test_each_party_gets_a_distinct_random_score_id() -> None:
+    store = make_store()
+    a = store.create_party("word")
+    b = store.create_party("word")
+    assert a.score_id != b.score_id
+    assert a.score_id != a.id
 
 
 def test_rename_unknown_player_returns_false() -> None:

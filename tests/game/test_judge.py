@@ -4,10 +4,12 @@ disguise pace gate, and the "too messy" (INSUFFICIENT_DATA) case."""
 
 from __future__ import annotations
 
+import pytest
+
 from keystroke_dynamics.core.events import KeyEvent, pair_presses
 from keystroke_dynamics.core.features import extract_features
 from keystroke_dynamics.game.enroll import build_profile_and_threshold, char_to_code, median_notes
-from keystroke_dynamics.game.judge import judge, usual_duration_ms
+from keystroke_dynamics.game.judge import _clue, judge, pace_ratio, usual_duration_ms
 from keystroke_dynamics.game.store import Player
 
 PHRASE = "nukiae"
@@ -174,3 +176,96 @@ def test_usual_duration_ms_sums_the_last_notes_start_and_duration() -> None:
 def test_usual_duration_ms_is_zero_with_no_notes() -> None:
     empty = Player(id="p2", name="Empty", color=0, profile={}, threshold=1.5, notes=[])
     assert usual_duration_ms(empty) == 0.0
+
+
+# ---------- pace and clue (PARTY_LAUNCH_PLAN.md section 8) ----------
+
+
+def test_too_messy_has_no_pace_or_clue() -> None:
+    target = make_target()
+    verdict = judge(
+        [], typist_name="Guest", target=target, mode="attack", phrase=PHRASE, run_duration_ms=500.0
+    )
+    assert verdict.pace is None
+    assert verdict.clue is None
+    # compared_features is still meaningful on a "too messy" result --
+    # it's exactly why: fewer than game/scoring.py's own minimum. Zero
+    # here since the sample itself is empty.
+    assert verdict.compared_features == 0
+
+
+def test_pace_ratio_is_none_with_no_notes() -> None:
+    empty = Player(id="p2", name="Empty", color=0, profile={}, threshold=1.5, notes=[])
+    assert pace_ratio(500.0, empty) is None
+
+
+def test_pace_ratio_is_always_available_even_on_a_too_messy_result() -> None:
+    # Unlike Verdict.pace (the UI's own display rule, None alongside
+    # distance=None), game/scores's own pace column uses pace_ratio()
+    # directly -- it's independently meaningful research data even
+    # when the rhythm itself couldn't be scored at all.
+    target = make_target()
+    assert pace_ratio(usual_duration_ms(target), target) == pytest.approx(1.0)
+
+
+def test_matching_rhythm_at_the_right_pace_gives_a_fitting_clue() -> None:
+    target = make_target()
+    matching_run = _run(hold_ms=82.0, gap_ms=152.0)
+    verdict = judge(
+        _sample_from(matching_run),
+        typist_name=target.name,
+        target=target,
+        mode="self",
+        phrase=PHRASE,
+        run_duration_ms=_duration_ms(matching_run),
+    )
+    assert verdict.pace == pytest.approx(1.0, abs=0.1)
+    assert verdict.clue == "Right speed, and the rhythm fits"
+
+
+def test_mismatched_rhythm_at_the_right_pace_names_the_rhythm() -> None:
+    target = make_target()
+    off_run = _run(hold_ms=400.0, gap_ms=900.0)
+    # Deliberately NOT a proportional speed-up of the whole line (that
+    # would also move pace out of the "right speed" band) -- just a
+    # much bigger hold/gap that still starts and ends close to the
+    # target's own usual duration, isolating "rhythm is off" from
+    # "pace is off".
+    usual = usual_duration_ms(target)
+    verdict = judge(
+        _sample_from(off_run),
+        typist_name="Mallory",
+        target=target,
+        mode="attack",
+        phrase=PHRASE,
+        run_duration_ms=usual,
+    )
+    assert verdict.pace == pytest.approx(1.0, abs=0.01)
+    assert verdict.clue == "Right speed, wrong rhythm"
+
+
+def test_a_much_faster_run_names_the_pace() -> None:
+    target = make_target()
+    fast_run = _run(hold_ms=20.0, gap_ms=30.0)
+    verdict = judge(
+        _sample_from(fast_run),
+        typist_name="Mallory",
+        target=target,
+        mode="attack",
+        phrase=PHRASE,
+        run_duration_ms=_duration_ms(fast_run),
+    )
+    assert verdict.pace is not None
+    assert verdict.pace < 0.85
+    assert verdict.clue == "Too fast, and the rhythm is off too"
+
+
+def test_clue_never_claims_everything_fits_when_the_rhythm_is_off() -> None:
+    # The one invariant PARTY_LAUNCH_PLAN.md section 8 names
+    # explicitly: a clue must never say the rhythm fits when the
+    # distance that produced it didn't. Swept across a range of
+    # paces and rhythms rather than one example, since _clue() is a
+    # pure function of (distance, threshold, pace).
+    for pace in (0.5, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5):
+        clue = _clue(distance=2.0, threshold=1.0, pace=pace)
+        assert "fits" not in clue, (pace, clue)

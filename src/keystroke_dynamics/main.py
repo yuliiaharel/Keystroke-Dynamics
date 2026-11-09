@@ -9,6 +9,8 @@ responsible for actually configuring the server to run exactly one
 worker process -- this is just why that constraint exists.
 """
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,8 +20,31 @@ from starlette.middleware.sessions import SessionMiddleware
 from keystroke_dynamics.api import game, pages
 from keystroke_dynamics.api.middleware import MaxBodySizeMiddleware
 from keystroke_dynamics.config import settings
+from keystroke_dynamics.scores.retention import retention_task
+from keystroke_dynamics.scores.writer import score_writer
 
-app = FastAPI(title="Keystroke Dynamics")
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
+    # Both are constructed unconditionally (scores/writer.py,
+    # scores/retention.py) and touch no database until started --
+    # only actually run when score collection is configured at all
+    # (PARTY_LAUNCH_PLAN.md section 10: off by default, the game
+    # works normally either way). .stop() makes a best-effort flush;
+    # a crash (or SIGKILL, which skips this entirely) can still lose
+    # queued rows, per the plan's own allowance.
+    if settings.scores_database_url:
+        score_writer.start()
+        retention_task.start()
+    try:
+        yield
+    finally:
+        if settings.scores_database_url:
+            score_writer.stop()
+            retention_task.stop()
+
+
+app = FastAPI(title="Keystroke Dynamics", lifespan=_lifespan)
 
 # No CORS middleware: the app is same-origin only (see
 # api/security.py:require_matching_origin for the explicit Origin

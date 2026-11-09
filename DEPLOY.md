@@ -11,138 +11,277 @@ yourself, with your own DigitalOcean account.
 
 ## Expected cost
 
-**$5.00/month**, billed by the second. That's the whole bill: one
+**$5.00/month** for the app itself, billed by the second: one
 `apps-s-1vcpu-0.5gb` instance (1 shared vCPU, 512 MiB, the current
-smallest paid App Platform tier), no database, no add-ons. Confirmed
-against DigitalOcean's own pricing page as of this writing -- re-check
+smallest paid App Platform tier), plus a few seconds of pre-deploy
+job runtime per deploy (negligible). Confirmed against DigitalOcean's
+own pricing page as of this writing -- re-check
 <https://docs.digitalocean.com/products/app-platform/details/pricing/>
 before deploying, since prices can change.
 
+**+$0/month if you skip score collection** (`SCORES_DATABASE_URL`
+unset -- see "Score database setup" below); **+$0/month on Neon's
+free tier** if you turn it on, as long as usage stays inside that
+tier's limits.
+
+## Why the control panel, not `doctl`, for creating the app and its secrets
+
+Everything below that creates the app, connects GitHub, or sets a
+`SECRET`-type value (`SESSION_SECRET`, `SCORES_DATABASE_URL`) uses the
+DigitalOcean **control panel**, not `doctl`. This isn't a style
+preference:
+
+- DigitalOcean's own app-spec reference documents that a `SECRET`-type
+  env's value is encrypted on first submission, and "on following
+  submissions, the encrypted value should be used" -- implying, but
+  never actually stating, what happens if a later submission omits
+  it.
+- In practice, deploying this exact app, resubmitting the live spec
+  with that encrypted value copied back in unmodified (exactly what
+  the docs describe doing) **did not reliably work**: `doctl apps
+  update` submissions that included it produced a running container
+  with an empty `SESSION_SECRET` anyway, auto-rolled-back by
+  DigitalOcean after failing health checks. Nothing in DigitalOcean's
+  documentation (the app-spec reference, `doctl apps update`'s own
+  reference page, or the control panel's spec-editor how-to) confirms
+  the CLI/spec-resubmission flow is safe for this, so this guide
+  doesn't recommend it.
+- What did reliably work, confirmed live on this app: `doctl apps
+  create-deployment <app-id>` for a plain redeploy with no spec
+  involved at all, and editing a secret's value directly in the
+  control panel's own Environment Variables UI (a targeted field
+  edit, never a full-spec resubmission).
+
+`doctl` is still useful, and used below, for things that don't touch
+secrets: validating the spec file's shape locally
+(`apps spec validate --schema-only`, no account needed) and
+redeploying with `create-deployment`.
+
 ## One-time setup
 
-1. Install `doctl`, the DigitalOcean CLI (skip if you already have it):
+1. [Create a personal access token](https://docs.digitalocean.com/reference/api/create-personal-access-token/)
+   in the DigitalOcean control panel, with read/write access -- needed
+   for `doctl auth init` below, and for the rollback API call later in
+   this doc.
+
+2. Install `doctl`, the DigitalOcean CLI (skip if you already have it):
 
    ```bash
    brew install doctl          # macOS
    # or see https://docs.digitalocean.com/reference/doctl/how-to/install/
    ```
 
-2. [Create a personal access token](https://docs.digitalocean.com/reference/api/create-personal-access-token/)
-   in the DigitalOcean control panel, with read/write access.
-
-3. Authenticate `doctl` with it:
+3. Authenticate `doctl` with the token from step 1:
 
    ```bash
    doctl auth init
    ```
 
-4. The app deploys from this GitHub repo on push to `master`
-   (`.do/app.yaml`'s `github.deploy_on_push: true`). The first time you
-   create an app from a GitHub repo, DigitalOcean asks to install its
-   GitHub App on your account/repo -- the control panel flow (step 5)
-   walks you through this; there's no way to pre-authorize it from the
-   CLI alone.
+4. Validate the committed spec's shape before using it as a
+   reference (no account needed for this one):
 
-## First deploy (two steps, because of a chicken-and-egg problem)
+   ```bash
+   doctl apps spec validate .do/app.yaml --schema-only
+   ```
+
+## First deploy
 
 `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL` must be this app's own live URL,
 but DigitalOcean doesn't assign that URL (`<something>.ondigitalocean.app`)
-until the app exists. So:
+until the app exists -- so the committed `.do/app.yaml` already has
+this app's *real*, already-assigned URL in it (see "What's already
+deployed" below). If you're standing this app up fresh under your own
+account instead, the two-step bootstrap this section used to describe
+still applies: create the app with those two values temporarily set to
+`https://REPLACE_ME.ondigitalocean.app` (`config.py`'s own startup
+check refuses to start with that placeholder left in -- expected,
+until you've done step 4 below), note the real URL DigitalOcean
+assigns, then come back and set the real values the same way you'd
+change any other app-level environment variable.
 
-### Step 1: create the app with placeholder URLs
+1. In the control panel, **Create** → **Apps** → **GitHub** as the
+   source → select this repo and the `master` branch → leave
+   **Autodeploy** checked (matches `.do/app.yaml`'s own
+   `deploy_on_push: true`). The first time you connect a repo,
+   DigitalOcean asks to install its GitHub App on your account/repo
+   -- follow that prompt.
 
-```bash
-doctl apps create --spec .do/app.yaml
-```
+2. On the resource-settings screen, use `.do/app.yaml`'s own values
+   for anything the wizard doesn't already detect correctly from the
+   Dockerfile: instance size `apps-s-1vcpu-0.5gb`, HTTP port `8000`,
+   health check path `/health`.
 
-This prompts you to authorize GitHub access (if you haven't already) and
-to enter a value for `SESSION_SECRET` (the one env var marked `type:
-SECRET` with no value in the file -- never put a real secret in the
-committed file). Generate one with:
+3. Add the **app-level environment variables** from `.do/app.yaml`:
+   `DEBUG=false`, `ENABLE_ACCOUNTS=false`, `ALLOWED_ORIGIN` and
+   `PUBLIC_BASE_URL` (the real URL if you already know it, or the
+   `REPLACE_ME` placeholder for a brand-new app), and `SESSION_SECRET`
+   -- mark this one **Encrypted** in the UI and generate a real value:
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-```
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
 
-The app will build and deploy, but **will crash-loop** -- `config.py`'s
-own startup check refuses to start with `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL`
-still pointing at the placeholder `REPLACE_ME.ondigitalocean.app`. That's
-expected. Note the app's ID from the command's output (or `doctl apps
-list`).
+   Leave `SCORES_DATABASE_URL` out entirely for now if you haven't
+   done "Score database setup" yet -- score collection stays off
+   until it's set, and the game works normally either way.
 
-### Step 2: set the real URL and redeploy
+4. Click **Create App**. For a brand-new app, once it's live, copy
+   its assigned `https://<something>.ondigitalocean.app` URL (control
+   panel: the app's overview page, under its name) and update
+   `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` to that real value the same way
+   (Settings → the `web` component → Environment Variables → edit
+   each one in place), which triggers a redeploy. Confirm:
 
-```bash
-doctl apps list --format ID,DefaultIngress
-```
+   ```bash
+   curl https://<your-app>.ondigitalocean.app/health
+   ```
 
-Copy the `DefaultIngress` value (`https://typing-twin-party-xxxxx.ondigitalocean.app`).
+5. Once it's healthy, update the **committed** `.do/app.yaml` to match
+   (the two real URL values -- never a `SECRET`-type line, which must
+   stay valueless in the repo) and open a normal PR, so the repo and
+   the live app agree. This is safe to commit: the hostname isn't a
+   secret, just specific to your deployment.
 
-**Don't submit `.do/app.yaml` directly with `apps update` here** --
-that file deliberately has no value for `SESSION_SECRET` (see step 1),
-and `apps update` takes the submitted spec as the complete, authoritative
-state: a `SECRET`-type env with no value **clears** the one DigitalOcean
-already encrypted and stored, rather than leaving it alone. (Learned
-this the hard way: the app crash-looped again, this time on a missing
-`SESSION_SECRET` it had already been given.) Every update after the
-first has to start from the *live* spec instead:
+### What's already deployed
+
+The committed `.do/app.yaml` already has this app's real, live URL
+(`https://typing-twin-party-t9ilf.ondigitalocean.app`) -- the
+bootstrap above already happened once; you'd only repeat it standing
+up a separate instance of this app under a different account.
+
+## Updating a secret without erasing it
+
+Whenever `SESSION_SECRET` or `SCORES_DATABASE_URL` needs a new value
+-- rotating one, or turning score collection on or off by setting or
+clearing `SCORES_DATABASE_URL` -- edit it directly in the control
+panel: the app → Settings → the `web` component (or the
+`scores-migration` job, for its own copy of `SCORES_DATABASE_URL`) →
+Environment Variables → edit that one entry in place. This is the
+*only* path this guide recommends for a secret -- see "Why the control
+panel, not `doctl`" above for why a submitted spec (via `doctl` or the
+control panel's own raw spec editor) isn't. Saving triggers a redeploy
+on its own; if it doesn't, `doctl apps create-deployment <app-id>`
+redeploys the already-stored spec with no spec file involved at all.
+
+A fresh `SESSION_SECRET` is fine to use if you ever need to -- it only
+invalidates existing sessions, and in party mode a session is just
+which party a browser belongs to, nothing worth preserving across a
+redeploy.
+
+**Every other change** -- a new domain, a different instance size,
+anything that isn't a secret's value -- fetch the live spec first,
+edit that, submit that; never submit the repo's `.do/app.yaml`
+straight to `apps update` once the app exists with secrets already
+set (it has no value for either `SECRET`-type env, and `apps update`
+treats a submitted spec as the complete, authoritative state):
 
 ```bash
 doctl apps spec get <app-id> --show > /tmp/live-spec.yaml
-```
-
-Edit `/tmp/live-spec.yaml` (not the repo's file), replacing both
-`REPLACE_ME.ondigitalocean.app` placeholders with the real hostname.
-Leave the `SESSION_SECRET` entry's `value: EV[1:...]` exactly as it
-is. Then:
-
-```bash
+# edit /tmp/live-spec.yaml -- never the SESSION_SECRET/SCORES_DATABASE_URL
+# lines' values, which arrive here already as EV[1:...] -- leave those alone
 doctl apps update <app-id> --spec /tmp/live-spec.yaml
 ```
 
-The app redeploys and should come up healthy this time (give it a
-minute or two -- check with `doctl apps list-deployments <app-id>`).
-Confirm:
+## Score database setup
+
+Optional (`PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
+to keep score collection off -- leave `SCORES_DATABASE_URL` unset on
+both the `web` service and the `scores-migration` job, and the game
+works exactly as it does today, with no opt-in shown.
+
+### Create the Neon project and three roles
+
+1. [Create a Neon project](https://neon.com/docs/manage/projects)
+   (free tier). Note the database name Neon creates by default.
+
+2. Neon's default role already exists; you need two more. In the
+   Neon console (**Postgres database → Roles → Add role**) or via SQL
+   from the console's own SQL Editor, create:
+   - a **migration** role -- owns/creates the table, so needs to be
+     either the database owner or granted `CREATE` on the schema
+   - an **app** role -- the one `SCORES_DATABASE_URL` on the `web`
+     service actually uses
+   - a **read-only** role -- for `evaluation/analyze_scores.py`, run
+     by hand, never by the app
+
+   Neon generates each role's password; **Connect** in the console
+   gives you the full `postgresql://role:password@.../dbname`
+   connection string for a given role + database.
+
+3. After the migration role has run the first deploy's pre-deploy
+   job at least once (so `score_attempts` exists), grant the app
+   role exactly what `PARTY_LAUNCH_PLAN.md` section 10 specifies --
+   insert and delete, nothing else, confirmed against a real Postgres
+   role by `tests/scores/test_db_role.py` (including the one
+   non-obvious wrinkle: a `DELETE ... WHERE` needs `SELECT` on the
+   columns the `WHERE` references, since Postgres has to evaluate the
+   filter -- this app's own deletes filter only by `party_id`,
+   `typist_id`, `target_id`, and `created_on`, so that's exactly what
+   gets granted, nothing else):
+
+   ```sql
+   GRANT CONNECT ON DATABASE <dbname> TO <app_role>;
+   GRANT USAGE ON SCHEMA public TO <app_role>;
+   GRANT INSERT, DELETE ON score_attempts TO <app_role>;
+   GRANT SELECT (party_id, typist_id, target_id, created_on)
+     ON score_attempts TO <app_role>;
+   ```
+
+   And for the read-only role:
+
+   ```sql
+   GRANT CONNECT ON DATABASE <dbname> TO <readonly_role>;
+   GRANT USAGE ON SCHEMA public TO <readonly_role>;
+   GRANT SELECT ON score_attempts TO <readonly_role>;
+   ```
+
+### Wire it into the app
+
+4. On the `web` service, set `SCORES_DATABASE_URL` (Settings → the
+   `web` component → Environment Variables → **Encrypted**) to the
+   **app** role's connection string.
+
+5. On the `scores-migration` job (Settings → the `scores-migration`
+   component → Environment Variables → **Encrypted**), set its own
+   `SCORES_DATABASE_URL` to the **migration** role's connection
+   string -- a different value from the `web` service's, and never
+   the app role's, which lacks the privileges to create or alter a
+   table at all.
+
+6. Save either one (or push a commit) to trigger a deploy. The
+   pre-deploy job runs `alembic -c alembic_scores.ini upgrade head`
+   against the migration role's connection before the `web` service
+   redeploys; confirm it ran with no errors in that job's own logs
+   (`doctl apps logs <app-id> scores-migration --type run`, or the
+   control panel's Activity tab for that deployment).
+
+7. Confirm collection is actually on: open the live site and check
+   that the opt-in checkbox appears when adding a player (it's
+   PartyView's own `scores_enabled` field driving this -- see
+   `GET /api/game/party` in a browser's own network tab for the raw
+   response if you want to check it directly instead).
+
+### Running the analysis
+
+`evaluation/analyze_scores.py` is run by hand, from your own machine,
+with the **read-only** role's connection string -- never from the app,
+and never with the app role's (which can't `SELECT` anything useful
+anyway):
 
 ```bash
-curl https://<your-app>.ondigitalocean.app/health
+uv run python -m evaluation.analyze_scores "<read-only connection string>"
 ```
 
-Once it's healthy, update the **committed** `.do/app.yaml` to match
-(the two real URL values -- never the `SESSION_SECRET` line, which
-must stay valueless in the repo) and open a normal PR, so the repo and
-the live app agree. This is safe to commit: the hostname isn't a
-secret, just specific to your deployment.
+See `evaluation/README.md` for what it prints and its own caveats.
 
-**Every future change via `apps update`** -- a new domain, a different
-instance size, anything -- follows this same pattern: fetch the live
-spec with `--show`, edit that, submit that. Never submit the repo's
-`.do/app.yaml` straight to `apps update` once the app exists with a
-secret already set.
+### Turning score collection off again
 
-**What actually happened deploying this app, for when it happens
-again:** copying the `EV[1:...]` value back in (as above) did *not*
-reliably work -- several `apps update` submissions that included it
-unmodified still produced a running container with an empty
-`SESSION_SECRET`, each time auto-rolled-back by DigitalOcean after
-failing health checks. The control panel's own "Undeployed changes:
-your live deployment and app spec are out of sync" warning is a
-symptom of this -- the *proposed* spec (what you're editing) and the
-*active* one (what's actually running, after being auto-rolled-back)
-had drifted apart. What worked:
-
-1. **For a plain redeploy with no config change**: `doctl apps
-   create-deployment <app-id>` -- re-deploys the already-stored spec
-   as-is, no spec file involved at all, so there's nothing to corrupt.
-2. **For an actual `SESSION_SECRET` problem**: edit it directly in the
-   control panel (Settings → the `web` component → Environment
-   Variables) rather than through any CLI spec file, then
-   `create-deployment` if saving doesn't trigger one itself. Typing a
-   fresh value in directly sidesteps whatever the CLI round-trip
-   issue was. A fresh secret is fine to use -- it only invalidates
-   existing sessions, and in party mode a session is just which party
-   a browser belongs to, nothing worth preserving across a
-   redeploy.
+Clear `SCORES_DATABASE_URL` on the `web` service (control panel,
+same place you set it) and save. The game goes back to working with
+no opt-in shown, same as before this section. The `scores-migration`
+job's own `SCORES_DATABASE_URL` can stay set either way -- it only
+ever runs `upgrade head`, which is a no-op once the table already
+exists, and skips cleanly if it's ever unset instead.
 
 ## Keeping CI in the loop
 
@@ -209,8 +348,9 @@ yet** -- the steps below haven't been run. The live app is currently
 still on its `*.ondigitalocean.app` domain. To switch:
 
 1. Fetch the *live* spec -- **not** the repo's `.do/app.yaml` directly
-   (see the warning in "First deploy" step 2: submitting it straight
-   to `apps update` clears the already-encrypted `SESSION_SECRET`):
+   (see "Updating a secret without erasing it" above: the repo's own
+   file has no value for either `SECRET`-type env, and submitting it
+   straight to `apps update` would clear them):
 
    ```bash
    doctl apps spec get <app-id> --show > /tmp/live-spec.yaml
@@ -234,12 +374,14 @@ still on its `*.ondigitalocean.app` domain. To switch:
    set as `PRIMARY` above). Skipping this means the Origin check
    (`api/security.py`) rejects every request from the new domain, and
    link previews keep pointing at the old `.ondigitalocean.app` one.
-   Leave `SESSION_SECRET`'s `value: EV[1:...]` untouched.
+   Leave `SESSION_SECRET`'s and `SCORES_DATABASE_URL`'s `value:
+   EV[1:...]` lines untouched -- both arrive in the fetched spec
+   already encrypted; this edit never needs to touch either.
 
 4. `doctl apps update <app-id> --spec /tmp/live-spec.yaml`, then once
    it's healthy, update the **committed** `.do/app.yaml` to match (the
-   `domains:` block and the two URL values, never `SESSION_SECRET`)
-   and open a normal PR.
+   `domains:` block and the two URL values, never a `SECRET`-type
+   line) and open a normal PR.
 
 5. At your domain registrar/DNS provider for `typingtwin.com`, add:
 
@@ -268,17 +410,20 @@ still on its `*.ondigitalocean.app` domain. To switch:
 Same live-spec pattern as above (steps 1-4): fetch the live spec,
 remove the `domains:` block (or set its `type` back to `DEFAULT`), set
 `ALLOWED_ORIGIN`/`PUBLIC_BASE_URL` back to the `ondigitalocean.app`
-URL, leave `SESSION_SECRET` untouched, then `apps update` with that
-edited file -- never the repo's `.do/app.yaml` directly.
+URL, leave both `SECRET`-type envs untouched, then `apps update` with
+that edited file -- never the repo's `.do/app.yaml` directly.
 
 ## Verifying a deploy without spending anything
 
-Everything above costs money the moment `doctl apps create` runs. To
-check the app itself behaves correctly first, run it locally the same
-way it'll run in production -- see the Part 1/Part 2 verification this
-plan already did: a container built from the same `Dockerfile`, capped
-at 512 MiB, `DEBUG=false`, `ENABLE_ACCOUNTS=false`, real-looking
+Everything above costs money the moment the app is actually created.
+To check the app itself behaves correctly first, run it locally the
+same way it'll run in production -- see the Part 1/Part 2 verification
+this plan already did: a container built from the same `Dockerfile`,
+capped at 512 MiB, `DEBUG=false`, `ENABLE_ACCOUNTS=false`, real-looking
 `SESSION_SECRET`/`ALLOWED_ORIGIN`/`PUBLIC_BASE_URL`, and a local HTTPS
 reverse proxy in front (so `X-Forwarded-Proto`/`X-Forwarded-For` are
-real, not just asserted) -- that's exactly what was verified by hand for
-this plan's own Done-when checks, with no DigitalOcean account involved.
+real, not just asserted) -- run it once with `SCORES_DATABASE_URL`
+unset and once with it pointed at a real (even a free local or Neon)
+Postgres, since Part 2's own Done-when requires a full game to work
+both ways. That's exactly what was verified by hand for this plan's
+own Done-when checks, with no DigitalOcean account involved.

@@ -9,21 +9,22 @@ Launch the party game at a public URL that people can open from LinkedIn and Git
 - Players are anonymous, with no email or password.
 - Several people can play on one keyboard.
 - Visitors can try to pass as me, or as simulated practice targets.
-- The public version runs on one small DigitalOcean App Platform instance with no database.
+- The public version runs on one small DigitalOcean App Platform instance. Game play doesn't depend on a database.
 - The backend scores attempts with the existing `core/` code.
+- Players can opt in to share their scores, so that real results can be analyzed. Key timings are never stored.
 
-Online rooms come after launch. Do not build them now, but don't make choices that block them.
+Online rooms, the touch version, and aggregate APIs come after launch. Do not build them now, but don't make choices that block them.
 
 ## How to use this plan
 
 1. Save this file in the repository root as `PARTY_LAUNCH_PLAN.md`.
-2. Save the approved mockup as `design/typing-twin-party.html`.
+2. Save the approved mockups as `design/typing-twin-party.html` and `design/typing-twin-touch.html`.
 3. Commit or stash any unfinished backend hookup work, so it can't be lost.
 4. Run each part in a new Claude Code session using its prompt, and review the result before continuing.
 
 ## Rules for Claude Code
 
-1. Read this file, `README.md`, `TODO.md`, and `design/typing-twin-party.html` first.
+1. Read this file, `README.md`, `TODO.md`, and `design/typing-twin-party.html` first. Use `design/typing-twin-touch.html` only where this plan points to it.
 2. Do only the requested part. Do not start the next one.
 3. Work on the `party-launch` branch. Make small commits. Do not push, merge, deploy, or rewrite history unless the part's prompt says to.
 4. Check `git status`, local branches, and stashes before changing anything. If I have work in progress on the game, build on it. Never discard it. Ask me if it conflicts with this plan.
@@ -37,17 +38,18 @@ Online rooms come after launch. Do not build them now, but don't make choices th
 | Area | Decision |
 |---|---|
 | Hosting | One DigitalOcean App Platform instance, 1 vCPU and 512 MiB, built from the Dockerfile |
-| Database | None in public mode. The app must start and play without Postgres |
+| Database | Optional, and used only for opted-in scores. Without it or during an outage, the game still works |
 | Game state | In memory, with a time limit, and allowed to disappear on restart |
 | Identity | A signed session cookie. Generated names by default, with optional renaming |
 | Raw keystrokes | Processed during a request, then discarded. Never stored or logged |
+| Score storage | One append-only Postgres table on Neon's free tier, written in the background, for opted-in players only |
 | Accounts code | Kept in the repository and tested, but switched off in public mode |
 | Scoring | The existing `core/` code, with no second implementation in the browser |
 | Sharing | No public directory or global leaderboard |
 
 ### Out of scope for now
 
-Do not add online rooms, server-sent events, Redis, a public lobby, a global leaderboard, analytics, or new cloud services.
+Do not add online rooms, server-sent events, Redis, a public lobby, a global leaderboard, web analytics or tracking, public score APIs, or cloud services other than DigitalOcean and Neon.
 
 ---
 
@@ -60,7 +62,7 @@ Add an `enable_accounts` setting, defaulting to `false`.
 When it is `false`:
 
 - Do not mount the registration, login, or profile routes, or the old account pages.
-- Do not create a database connection, and do not require `DATABASE_URL`.
+- Do not create a connection for the accounts database, and do not require `DATABASE_URL`.
 - Serve the game at `/`.
 
 When it is `true`, the existing account features and their tests must keep working. CI must cover both modes. Set `enable_accounts=true` in the Compose and test configurations that use Postgres.
@@ -148,6 +150,7 @@ Port the mockup to the existing TypeScript and Jinja setup:
 - Self-host the fonts and remove third-party requests. Add a strict Content Security Policy with no inline scripts.
 - Show the page right away, even if a request is slow, and show a clear message if the app restarted and the party is gone.
 - Add a visible **Delete me** action for each player, and keep **New party**.
+- On each result, show pace as a separate measure, and a one-line clue like "Right speed, wrong rhythm", following `design/typing-twin-touch.html`. Make the clue name the actual giveaway, and never say everything fits on a failed attempt.
 - On phones, show "Best on a computer", and let visitors explore the sample targets, signatures, and replay without typing.
 
 Replace the privacy text. It must say, in plain language:
@@ -155,15 +158,81 @@ Replace the privacy text. It must say, in plain language:
 - Key timing and key identity for the game line are sent to the server for scoring.
 - Raw timings are discarded after scoring. The server keeps a player's timing statistics in memory until they delete themselves, or the party expires or the app restarts.
 - Everyone playing in the same party can see names and signatures.
-- Nothing is written to a database, and typed text outside the game line isn't accepted.
+- Typed text outside the game line isn't accepted.
+- Sharing scores is optional, and exactly what it stores is described in section 10.
 
 ### 9. Link previews and metadata
 
 Add a page title, description, Open Graph and Twitter tags, and a 1200 x 630 preview image of signature rings. Generate the image from sample data, and label nothing in it as a real person's signature. Use absolute URLs from a new `public_base_url` setting.
 
+### 10. Opt-in score collection
+
+Add a separate setting, `scores_database_url`. If it's empty, collection is off, and the game works normally without showing the opt-in.
+
+**Consent**
+
+- When a player is created, and for a Guest before their first attack, show an unchecked option: "Share my scores to help test this". Explain in one or two lines what is stored. Don't make it a condition of playing, and never pre-check it.
+- Store an attempt only if the typist opted in, and the target opted in or is simulated or permanent. A score reflects both people.
+- Record a `consent_version` on each row, and change it if the wording changes materially.
+
+**Table: `score_attempts`**
+
+| Column | Notes |
+|---|---|
+| `id` | Random UUID |
+| `created_on` | Date only, no time |
+| `scoring_version` | Set in code, and changed whenever scoring or game settings change |
+| `consent_version` | The wording the player agreed to |
+| `device_type` | `keyboard` or `touch`, from how the attempt was captured |
+| `line_id` | Which game line |
+| `mode` | `attack`, `self`, `disguise`, or `replay` |
+| `target_kind` | `player`, `simulated`, or `permanent` |
+| `party_id` | Random ID created only for this table |
+| `typist_id` | Random ID created only for this table |
+| `target_id` | Random ID created only for this table |
+| `training_lines` | Number of lines in the target's profile |
+| `compared_features` | Number of measurements compared |
+| `rhythm`, `place`, `total` | Scores, nullable for a rejected or unusable attempt |
+| `limit_value` | The limit in effect |
+| `pace` | Attempt time compared with the target's usual time |
+| `outcome` | `pass`, `fail`, or `unusable` |
+
+These IDs must not be derived from, or stored with, a session, cookie, name, or game ID. Never store a name, IP address, user agent, key timing, key identity, or profile statistics. Add a test that fails if a column outside this list is added.
+
+**Writing**
+
+- Queue rows in a bounded in-memory queue, default 1,000, with a background writer that writes in batches using short timeouts.
+- Never let a request wait on the database. If the database is slow, down, asleep, or full, drop rows when the queue is full, and record only a count in logs.
+- Try to flush on shutdown, and accept that a crash can lose queued rows.
+- Keep memory within the 512 MiB instance limit.
+
+**Deleting**
+
+- **Delete me** and **New party** remove that player's or party's stored rows, using the in-memory mapping to the random IDs. Removing them must also remove rows queued for writing.
+- When a party expires, discard that mapping. Stored rows then can't be connected to a person through this app, and the privacy text must say so plainly: after a party ends, individual rows can no longer be deleted on request.
+- Delete rows older than a configurable retention period, default 12 months, with a daily background task.
+
+**Access and analysis**
+
+- There are no public or authenticated score endpoints in this launch. The app's database user may only insert and delete rows in this table.
+- Add `evaluation/analyze_scores.py`, which I run with a read-only connection string to print:
+  - false rejections and false acceptances across a range of limits, within one `scoring_version`
+  - those rates by `device_type` and by pace bucket, including attacks within 0.85x to 1.15x
+  - Rhythm compared with Place
+  - attempts per player and per party, and flags for suspicious bursts
+  - results as tables, hiding any group with fewer than 5 attempts
+- The output must note that `mode` and identities are self-reported, and that real and scripted attempts can't be fully separated. Never describe these numbers as benchmark accuracy.
+
 **Done when**
 
-- With no `DATABASE_URL`, the app starts and a full game can be played.
+- With no `DATABASE_URL` or `scores_database_url`, the app starts and a full game can be played.
+- With `scores_database_url` set, a real Postgres test confirms that:
+  - opted-in attempts are stored with only the listed columns
+  - an attempt isn't stored if either the typist or a human target didn't opt in
+  - **Delete me** and **New party** remove stored and queued rows
+  - retention deletes old rows, and the app's database user can't read other tables or update rows
+  - a stopped, slow, or unavailable database doesn't delay requests or break a game
+  - `evaluation/analyze_scores.py` produces correct results on known test data
 - Python and frontend tests, `ruff`, `mypy`, and Playwright all pass.
 - Playwright plays a full one-keyboard game: two players, an attack, a replay, a rename, a deletion, and the scores page.
 - Tests confirm that:
@@ -191,7 +260,8 @@ Read PARTY_LAUNCH_PLAN.md and carry out Part 1 only. Check my current branches, 
    - the current 1 vCPU, 512 MiB instance size, one instance
    - `http_port: 8000`, and a health check on `/health`
    - `DEBUG=false`, `ENABLE_ACCOUNTS=false`, `ALLOWED_ORIGIN`, and `PUBLIC_BASE_URL`
-   - `SESSION_SECRET` declared as an encrypted secret with no value in the file
+   - `SESSION_SECRET` and `SCORES_DATABASE_URL` declared as encrypted secrets with no values in the file
+   - a pre-deploy step that runs only the score table migrations, if the platform supports it, with a separate database role for migrations
 2. Check the current spec format, instance slug, and region names against DigitalOcean's documentation. Validate the file with `doctl apps spec validate` if `doctl` is available, otherwise tell me it wasn't validated.
 3. Configure Uvicorn for a single worker, and for correct HTTPS and client IP handling behind the platform proxy. Secure cookies and the `Origin` check must work on the live HTTPS URL.
 4. Make sure the app fails at startup if `SESSION_SECRET` is missing, or if `ALLOWED_ORIGIN` or `PUBLIC_BASE_URL` are missing outside debug.
@@ -204,7 +274,7 @@ Never commit real secrets.
 **Done when**
 
 - A production-like container runs locally with `DEBUG=false`, no database, and a 512 MiB limit.
-- A full game works against that container with HTTPS forwarding headers simulated.
+- A full game works against that container with HTTPS forwarding headers simulated, both with score collection on and with it off.
 - All Part 1 checks still pass.
 - `DEPLOY.md` is clear enough for me to follow without additional help.
 
@@ -220,10 +290,11 @@ Read PARTY_LAUNCH_PLAN.md and carry out Part 2 only. Do not create a DigitalOcea
 
 1. Review the `party-launch` branch, then merge it to `master`.
 2. Create a DigitalOcean account and connect the GitHub repository.
-3. Create the app from `.do/app.yaml`, using a long random `SESSION_SECRET`.
-4. After the first deploy, set `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL` to the live URL, and redeploy.
-5. Optional: add a custom domain, then update those two settings again.
-6. Record my signature locally, commit the file, and let it deploy. Use a line I don't use for anything else, like a password.
+3. Create a Neon project, plus separate database roles for migrations, the app, and my read-only analysis, following `DEPLOY.md`.
+4. Create the app from `.do/app.yaml`, using a long random `SESSION_SECRET` and the app role's `SCORES_DATABASE_URL`.
+5. After the first deploy, set `ALLOWED_ORIGIN` and `PUBLIC_BASE_URL` to the live URL, and redeploy.
+6. Optional: add a custom domain, then update those two settings again.
+7. Record my signature locally, commit the file, and let it deploy. Use a line I don't use for anything else, like a password.
 
 ---
 
@@ -239,6 +310,9 @@ Check all of this on the live URL, in a private window:
 - [ ] Cookies are `Secure` and `HttpOnly`
 - [ ] Browser developer tools show no third-party requests and no console errors
 - [ ] The logs contain no keystroke data
+- [ ] An opted-in attempt appears in `score_attempts`, and a non-opted-in attempt doesn't
+- [ ] **Delete me** removes my test rows
+- [ ] With the Neon database paused or unreachable, the game still works
 - [ ] Restarting the app shows the friendly "party is gone" message
 - [ ] The repository's About section and README link to the live site
 - [ ] Friends with different keyboards have played, and the limits feel right
@@ -249,3 +323,5 @@ Check all of this on the live URL, in a private window:
 
 1. Private room links, with results updating on refresh.
 2. Live updates through server-sent events, a shared Scores page, and an expiry notice.
+3. The phone version, with its own touch keyboard, tap positions, and a separate profile for each device type.
+4. Private aggregate APIs protected by a secret token. They are read-only, return aggregates only, and hide very small groups.
