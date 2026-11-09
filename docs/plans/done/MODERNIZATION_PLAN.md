@@ -1,5 +1,40 @@
 # Keystroke Dynamics: Modernization Plan
 
+> **Status: Done.** Merged to `master` on 2026-11-04 in pull request #3.
+>
+> Archived. This plan is history, not instructions, and may no longer match the code.
+
+## Outcome
+
+Written on 2026-11-09 from the repository and git history only. Dates are git commit dates.
+
+**What shipped**
+
+- The Python 2 Flask demo was replaced by a Python 3 app: FastAPI, Jinja2 pages, Postgres through SQLAlchemy 2 and Alembic, and Argon2id passwords.
+- `core/` holds the timing features, running statistics, and scoring, with tests.
+- `evaluation/` holds the benchmark scripts, with results in `evaluation/results.md`.
+- The frontend is a TypeScript capture module built with Vite, with Playwright end-to-end tests.
+- The app runs locally from a Dockerfile and Compose file, and GitHub Actions runs the checks.
+- `legacy/` and the old `readme.txt` are gone.
+
+**Pull requests:** #3 (`modernize`, 37 commits).
+
+**Notable changes from the plan**
+
+- The BioKey 2012 comparison was added to the plan on 2026-11-03, after work had started.
+- A first "Typing Twin" game was added on the same branch on 2026-11-04. The plan doesn't mention it. `docs/plans/done/PARTY_LAUNCH_PLAN.md` later replaced it.
+- Cloud deployment was out of scope here. It was done later under the party launch plan.
+- The account system this plan built is now off by default (`ENABLE_ACCOUNTS=false`).
+
+**Left undone**
+
+- The five open items in `TODO.md`.
+- Everything under "Later ideas".
+- **Uncertain:** the Phase 7 history decision. A commit titled "Stop tracking keystroke.sqlite" exists, but no `.sqlite` path appears anywhere in the reachable history. That suggests the history was rewritten, which the repository alone can't confirm.
+- **Uncertain:** the Phase 0 closeout table and the Phase 7 audit results were reported in conversation, and aren't in the repository.
+
+---
+
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
 ## Goal
@@ -22,8 +57,8 @@ First-time setup, from the repository root:
 git checkout master
 git pull
 git checkout -b modernize
-# Copy this file into the repository root as MODERNIZATION_PLAN.md
-git add MODERNIZATION_PLAN.md
+# Copy this file into the repository as docs/plans/done/MODERNIZATION_PLAN.md
+git add docs/plans/done/MODERNIZATION_PLAN.md
 git commit -m "Add modernization plan"
 ```
 
@@ -126,7 +161,7 @@ Confirm each item with a file and line reference, and report anything else this 
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 0 only. Do not change any files. Report the audit in the conversation and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 0 only. Do not change any files. Report the audit in the conversation and stop.
 ```
 
 ---
@@ -155,7 +190,7 @@ Read MODERNIZATION_PLAN.md and carry out Phase 0 only. Do not change any files. 
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 1 only. Follow the rules for Claude Code, run the Done when checks, show the results, and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 1 only. Follow the rules for Claude Code, run the Done when checks, show the results, and stop.
 ```
 
 ---
@@ -234,7 +269,7 @@ Also implement a correct version of the old 3-sigma rule as `three_sigma_score`,
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 2 only. Write the tests alongside the implementation, run the Done when checks, show the coverage result, and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 2 only. Write the tests alongside the implementation, run the Done when checks, show the coverage result, and stop.
 ```
 
 ---
@@ -343,7 +378,7 @@ Keep the profile fixed during evaluation. Do not apply the thesis's update-after
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 3 only. Report the EER table, the BioKey as-written versus corrected results, and any difference from the published baseline, then stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 3 only. Report the EER table, the BioKey as-written versus corrected results, and any difference from the published baseline, then stop.
 ```
 
 ---
@@ -416,7 +451,7 @@ Use a real Postgres instance in tests and CI, through a Compose or Actions servi
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 4 only. Do not build the frontend yet. Run the Done when checks, list each security requirement with the test that covers it, and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 4 only. Do not build the frontend yet. Run the Done when checks, list each security requirement with the test that covers it, and stop.
 ```
 
 ---
@@ -447,7 +482,7 @@ Read MODERNIZATION_PLAN.md and carry out Phase 4 only. Do not build the frontend
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 5 only. Run the Done when checks, take a screenshot of each main page for review, and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 5 only. Run the Done when checks, take a screenshot of each main page for review, and stop.
 ```
 
 ---
@@ -473,7 +508,7 @@ Read MODERNIZATION_PLAN.md and carry out Phase 5 only. Run the Done when checks,
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 6 only. Test from a clean clone in a temporary directory, run the Done when checks, and stop.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 6 only. Test from a clean clone in a temporary directory, run the Done when checks, and stop.
 ```
 
 ---
@@ -505,7 +540,7 @@ Read MODERNIZATION_PLAN.md and carry out Phase 6 only. Test from a clean clone i
 
 **Prompt**
 ```text
-Read MODERNIZATION_PLAN.md and carry out Phase 7 only. Give me the Phase 0 closeout table, audit results, and ranked review findings. Remind me about the git history decision, and stop. Do not push.
+Read docs/plans/done/MODERNIZATION_PLAN.md and carry out Phase 7 only. Give me the Phase 0 closeout table, audit results, and ranked review findings. Remind me about the git history decision, and stop. Do not push.
 ```
 
 ---
