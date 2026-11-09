@@ -1,6 +1,6 @@
 # Typing Twin: Shareable Rooms Plan
 
-> **Status: Active, not started.** As of 2026-11-09 there is no `rooms` branch. The stats bug this plan says to fix first was merged in pull request #11.
+> **Status: Active, Phase 1 built.** As of 2026-11-09 Phase 1 (rooms in the backend) is on the `rooms` branch, not merged. The frontend still uses the old party paths, which the backend keeps answering until Phase 3. The stats bug this plan says to fix first was merged in pull request #11.
 
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
