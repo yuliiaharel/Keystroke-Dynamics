@@ -8,6 +8,8 @@ import time
 
 import pytest
 
+from keystroke_dynamics.game import store as store_module
+from keystroke_dynamics.game.codes import CODE_ALPHABET, CODE_LENGTH
 from keystroke_dynamics.game.store import (
     Attempt,
     InMemoryGameStore,
@@ -15,6 +17,9 @@ from keystroke_dynamics.game.store import (
     PartyFullError,
     PartyLimitReached,
     Player,
+    RoomLockedError,
+    RoomMembersFullError,
+    RoomNotFoundError,
 )
 
 
@@ -24,6 +29,7 @@ def make_store(**overrides: object) -> InMemoryGameStore:
         "players_per_party_limit": 2,
         "attempts_per_party_limit": 3,
         "idle_expiry_seconds": 60.0,
+        "members_per_party_limit": 3,
     }
     defaults.update(overrides)
     return InMemoryGameStore(**defaults)  # type: ignore[arg-type]
@@ -261,3 +267,247 @@ def test_concurrent_add_attempt_keeps_the_count_capped_and_intact() -> None:
     kept = store.get_party(party.id).attempts  # type: ignore[union-attr]
     assert len(kept) == 5
     assert len({a.id for a in kept}) == 5  # no duplicate/corrupted entries
+
+
+# ---------- rooms: codes, members, host, lock, version ----------
+
+
+def make_owned_player(player_id: str, owner_member_id: str) -> Player:
+    return Player(
+        id=player_id,
+        name=f"Player {player_id}",
+        color=0,
+        profile={},
+        threshold=1.5,
+        notes=[Note(ch="a", start_ms=0.0, dur_ms=80.0)],
+        owner_member_id=owner_member_id,
+    )
+
+
+def test_a_new_room_has_a_code_and_its_creator_as_host_and_only_member() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    assert len(party.code) == CODE_LENGTH
+    assert set(party.code) <= set(CODE_ALPHABET)
+    assert list(party.members) == [party.host_member_id]
+    host = party.members[party.host_member_id]
+    assert host.device_type == "keyboard"
+    assert host.created_at <= host.last_seen
+    assert party.locked is False
+
+
+def test_room_and_member_ids_are_random_and_unrelated_to_the_code() -> None:
+    store = make_store()
+    a = store.create_party("sentence")
+    b = store.create_party("sentence")
+    assert len({a.id, b.id, a.host_member_id, b.host_member_id, a.score_id, b.score_id}) == 6
+    assert a.code not in a.id
+
+
+def test_codes_stay_unique_among_live_rooms_even_when_the_generator_repeats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Forces the clash a 40-bit code would otherwise never produce in a test.
+    draws = iter(["AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "BBBBBBBB"])
+    monkeypatch.setattr(store_module, "generate_code", lambda: next(draws))
+    store = make_store()
+    first = store.create_party("sentence")
+    second = store.create_party("sentence")
+    assert first.code == "AAAAAAAA"
+    assert second.code == "BBBBBBBB"
+
+
+def test_an_ended_rooms_code_can_be_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Uniqueness is among *live* rooms only.
+    monkeypatch.setattr(store_module, "generate_code", lambda: "AAAAAAAA")
+    store = make_store()
+    first = store.create_party("sentence")
+    store.delete_party(first.id)
+    assert store.create_party("sentence").code == "AAAAAAAA"
+
+
+def test_join_adds_a_member_to_the_room_with_that_code() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    joined, member = store.join_party(party.code)
+    assert joined is party
+    assert member.id in party.members
+    assert member.id != party.host_member_id
+    assert member.device_type == "keyboard"
+
+
+def test_join_unknown_code_raises_room_not_found() -> None:
+    store = make_store()
+    with pytest.raises(RoomNotFoundError):
+        store.join_party("ZZZZZZZZ")
+
+
+def test_join_ended_room_raises_room_not_found() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    store.delete_party(party.id)
+    with pytest.raises(RoomNotFoundError):
+        store.join_party(party.code)
+
+
+def test_join_expired_room_raises_room_not_found_and_frees_it() -> None:
+    store = make_store(idle_expiry_seconds=0.01)
+    party = store.create_party("sentence")
+    time.sleep(0.05)
+    with pytest.raises(RoomNotFoundError):
+        store.join_party(party.code)
+    assert store.party_count() == 0
+
+
+def test_join_locked_room_raises_and_adds_nobody() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    assert store.set_locked(party.id, True) is True
+    with pytest.raises(RoomLockedError):
+        store.join_party(party.code)
+    assert len(party.members) == 1
+    store.set_locked(party.id, False)
+    store.join_party(party.code)
+    assert len(party.members) == 2
+
+
+def test_set_locked_on_unknown_room_returns_false() -> None:
+    assert make_store().set_locked("does-not-exist", True) is False
+
+
+def test_member_limit_is_enforced() -> None:
+    store = make_store(members_per_party_limit=2)
+    party = store.create_party("sentence")
+    store.join_party(party.code)
+    with pytest.raises(RoomMembersFullError):
+        store.join_party(party.code)
+    assert len(party.members) == 2
+
+
+def test_concurrent_joins_never_exceed_the_member_limit() -> None:
+    store = make_store(members_per_party_limit=5)
+    party = store.create_party("sentence")
+
+    def join(_: int) -> bool:
+        try:
+            store.join_party(party.code)
+            return True
+        except RoomMembersFullError:
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as pool:
+        results = list(pool.map(join, range(20)))
+
+    assert sum(results) == 4  # the host already holds one of the five places
+    assert len(party.members) == 5
+
+
+def test_remove_member_takes_their_players_and_those_players_attempts() -> None:
+    store = make_store(players_per_party_limit=5)
+    party = store.create_party("sentence")
+    host_id = party.host_member_id
+    _, friend = store.join_party(party.code)
+    store.add_player(party.id, make_owned_player("h1", host_id))
+    store.add_player(party.id, make_owned_player("f1", friend.id))
+    store.add_player(party.id, make_owned_player("f2", friend.id))
+    store.add_attempt(party.id, make_attempt(target_id="h1", typist_id="f1"))
+    store.add_attempt(party.id, make_attempt(target_id="f2", typist_id="h1"))
+    store.add_attempt(party.id, make_attempt(target_id="h1", typist_id=None))
+
+    removal = store.remove_member(party.id, friend.id)
+
+    assert removal is not None
+    assert removal.room_ended is False
+    assert sorted(p.id for p in removal.players) == ["f1", "f2"]
+    assert list(party.players) == ["h1"]
+    assert list(party.members) == [host_id]
+    # Only the Guest attempt on the host's own player is left.
+    assert [(a.typist_id, a.target_id) for a in party.attempts] == [(None, "h1")]
+
+
+def test_removing_the_host_passes_host_to_the_longest_standing_member() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    old_host = party.host_member_id
+    _, second = store.join_party(party.code)
+    time.sleep(0.01)
+    store.join_party(party.code)
+    store.remove_member(party.id, old_host)
+    assert party.host_member_id == second.id
+
+
+def test_removing_the_last_member_ends_the_room() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    store.add_player(party.id, make_owned_player("h1", party.host_member_id))
+    removal = store.remove_member(party.id, party.host_member_id)
+    assert removal is not None
+    assert removal.room_ended is True
+    assert [p.id for p in removal.players] == ["h1"]
+    assert store.get_party(party.id) is None
+    with pytest.raises(RoomNotFoundError):
+        store.join_party(party.code)
+
+
+def test_remove_unknown_member_or_room_returns_none() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    assert store.remove_member(party.id, "nobody") is None
+    assert store.remove_member("does-not-exist", party.host_member_id) is None
+    assert len(party.members) == 1
+
+
+def test_rename_keeps_the_players_owner() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    store.add_player(party.id, make_owned_player("p1", party.host_member_id))
+    store.rename_player(party.id, "p1", "New Name")
+    assert party.players["p1"].owner_member_id == party.host_member_id
+
+
+def test_version_increases_on_every_change() -> None:
+    store = make_store(players_per_party_limit=5)
+    party = store.create_party("sentence")
+    versions = [party.version]
+
+    def expect_bump() -> None:
+        assert party.version == versions[-1] + 1
+        versions.append(party.version)
+
+    _, friend = store.join_party(party.code)
+    expect_bump()
+    store.add_player(party.id, make_owned_player("p1", party.host_member_id))
+    expect_bump()
+    store.rename_player(party.id, "p1", "New Name")
+    expect_bump()
+    store.add_attempt(party.id, make_attempt(target_id="p1", typist_id=None))
+    expect_bump()
+    store.set_locked(party.id, True)
+    expect_bump()
+    store.delete_player(party.id, "p1")
+    expect_bump()
+    store.remove_member(party.id, friend.id)
+    expect_bump()
+
+
+def test_version_does_not_move_when_nothing_changed() -> None:
+    store = make_store()
+    party = store.create_party("sentence")
+    before = party.version
+    store.set_locked(party.id, False)  # already unlocked
+    store.mark_member_seen(party.id, party.host_member_id)
+    store.get_party(party.id)
+    assert party.version == before
+
+
+def test_mark_member_seen_updates_last_seen_but_not_the_idle_clock() -> None:
+    store = make_store(idle_expiry_seconds=0.1)
+    party = store.create_party("sentence")
+    host = party.members[party.host_member_id]
+    first_seen = host.last_seen
+    time.sleep(0.06)
+    store.mark_member_seen(party.id, host.id)
+    assert host.last_seen > first_seen
+    time.sleep(0.06)
+    # Being seen is not activity: the room still expires on schedule.
+    assert store.get_party(party.id) is None
