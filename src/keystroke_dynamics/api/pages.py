@@ -6,7 +6,7 @@ directory configured for the whole app.
 The page itself lives at "/" in public mode (the default -- Party is
 the only thing a visitor sees) and at "/party" when the account
 system is also enabled, so it never collides with account_pages.py's
-own home page at "/" in that mode -- see PARTY_LAUNCH_PLAN.md Part 1
+own home page at "/" in that mode -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1
 sections 1 and 8. In public mode, "/party" (its old path) redirects
 to "/" instead of 404ing.
 """
@@ -28,7 +28,7 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 
 #: No inline *scripts* anywhere -- script-src has no 'unsafe-inline'
 #: or 'unsafe-eval', and every script is self-hosted static/js (see
-#: PARTY_LAUNCH_PLAN.md Part 1 section 8's literal requirement). The
+#: docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 8's literal requirement). The
 #: page's dynamically-colored SVGs/layout tweaks (a player's ring
 #: color, a swatch, an inline gap) use the `style` attribute the way
 #: the approved mockup does, so style-src keeps 'unsafe-inline' --

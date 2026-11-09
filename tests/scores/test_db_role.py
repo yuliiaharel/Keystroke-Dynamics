@@ -2,7 +2,7 @@
 scores_app_role_url, mirroring exactly what DEPLOY.md instructs for
 the real role on Neon): it can insert and delete score_attempts rows
 -- everything the app actually does -- and nothing else at all.
-PARTY_LAUNCH_PLAN.md section 10: "The app's database user may only
+docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: "The app's database user may only
 insert and delete rows in this table."
 
 One real-world wrinkle this grant has to account for: a DELETE with a

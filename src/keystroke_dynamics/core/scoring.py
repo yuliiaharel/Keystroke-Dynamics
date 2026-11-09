@@ -1,6 +1,6 @@
 """Score a typing sample against a stored profile.
 
-Fixes the old app's scoring bugs (see MODERNIZATION_PLAN.md Phase 0):
+Fixes the old app's scoring bugs (see docs/plans/done/MODERNIZATION_PLAN.md Phase 0):
 a feature missing from the profile is skipped, never treated as a
 (0, 0) data point; the denominator is how many features were actually
 compared, not the profile's total size; and there's no ambiguous
@@ -59,7 +59,7 @@ def _effective_std(stats: RunningStats, min_std_ms: float, min_std_ratio: float 
     min_std_ratio * mean is then always 0 and never the max. It exists
     for game/scoring.py, whose much smaller training samples need a
     floor that scales with a feature's own mean, not just a flat
-    millisecond value (see PARTY_LAUNCH_PLAN.md Part 1 section 5).
+    millisecond value (see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5).
     """
     return max(stats.std or 0.0, min_std_ms, min_std_ratio * stats.mean)
 

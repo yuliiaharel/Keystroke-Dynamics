@@ -178,7 +178,7 @@ def test_usual_duration_ms_is_zero_with_no_notes() -> None:
     assert usual_duration_ms(empty) == 0.0
 
 
-# ---------- pace and clue (PARTY_LAUNCH_PLAN.md section 8) ----------
+# ---------- pace and clue (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8) ----------
 
 
 def test_too_messy_has_no_pace_or_clue() -> None:
@@ -261,7 +261,7 @@ def test_a_much_faster_run_names_the_pace() -> None:
 
 
 def test_clue_never_claims_everything_fits_when_the_rhythm_is_off() -> None:
-    # The one invariant PARTY_LAUNCH_PLAN.md section 8 names
+    # The one invariant docs/plans/done/PARTY_LAUNCH_PLAN.md section 8 names
     # explicitly: a clue must never say the rhythm fits when the
     # distance that produced it didn't. Swept across a range of
     # paces and rhythms rather than one example, since _clue() is a

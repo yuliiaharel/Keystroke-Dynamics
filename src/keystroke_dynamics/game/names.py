@@ -1,7 +1,7 @@
 """Generated display names, and validation for custom ones.
 
 Not a moderation system -- a basic, honestly-labeled starting list
-(PARTY_LAUNCH_PLAN.md Part 1 section 3 calls for exactly that: "a
+(docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 3 calls for exactly that: "a
 basic blocked-word list"). Treat NotGoodEnoughForScale as a given, not
 a bug: expanding this list is cheap and expected over time.
 """

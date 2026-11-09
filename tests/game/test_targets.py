@@ -3,7 +3,7 @@ sample bots are deterministic, labeled, and actually scorable; that a
 permanent target round-trips through the committed JSON shape with no
 raw events in it; and that the game works with no permanent target at
 all -- "Before a recording exists, the game must still work without
-it" (PARTY_LAUNCH_PLAN.md Part 1 section 7)."""
+it" (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 7)."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def test_sample_targets_returns_the_three_labeled_bots() -> None:
 
 
 def test_sample_targets_have_a_distinct_stable_score_id() -> None:
-    # Never derived from the game-facing id (PARTY_LAUNCH_PLAN.md
+    # Never derived from the game-facing id (docs/plans/done/PARTY_LAUNCH_PLAN.md
     # section 10), and stable across calls -- sample_targets() is
     # cached, so these are the same objects every time, not a fresh
     # random id per call.
@@ -146,7 +146,7 @@ def test_permanent_target_file_holds_no_raw_events(tmp_path) -> None:
     assert set(raw.keys()) == {"name", "lines"}
     line = raw["lines"]["sentence"]
     # training_line_count is just an int (score_attempts.training_lines,
-    # PARTY_LAUNCH_PLAN.md section 10) -- not a raw event either.
+    # docs/plans/done/PARTY_LAUNCH_PLAN.md section 10) -- not a raw event either.
     assert set(line.keys()) == {"threshold", "profile", "notes", "training_line_count"}
     assert line["training_line_count"] == 5
     for stats in line["profile"].values():

@@ -1,6 +1,6 @@
 /* Typing Twin Party: visual design taken verbatim from the
    approved mockup (design/typing-twin-party.html), per
-   PARTY_LAUNCH_PLAN.md Part 1's rule to keep its look unless told
+   docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1's rule to keep its look unless told
    otherwise. A standalone page (its own <html>, no shared site
    header/nav), so this is :root/body-scoped like the mockup
    itself -- unlike typing-twin.css, which is scoped under a class

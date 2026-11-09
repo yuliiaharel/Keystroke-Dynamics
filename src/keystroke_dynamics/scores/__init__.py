@@ -1,4 +1,4 @@
-"""Opt-in score collection (PARTY_LAUNCH_PLAN.md section 10): a
+"""Opt-in score collection (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10): a
 separate, optional Postgres database for anonymized, consent-gated
 attempt scores, written in the background so no request ever waits on
 it. Entirely independent of db/ (the account system's database) and

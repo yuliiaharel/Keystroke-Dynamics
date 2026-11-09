@@ -8,7 +8,7 @@ one process).
 
 Deliberately behind a narrow Protocol (GameStore) so a later, real
 multi-worker "online rooms" backend (out of scope for this launch --
-see PARTY_LAUNCH_PLAN.md) can be swapped in without changing
+see docs/plans/done/PARTY_LAUNCH_PLAN.md) can be swapped in without changing
 api/game.py.
 
 Player never retains raw training lines or events after enrollment --
@@ -53,7 +53,7 @@ class Player:
     threshold: float
     notes: list[Note]
     created_at: float = field(default_factory=time.monotonic)
-    #: A random id, never derived from `id` -- PARTY_LAUNCH_PLAN.md
+    #: A random id, never derived from `id` -- docs/plans/done/PARTY_LAUNCH_PLAN.md
     #: section 10's own requirement for score_attempts.typist_id/
     #: target_id. Its lifetime is simply this Player object's: once a
     #: player is deleted or their party expires, this value is nowhere
@@ -65,7 +65,7 @@ class Player:
     #: permanent target -- not party-scoped, so there's no Player
     #: object lifetime to ride -- see scores/target_ids.py instead.
     score_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    #: Opted in to PARTY_LAUNCH_PLAN.md section 10's score sharing at
+    #: Opted in to docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's score sharing at
     #: enrollment time. Never pre-checked, never a condition of
     #: playing, and never changeable later in this launch's scope.
     shares_scores: bool = False
@@ -123,7 +123,7 @@ class Party:
     created_at: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
     #: A random id, never derived from `id` -- score_attempts.party_id
-    #: (PARTY_LAUNCH_PLAN.md section 10). Same "rides this object's own
+    #: (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10). Same "rides this object's own
     #: lifetime, no separate mapping to discard" reasoning as
     #: Player.score_id above.
     score_id: str = field(default_factory=lambda: str(uuid.uuid4()))

@@ -89,7 +89,7 @@ _STATE_CHANGING = [Depends(require_matching_origin), Depends(rate_limited(game_r
 # have its own, independent copy, splitting one party across two
 # stores with no way to reconcile them. Multi-worker/multi-instance
 # "online rooms" is explicitly out of scope for this launch (see
-# PARTY_LAUNCH_PLAN.md) and would need a shared backend instead of
+# docs/plans/done/PARTY_LAUNCH_PLAN.md) and would need a shared backend instead of
 # this Protocol's in-memory implementation.
 _store: GameStore = InMemoryGameStore(
     party_limit=settings.game_party_limit,
@@ -208,7 +208,7 @@ def reset_party(
     request.session.pop("party_id", None)
     if settings.scores_database_url:
         # party.score_id, not party.id -- the random id score_attempts
-        # rows actually carry (PARTY_LAUNCH_PLAN.md section 10). Still
+        # rows actually carry (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10). Still
         # readable here: deleting from the store's internal dict
         # doesn't clear this local Party object's own attributes.
         score_writer.enqueue(DeleteByPartyId(party.score_id))
@@ -238,7 +238,7 @@ def create_player(
     notes = median_notes(phrase, runs)
     # Consent is captured once, here, at enrollment -- never
     # re-askable later, and ignored outright when score collection is
-    # off (PARTY_LAUNCH_PLAN.md section 10), same as the checkbox not
+    # off (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10), same as the checkbox not
     # being shown at all in that case.
     shares_scores = bool(settings.scores_database_url) and body.share_scores
     player = Player(
@@ -477,7 +477,7 @@ def create_replay(
 
 
 if settings.debug:
-    # Local-only (PARTY_LAUNCH_PLAN.md Part 1 section 7): this route
+    # Local-only (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 7): this route
     # is never even registered -- not just rejected -- unless
     # settings.debug is true, so it can't exist in a real deployment
     # (debug must be false there; see config.py's own validator).

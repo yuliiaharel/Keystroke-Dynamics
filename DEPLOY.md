@@ -2,7 +2,7 @@
 
 This deploys the app in **public mode** (`ENABLE_ACCOUNTS=false`): Typing
 Twin Party at the app's URL, no database, no account system. See
-[`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the full design and
+[`docs/plans/done/PARTY_LAUNCH_PLAN.md`](docs/plans/done/PARTY_LAUNCH_PLAN.md) for the full design and
 [`.do/app.yaml`](.do/app.yaml) for the exact spec these steps create.
 
 Nothing in this repository creates a DigitalOcean resource, spends money,
@@ -183,7 +183,7 @@ wrong -- not a routine difference.
 
 ### If score collection is on: an opt-in attempt is stored, and Delete me removes it
 
-Matches `PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
+Matches `docs/plans/done/PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
 
 1. On the live site, start a party, add yourself with **Share my
    scores** checked, and make one attack attempt.
@@ -233,7 +233,7 @@ doctl apps update <app-id> --spec /tmp/live-spec.yaml
 
 ## Score database setup
 
-Optional (`PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
+Optional (`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
 to keep score collection off -- leave `SCORES_DATABASE_URL` unset on
 both the `web` service and the `scores-migration` job, and the game
 works exactly as it does today, with no opt-in shown.
@@ -259,7 +259,7 @@ works exactly as it does today, with no opt-in shown.
 
 3. After the migration role has run the first deploy's pre-deploy
    job at least once (so `score_attempts` exists), grant the app
-   role exactly what `PARTY_LAUNCH_PLAN.md` section 10 specifies --
+   role exactly what `docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10 specifies --
    insert and delete, nothing else, confirmed against a real Postgres
    role by `tests/scores/test_db_role.py` (including the one
    non-obvious wrinkle: a `DELETE ... WHERE` needs `SELECT` on the

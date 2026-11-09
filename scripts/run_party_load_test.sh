@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PARTY_LAUNCH_PLAN.md Part 1's Done-when check: "A short load test
+# docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1's Done-when check: "A short load test
 # against a container limited to 512 MiB, with 100 parties at the
 # player limit, stays within memory. Show peak memory."
 #

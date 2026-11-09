@@ -75,7 +75,7 @@ than `http://127.0.0.1:8000`.
 - `src/pages/create-profile.ts`, `src/pages/authenticate.ts` -- the
   account system's two page-specific entry points.
 - `src/pages/party.ts` -- the party game's own entry point (ported from
-  `design/typing-twin-party.html`; see `PARTY_LAUNCH_PLAN.md`).
+  `design/typing-twin-party.html`; see `docs/plans/done/PARTY_LAUNCH_PLAN.md`).
 - `scripts/og-image.html`, `scripts/generate-og-image.mjs` -- generates
   `static/img/party-preview.png` (`npm run og-image`).
 - `e2e/` -- Playwright specs.

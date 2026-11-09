@@ -88,7 +88,7 @@ def test_reports_every_missing_field_at_once() -> None:
     assert "PUBLIC_BASE_URL" in message
 
 
-# ---------- scores_database_url (PARTY_LAUNCH_PLAN.md section 10) ----------
+# ---------- scores_database_url (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10) ----------
 
 
 def test_scores_database_url_defaults_to_off() -> None:

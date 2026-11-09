@@ -6,7 +6,7 @@ Every player-shaped entity in the game -- a real party player
 tuned scoring), a calibrated threshold, and median notes for the
 ring/roll. None of them retain the raw runs past this call -- that's
 the module boundary that makes "no raw training lines kept after
-enrollment" (PARTY_LAUNCH_PLAN.md Part 1 section 2) true everywhere at
+enrollment" (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 2) true everywhere at
 once, rather than something each caller has to remember to do.
 """
 

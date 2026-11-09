@@ -1,5 +1,46 @@
 # Typing Twin Party: Launch Plan
 
+> **Status: Done.** Merged to `master` between 2026-11-05 and 2026-11-09 in pull requests #4 to #9.
+>
+> Archived. This plan is history, not instructions, and may no longer match the code.
+
+## Outcome
+
+Written on 2026-11-09 from the repository and git history only. Dates are git commit dates.
+
+**What shipped**
+
+- Part 1: the anonymous party game. It has an in-memory party store, the `/api/game/*` routes, simulated practice targets, a server-side replay attack, and scoring through `core/`.
+- Public mode with no database is the default. The account system sits behind `ENABLE_ACCOUNTS`.
+- Part 1, section 10: opt-in score collection in a separate `score_attempts` database, with a background writer, daily retention, and `evaluation/analyze_scores.py`.
+- Part 2: `.do/app.yaml`, `DEPLOY.md`, a single Uvicorn worker, and startup checks for `SESSION_SECRET`, `ALLOWED_ORIGIN`, and `PUBLIC_BASE_URL`.
+- The site is live at https://typingtwin.com, according to `CLAUDE.md` and `DEPLOY.md`.
+
+**Pull requests**
+
+| Pull request | Merged | What it carried |
+|---|---|---|
+| #4 | 2026-11-05 | Part 1, and Part 2's deployment spec and `DEPLOY.md` |
+| #5, #6, #7 | 2026-11-05 | The real domain in `.do/app.yaml`, and `DEPLOY.md` corrections |
+| #8 | 2026-11-09 | Opt-in scores, pace and clue on results, the client IP fix, and stricter startup checks |
+| #9 | 2026-11-09 | Consent wording fix, `CLAUDE.md`, and `scripts/check_live_rate_limit.sh` |
+
+**Notable changes from the plan**
+
+- Opt-in score collection (section 10) was added to the plan on 2026-11-05, after Part 1 had started.
+- Part 2 asked for client IP handling behind the platform proxy. The first version trusted proxy headers. It was replaced on 2026-11-06: `X-Forwarded-For` is never trusted, and the app reads DigitalOcean's `Do-Connecting-Ip` header.
+- The earlier "Typing Twin" game was removed, and `/party` redirects to `/` in public mode.
+- After the plan was done, pull request #10 removed the one-word level and made the sentence the default, and #11 fixed the reveal screen's stats.
+
+**Left undone**
+
+- No recorded signature is tracked under `src/keystroke_dynamics/game/targets/`, so the "Can you pass as Yuliia?" target (Part 3, step 7) isn't in the repository.
+- **Uncertain:** the Part 4 live checklist. Its results aren't recorded in the repository.
+- **Uncertain:** whether `.do/app.yaml` was validated against the live platform beyond the note in that file.
+- "After launch": room links and live updates moved to `docs/plans/active/ROOMS_PLAN.md`, and the phone version to `docs/plans/active/MOBILE_PLAN.md`. The private aggregate APIs haven't been started.
+
+---
+
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
 ## Goal
@@ -17,7 +58,7 @@ Online rooms, the touch version, and aggregate APIs come after launch. Do not bu
 
 ## How to use this plan
 
-1. Save this file in the repository root as `PARTY_LAUNCH_PLAN.md`.
+1. Save this file in the repository as `docs/plans/done/PARTY_LAUNCH_PLAN.md`.
 2. Save the approved mockups as `design/typing-twin-party.html` and `design/typing-twin-touch.html`.
 3. Commit or stash any unfinished backend hookup work, so it can't be lost.
 4. Run each part in a new Claude Code session using its prompt, and review the result before continuing.
@@ -246,7 +287,7 @@ These IDs must not be derived from, or stored with, a session, cookie, name, or 
 **Prompt**
 
 ```text
-Read PARTY_LAUNCH_PLAN.md and carry out Part 1 only. Check my current branches, stashes, and uncommitted work first, and build on any game hookup already in progress. Run the Done when checks, show the results and peak memory, list anything that needs my decision, and stop. Do not push or deploy.
+Read docs/plans/done/PARTY_LAUNCH_PLAN.md and carry out Part 1 only. Check my current branches, stashes, and uncommitted work first, and build on any game hookup already in progress. Run the Done when checks, show the results and peak memory, list anything that needs my decision, and stop. Do not push or deploy.
 ```
 
 ---
@@ -281,7 +322,7 @@ Never commit real secrets.
 **Prompt**
 
 ```text
-Read PARTY_LAUNCH_PLAN.md and carry out Part 2 only. Do not create a DigitalOcean app, deploy, or push. Run the Done when checks, show the results, give me the exact steps that need my account, and stop.
+Read docs/plans/done/PARTY_LAUNCH_PLAN.md and carry out Part 2 only. Do not create a DigitalOcean app, deploy, or push. Run the Done when checks, show the results, give me the exact steps that need my account, and stop.
 ```
 
 ---

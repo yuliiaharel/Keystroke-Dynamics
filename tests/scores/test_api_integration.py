@@ -1,5 +1,5 @@
 """End-to-end: a real game, driven over HTTP, with score collection
-turned on against the real scores test database -- PARTY_LAUNCH_PLAN.md
+turned on against the real scores test database -- docs/plans/done/PARTY_LAUNCH_PLAN.md
 section 10's own "Done when" requirement that a real Postgres test
 confirms the consent rule, stored column values, and the "Delete me"/
 "New party" cascades. Needs a fresh process (see

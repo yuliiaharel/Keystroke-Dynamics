@@ -46,5 +46,5 @@ What's still open:
    section. Not a defect in the limiter; just means `npm run e2e` needs
    `RATE_LIMIT_MAX_ATTEMPTS=50` set on the dev server it's pointed at.
 
-See `MODERNIZATION_PLAN.md`'s "Later ideas (not part of this work)" for
+See `docs/plans/done/MODERNIZATION_PLAN.md`'s "Later ideas (not part of this work)" for
 BioKey's update-after-login step and other explicitly out-of-scope ideas.

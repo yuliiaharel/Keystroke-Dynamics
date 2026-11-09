@@ -1,5 +1,5 @@
 """Turns one judged game attempt into a score_attempts row, or
-decides there's nothing to record -- PARTY_LAUNCH_PLAN.md section
+decides there's nothing to record -- docs/plans/done/PARTY_LAUNCH_PLAN.md section
 10's consent rule and column mapping. Pure and side-effect free:
 callers (api/game.py) own checking settings.scores_database_url is
 set at all, and actually enqueueing the result (scores/writer.py).
