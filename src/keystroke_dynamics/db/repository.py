@@ -92,9 +92,12 @@ def save_sample_features(db: Session, user_id: int, features: list[Feature]) -> 
             row.count, row.mean, row.m2 = stats.count, stats.mean, stats.m2
 
     profile.sample_count += 1
+    # Read the count while the row lock is still held. Reading it back
+    # after the commit can return a later upload's count instead, since
+    # the commit releases the lock.
+    sample_count = profile.sample_count
     db.commit()
-    db.refresh(profile)
-    return profile.sample_count
+    return sample_count
 
 
 def delete_profile(db: Session, user_id: int) -> bool:
