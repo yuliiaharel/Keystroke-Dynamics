@@ -246,6 +246,12 @@ Read docs/plans/active/ROOMS_PLAN.md and carry out Phase 3 only. Keep the existi
    - [ ] The app stays well under its memory limit during the test, in DigitalOcean's metrics
 3. **On announcement day:** avoid deploying for at least a day after posting, because every deploy ends all live rooms.
 
+**Done when**
+
+- Every live check above passes.
+- `README.md` matches what shipped, including its Roadmap section.
+- `docs/plans/README.md` marks this plan done, and this file has moved to `docs/plans/done/` with an Outcome section.
+
 **Prompt**
 
 ```text
