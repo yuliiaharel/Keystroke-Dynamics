@@ -46,20 +46,26 @@ from keystroke_dynamics.scores.db import scores_session  # noqa: E402
 from keystroke_dynamics.scores.models import ScoreAttempt  # noqa: E402
 from keystroke_dynamics.scores.writer import score_writer  # noqa: E402
 
-WORD_LINE = [
-    {"code": "KeyN", "action": "down", "t_ms": 0.0},
-    {"code": "KeyN", "action": "up", "t_ms": 80.0},
-    {"code": "KeyU", "action": "down", "t_ms": 230.0},
-    {"code": "KeyU", "action": "up", "t_ms": 310.0},
-    {"code": "KeyK", "action": "down", "t_ms": 460.0},
-    {"code": "KeyK", "action": "up", "t_ms": 540.0},
-    {"code": "KeyI", "action": "down", "t_ms": 690.0},
-    {"code": "KeyI", "action": "up", "t_ms": 770.0},
-    {"code": "KeyA", "action": "down", "t_ms": 920.0},
-    {"code": "KeyA", "action": "up", "t_ms": 1000.0},
-    {"code": "KeyE", "action": "down", "t_ms": 1150.0},
-    {"code": "KeyE", "action": "up", "t_ms": 1230.0},
-]
+SENTENCE_PHRASE = "quiet rhythm hides in every small habit of your hands"
+
+
+def _char_to_code(ch: str) -> str:
+    return "Space" if ch == " " else f"Key{ch.upper()}"
+
+
+def _line_for(phrase: str, *, hold_ms: float = 80.0, gap_ms: float = 150.0) -> list[dict]:
+    events: list[dict] = []
+    t = 0.0
+    for i, ch in enumerate(phrase):
+        if i > 0:
+            t += gap_ms
+        code = _char_to_code(ch)
+        events.append({"code": code, "action": "down", "t_ms": t})
+        events.append({"code": code, "action": "up", "t_ms": t + hold_ms})
+    return events
+
+
+SENTENCE_LINE = _line_for(SENTENCE_PHRASE)
 
 
 def flush() -> None:
@@ -80,13 +86,17 @@ def row_ids_for(party_id: str) -> set[str]:
 
 
 with TestClient(app, headers={"origin": "http://testserver"}) as client:
-    party = client.post("/api/game/party", json={"level": "word"}).json()
+    party = client.post("/api/game/party", json={"level": "sentence"}).json()
     party_score_id = None  # filled in once we can read it back -- see below
 
     def create_player(name: str, share_scores: bool) -> dict:
         resp = client.post(
             "/api/game/players",
-            json={"name": name, "training_lines": [WORD_LINE] * 5, "share_scores": share_scores},
+            json={
+                "name": name,
+                "training_lines": [SENTENCE_LINE] * 5,
+                "share_scores": share_scores,
+            },
         )
         assert resp.status_code == 200, resp.text
         return resp.json()
@@ -101,7 +111,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
                 "typist_id": typist_id,
                 "target_id": target_id,
                 "mode": "attack",
-                "events": WORD_LINE,
+                "events": SENTENCE_LINE,
                 "client_attempt_id": f"attack-{attempt_counter[0]}",
                 "guest_shares_scores": guest_shares,
             },
@@ -146,7 +156,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
 
     for row in all_rows:
         assert row.device_type == "keyboard"
-        assert row.line_id == "word"
+        assert row.line_id == "sentence"
         # 5 for Alice (created with 5 training lines above); 6
         # (SAMPLE_TRAINING_RUNS) for the one row targeting the bot.
         assert row.training_lines in (5, 6)

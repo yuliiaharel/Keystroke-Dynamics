@@ -23,7 +23,11 @@ TargetKind = Literal["player", "sample", "target"]
 
 
 class CreatePartyRequest(BaseModel):
-    level: Level
+    #: Plain str, not Level -- api/game.py checks this against LEVELS
+    #: itself and raises a clear 400 for an unknown level (e.g. the
+    #: removed "word"), rather than letting pydantic's own Literal
+    #: validation reject it with a generic 422.
+    level: str
 
 
 class NoteView(BaseModel):

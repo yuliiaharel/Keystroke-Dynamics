@@ -32,7 +32,7 @@ assert client.get("/health").status_code == 200
 
 resp = client.post(
     "/api/game/debug/record-target",
-    json={"name": "Yuliia", "lines": {"word": [[]]}},
+    json={"name": "Yuliia", "lines": {"sentence": [[]]}},
 )
 assert resp.status_code == 404, resp.status_code
 

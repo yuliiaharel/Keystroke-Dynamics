@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Level = Literal["word", "sentence", "long"]
+Level = Literal["sentence", "long"]
 
 
 @dataclass(frozen=True)
@@ -25,12 +25,6 @@ class LevelInfo:
 
 
 LEVELS: dict[Level, LevelInfo] = {
-    "word": LevelInfo(
-        name="One word",
-        blurb="Quick and brutal. About 45 seconds each.",
-        phrase="nukiae",
-        rounds=9,
-    ),
     "sentence": LevelInfo(
         name="A sentence",
         blurb="The best party mode. About a minute each.",

@@ -23,7 +23,6 @@ import { KeystrokeCapture } from "../capture";
 import type { CapturedEvent } from "../capture";
 
 const LEVELS: Record<Level, { name: string; blurb: string; rounds: number }> = {
-  word: { name: "One word", blurb: "Quick and brutal. About 45 seconds each.", rounds: 9 },
   sentence: { name: "A sentence", blurb: "The best party mode. About a minute each.", rounds: 5 },
   long: { name: "A long line", blurb: "More to measure, more to fake. About 2 minutes each.", rounds: 4 },
 };
@@ -738,16 +737,15 @@ function introView(): string {
     ([n, sp], i) => `<div class="ring">${ringSVG(decorativeNotes(INTRO_PHRASE, n, sp!, 6), i, null, n)}</div>`,
   ).join("");
   const coarse = window.matchMedia?.("(pointer: coarse)").matches;
-  const levels = Object.entries(LEVELS)
-    .map(([k, l]) => `<button class="level" data-level="${k}">${l.name}<span>${l.blurb}</span></button>`)
-    .join("");
   return `<section class="hero">
       <div class="stack">
         <h1>Everyone types in their own shape.</h1>
         <p>Type a line a few times and see your rhythm drawn as a signature -- scored for real by this app's own backend. Then gather some friends around one keyboard and try to pass as each other.</p>
         ${coarse ? `<div class="notice">Best on a computer. Phone keyboards don't report when each key goes down and up -- you can still look around and watch a replay attack without typing.</div>` : ""}
-        <div class="eyebrow">Pick your line to start a party</div>
-        <div class="levels">${levels}</div>
+        <div class="row">
+          <button class="primary" data-level="sentence">Start a party</button>
+        </div>
+        <button class="quiet" data-level="long" style="align-self:flex-start">Want a challenge? Try a long line</button>
         ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
       </div>
       <div class="stack">

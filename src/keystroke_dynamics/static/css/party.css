@@ -62,11 +62,6 @@ nav.tabs button[aria-current="page"] { border-color: var(--ink); }
 .ring-guide { fill: none; stroke: var(--line); stroke-width: 1; }
 .ring-tick { stroke-width: 2; stroke-linecap: round; }
 .ring-compare { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 4 3; }
-.levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 640px) { .levels { grid-template-columns: 1fr; } }
-.level { text-align: left; display: flex; flex-direction: column; gap: 4px; background: var(--sheet); border-color: var(--line); padding: 12px 14px; }
-.level:hover { border-color: var(--accent); background: var(--sheet); }
-.level span { font-weight: 400; font-size: 15px; color: var(--muted); }
 .players { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px; }
 .card { background: var(--sheet); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .card h3 { overflow-wrap: anywhere; }

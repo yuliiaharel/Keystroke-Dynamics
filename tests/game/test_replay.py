@@ -11,7 +11,7 @@ from keystroke_dynamics.game.judge import judge
 from keystroke_dynamics.game.replay import notes_to_events
 from keystroke_dynamics.game.store import Player
 
-PHRASE = "nukiae"
+PHRASE = "bridge"
 
 
 def _run(hold_ms: float, gap_ms: float) -> list[KeyEvent]:

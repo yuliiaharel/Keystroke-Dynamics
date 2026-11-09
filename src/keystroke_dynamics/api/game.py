@@ -177,6 +177,8 @@ def _party_view(party: Party) -> PartyView:
 def create_party(
     body: CreatePartyRequest, request: Request, store: GameStore = Depends(get_game_store)
 ) -> PartyView:
+    if body.level not in LEVELS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown level {body.level!r}")
     try:
         party = store.create_party(body.level)
     except PartyLimitReached as exc:

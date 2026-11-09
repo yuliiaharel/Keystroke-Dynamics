@@ -141,23 +141,11 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
 
 test("the party survives a page reload", async ({ page }) => {
   await page.goto("/party");
-  await page.click('[data-level="word"]');
-  await enrollPlayerWord(page, "Casey");
+  await page.click('[data-level="sentence"]');
+  await enrollPlayer(page, "Casey");
   await page.click("#to-room");
   await expect(page.locator("article.card", { hasText: "Casey" })).toBeVisible();
 
   await page.reload();
   await expect(page.locator("article.card", { hasText: "Casey" })).toBeVisible({ timeout: 10000 });
 });
-
-async function enrollPlayerWord(page: Page, name: string): Promise<void> {
-  await page.fill("#player-name", name);
-  await page.click("#name-form button[type=submit]");
-  for (let i = 0; i < 9; i++) {
-    await expect(page.locator("#typer")).toBeVisible();
-    await page.locator("#typer").click();
-    await page.keyboard.type("nukiae", { delay: 10 });
-    await page.waitForTimeout(350);
-  }
-  await expect(page.locator("text=This is how you type.")).toBeVisible({ timeout: 10000 });
-}
