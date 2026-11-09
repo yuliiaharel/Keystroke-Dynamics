@@ -70,6 +70,9 @@ class Row:
     place: float | None
     pace: float | None
     outcome: str
+    #: None for rows recorded before rooms existed, and wherever the
+    #: question doesn't apply (scores/models.py).
+    same_keyboard: bool | None = None
 
 
 def _row_from_orm(r: ScoreAttempt) -> Row:
@@ -85,6 +88,7 @@ def _row_from_orm(r: ScoreAttempt) -> Row:
         place=r.place,
         pace=r.pace,
         outcome=r.outcome,
+        same_keyboard=r.same_keyboard,
     )
 
 
@@ -146,6 +150,22 @@ def false_reject_and_accept_rates(rows: list[Row], limit: float) -> list[RateRow
         far = sum(1 for _, v in attack_rows if v <= limit) / len(attack_rows)
         out.append(RateRow(f"limit {limit}", len(attack_rows), far, "false accept"))
     return out
+
+
+def keyboard_label(same_keyboard: bool | None) -> str:
+    if same_keyboard is None:
+        return "not recorded"
+    return "same" if same_keyboard else "different"
+
+
+def attack_rates_by_keyboard(rows: list[Row], limit: float) -> list[RateRow]:
+    """False acceptance for attacks on real players, split by whether
+    the attacker typed on the target's own keyboard or a different
+    one -- a different keyboard can change timing on its own, so the
+    two shouldn't be read as one rate. Attacks only: a self-mode row
+    is same-keyboard by definition."""
+    attacks = [r for r in rows if r.mode == "attack" and r.target_kind == "player"]
+    return rates_by_group(attacks, limit, lambda r: keyboard_label(r.same_keyboard), "keyboard")
 
 
 def rates_by_group(
@@ -275,6 +295,16 @@ def analyze(rows: list[Row]) -> None:
             "(in-band is docs/plans/done/PARTY_LAUNCH_PLAN.md's 0.85x-1.15x)",
             ["group, limit", "kind", "n", "rate"],
             pace_table,
+        )
+
+        keyboard_table: list[list[str]] = []
+        for limit in CANDIDATE_LIMITS:
+            for rr in attack_rates_by_keyboard(version_rows, limit):
+                keyboard_table.append([rr.label, rr.kind, str(rr.n), f"{rr.rate:.3f}"])
+        _print_table(
+            "False acceptance of attacks on players, same keyboard vs different",
+            ["group, limit", "kind", "n", "rate"],
+            keyboard_table,
         )
 
         rvp = rhythm_vs_place(version_rows)

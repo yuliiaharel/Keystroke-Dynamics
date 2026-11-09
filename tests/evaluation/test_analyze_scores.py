@@ -11,10 +11,12 @@ import datetime
 from evaluation.analyze_scores import (
     MIN_GROUP_SIZE,
     Row,
+    attack_rates_by_keyboard,
     attempts_per_player_and_party,
     distinct_scoring_versions,
     false_reject_and_accept_rates,
     flag_suspicious_bursts,
+    keyboard_label,
     pace_bucket,
     rates_by_group,
     rhythm_vs_place,
@@ -181,3 +183,52 @@ def test_attempts_per_player_and_party_counts_distinct_ids() -> None:
 def test_distinct_scoring_versions_sorted() -> None:
     rows = [_row(scoring_version="2"), _row(scoring_version="1")]
     assert distinct_scoring_versions(rows) == ["1", "2"]
+
+
+# ---------- same keyboard vs different ----------
+
+
+def test_keyboard_label() -> None:
+    assert keyboard_label(True) == "same"
+    assert keyboard_label(False) == "different"
+    assert keyboard_label(None) == "not recorded"
+
+
+def test_attack_rates_are_split_by_same_keyboard() -> None:
+    # Same keyboard: 5 attacks, 4 at or under the limit -> 4/5 accepted.
+    # Different keyboard: 5 attacks, 1 at or under -> 1/5 accepted.
+    rows = [
+        _row(mode="attack", same_keyboard=True, rhythm=r) for r in [0.5, 0.6, 0.7, 0.8, 2.0]
+    ] + [_row(mode="attack", same_keyboard=False, rhythm=r) for r in [0.5, 2.0, 2.1, 2.2, 2.3]]
+    result = {r.label: r for r in attack_rates_by_keyboard(rows, limit=1.0)}
+    assert set(result) == {"keyboard=same, limit 1.0", "keyboard=different, limit 1.0"}
+    assert result["keyboard=same, limit 1.0"].rate == 4 / 5
+    assert result["keyboard=different, limit 1.0"].rate == 1 / 5
+    assert all(r.kind == "false accept" and r.n == 5 for r in result.values())
+
+
+def test_rows_from_before_rooms_form_their_own_not_recorded_group() -> None:
+    rows = [_row(mode="attack", same_keyboard=None, rhythm=0.5) for _ in range(MIN_GROUP_SIZE)]
+    result = attack_rates_by_keyboard(rows, limit=1.0)
+    assert [r.label for r in result] == ["keyboard=not recorded, limit 1.0"]
+
+
+def test_keyboard_split_ignores_self_rows_and_non_player_targets() -> None:
+    rows = (
+        [_row(mode="self", same_keyboard=True) for _ in range(MIN_GROUP_SIZE)]
+        + [
+            _row(mode="attack", target_kind="simulated", same_keyboard=None)
+            for _ in range(MIN_GROUP_SIZE)
+        ]
+        + [_row(mode="replay", same_keyboard=None) for _ in range(MIN_GROUP_SIZE)]
+    )
+    assert attack_rates_by_keyboard(rows, limit=1.0) == []
+
+
+def test_keyboard_split_hides_a_group_below_the_minimum_size() -> None:
+    rows = [_row(mode="attack", same_keyboard=True) for _ in range(MIN_GROUP_SIZE)] + [
+        _row(mode="attack", same_keyboard=False) for _ in range(MIN_GROUP_SIZE - 1)
+    ]
+    assert [r.label for r in attack_rates_by_keyboard(rows, limit=1.0)] == [
+        "keyboard=same, limit 1.0"
+    ]
