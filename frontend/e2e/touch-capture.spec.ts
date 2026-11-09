@@ -1,7 +1,7 @@
 import { expect, test, type CDPSession, type Page } from "@playwright/test";
 
 /**
- * The debug-only capture test page (MOBILE_PLAN.md Phase 0), driven
+ * The debug-only capture test page (docs/plans/active/MOBILE_PLAN.md Phase 0), driven
  * with emulated touches through Chromium's Input.dispatchTouchEvent.
  * Needs the app running with DEBUG=true, which is the only mode the
  * page exists in.

@@ -36,7 +36,7 @@ resp = client.post(
 )
 assert resp.status_code == 404, resp.status_code
 
-# MOBILE_PLAN.md Phase 0's capture test page: same rule, absent rather
+# docs/plans/active/MOBILE_PLAN.md Phase 0's capture test page: same rule, absent rather
 # than refused.
 resp = client.get("/debug/touch-capture")
 assert resp.status_code == 404, resp.status_code

@@ -24,7 +24,7 @@ def test_record_target_route_does_not_exist_outside_debug_mode() -> None:
 
 
 def test_touch_capture_page_exists_in_debug_mode() -> None:
-    # The other half of "debug only" (MOBILE_PLAN.md Phase 0): the
+    # The other half of "debug only" (docs/plans/active/MOBILE_PLAN.md Phase 0): the
     # subprocess above proves the page is absent when DEBUG=false, and
     # this proves that check isn't passing just because the path is
     # wrong. conftest.py runs this process with DEBUG=true.

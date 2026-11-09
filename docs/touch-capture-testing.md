@@ -1,6 +1,6 @@
 # Testing touch capture on real phones
 
-This is the real-device half of `MOBILE_PLAN.md` Phase 0. The page at
+This is the real-device half of `docs/plans/active/MOBILE_PLAN.md` Phase 0. The page at
 `/debug/touch-capture` shows what a phone's browser delivers for each tap on
 the on-page keyboard. It exists only when `DEBUG=true`, has no backend, and
 sends nothing: results stay on the phone until you copy them.

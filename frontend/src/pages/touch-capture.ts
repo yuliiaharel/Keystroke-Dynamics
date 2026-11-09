@@ -1,5 +1,5 @@
 /**
- * Debug-only capture test page (MOBILE_PLAN.md Phase 0), served at
+ * Debug-only capture test page (docs/plans/active/MOBILE_PLAN.md Phase 0), served at
  * /debug/touch-capture only when DEBUG=true.
  *
  * Shows what a phone browser actually delivers for a line typed on the

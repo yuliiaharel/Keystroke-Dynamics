@@ -1,7 +1,7 @@
 /**
  * Turns a raw log of pointer events on the on-page touch keyboard into
  * taps, and reports anything a phone browser lost or delivered out of
- * order (MOBILE_PLAN.md Phase 0).
+ * order (docs/plans/active/MOBILE_PLAN.md Phase 0).
  *
  * Pure: no DOM access, so the same checks run in unit tests and on a
  * real phone. Used only by the debug capture test page for now.

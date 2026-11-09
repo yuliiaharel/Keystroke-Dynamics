@@ -63,7 +63,7 @@ def party_page(request: Request) -> HTMLResponse:
 
 
 if settings.debug:
-    # Local-only (MOBILE_PLAN.md Phase 0): a page for checking what a
+    # Local-only (docs/plans/active/MOBILE_PLAN.md Phase 0): a page for checking what a
     # real phone's browser delivers for taps on the on-page keyboard.
     # Never registered -- not just rejected -- outside debug mode, same
     # as api/game.py's debug route. It has no backend: the page makes
