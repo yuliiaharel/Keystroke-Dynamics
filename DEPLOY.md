@@ -149,6 +149,55 @@ The committed `.do/app.yaml` already has this app's real, live URL
 bootstrap above already happened once; you'd only repeat it standing
 up a separate instance of this app under a different account.
 
+## Post-deploy checks
+
+Run these by hand after every deploy that could affect them (a new
+release, or after "Score database setup"/"Turning score collection
+off again" above).
+
+### Rate-limit identity can't be spoofed
+
+`scripts/check_live_rate_limit.sh` floods `POST /api/game/party` with
+a different fake `Do-Connecting-Ip`, then a different fake
+`X-Forwarded-For`, on every request, and checks whether the app's rate
+limiter was fooled into treating each one as a separate client (see
+the script's own header comment, and `api/security.py`'s
+`client_ip()`, for why only the first should be possible to spoof,
+and only off this platform).
+
+```bash
+scripts/check_live_rate_limit.sh https://typingtwin.com
+```
+
+Expect **PASS** on both checks against the live site -- App Platform's
+own ingress overwrites any `Do-Connecting-Ip` a client sends, so both
+headers end up ignored for rate-limit bucketing. Run it against a
+local container (`http://127.0.0.1:8000`, matching that container's
+own `ALLOWED_ORIGIN`) and the `Do-Connecting-Ip` check is *expected*
+to **FAIL** there instead: with no App Platform ingress in front to
+overwrite the header, the local app trusts whatever value is sent, by
+design (that's exactly the fallback `client_ip()`'s docstring
+describes for "any host other than DigitalOcean App Platform"). A
+FAIL against the live site, not just locally, means something is
+wrong -- not a routine difference.
+
+### If score collection is on: an opt-in attempt is stored, and Delete me removes it
+
+Matches `PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
+
+1. On the live site, start a party, add yourself with **Share my
+   scores** checked, and make one attack attempt.
+2. Confirm the row landed, using the **read-only** role (see "Running
+   the analysis" above):
+   ```bash
+   uv run python -m evaluation.analyze_scores "<read-only connection string>"
+   ```
+   or a direct `SELECT count(*) FROM score_attempts WHERE created_on = current_date;`
+   from Neon's SQL Editor.
+3. Click **Delete me** for that player, then re-run the same count
+   and confirm it dropped -- deletion matches on `party_id`/
+   `typist_id`, both the random score IDs, never a name or session.
+
 ## Updating a secret without erasing it
 
 Whenever `SESSION_SECRET` or `SCORES_DATABASE_URL` needs a new value
