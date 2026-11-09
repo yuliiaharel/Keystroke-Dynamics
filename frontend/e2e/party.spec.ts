@@ -43,6 +43,11 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
 
   await page.goto("/party");
   await page.click('[data-level="sentence"]');
+  // Wait for the party the click just created to actually exist
+  // server-side (the name form only renders once it does) before
+  // querying it directly below -- otherwise the fetch can race the
+  // click's own POST and read back a 404/no session yet.
+  await expect(page.locator("#name-form")).toBeVisible();
 
   // The opt-in checkbox's presence must track the server's own
   // scores_enabled, not any hardcoded assumption -- this suite runs
