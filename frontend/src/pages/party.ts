@@ -21,6 +21,8 @@ import * as gameApi from "../game-api";
 import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
 import type { CapturedEvent } from "../capture";
+import { traitsFromNotes } from "../traits";
+import type { PairTiming } from "../traits";
 
 const LEVELS: Record<Level, { name: string; blurb: string; rounds: number }> = {
   sentence: { name: "A sentence", blurb: "The best party mode. About a minute each.", rounds: 5 },
@@ -137,10 +139,6 @@ function median(a: number[]): number {
 
 const capture = new KeystrokeCapture();
 
-function duration(run: Run): number {
-  return run.keys[run.keys.length - 1]!.down - run.keys[0]!.down;
-}
-
 function notesFromRun(run: Run): NoteView[] {
   const t0 = run.keys.length ? run.keys[0]!.down : 0;
   return run.keys.map((r) => ({
@@ -196,36 +194,6 @@ const INTRO_SAMPLES: [string, number][] = [
   ["Steady Hands", 1.05],
   ["Two-Finger Typist", 1.4],
 ];
-
-/* ---------- Descriptive traits for the reveal view -----------------
- * Computed from this browser's own just-captured training runs,
- * purely for display -- never scored, never sent anywhere beyond
- * the training_lines already submitted to create the player. */
-
-function traitsFromRuns(runs: Run[]): { wpm: number; typicalHold: number; fastest: [string, number]; slowest: [string, number] } {
-  const holds = runs.flatMap((r) => r.keys.filter((k) => k.up !== null).map((k) => k.up! - k.down));
-  const flightsByPair = new Map<string, number[]>();
-  runs.forEach((r) => {
-    r.keys.forEach((k, i) => {
-      if (i === 0 || k.afterError) return;
-      const prev = r.keys[i - 1]!;
-      const pair = prev.ch + k.ch;
-      if (!flightsByPair.has(pair)) flightsByPair.set(pair, []);
-      flightsByPair.get(pair)!.push(k.down - prev.down);
-    });
-  });
-  const pairMedians = [...flightsByPair.entries()]
-    .map(([pair, arr]) => [pair, median(arr)] as [string, number])
-    .sort((a, b) => a[1] - b[1]);
-  const avgDuration = runs.reduce((a, r) => a + duration(r), 0) / runs.length;
-  const wpm = Math.round(phrase().length / 5 / (avgDuration / 60000));
-  return {
-    wpm,
-    typicalHold: Math.round(median(holds)),
-    fastest: pairMedians[0] ?? ["", 0],
-    slowest: pairMedians[pairMedians.length - 1] ?? ["", 0],
-  };
-}
 
 /* ---------- Signature ring (verbatim from the mockup) ---------- */
 
@@ -799,16 +767,21 @@ function enrollView(): string {
   </section>`;
 }
 
-function traitsHTML(): string {
-  const t = traitsFromRuns(S.enrollRuns.slice(1));
+/** A dash stands in for any stat the player's notes can't support. */
+function traitsHTML(p: PlayerView): string {
+  const t = traitsFromNotes(p.notes);
   const pairLabel = (pair: string): string => `${label(pair[0]!)} → ${label(pair[1]!)}`;
   const tile = (title: string, big: string, small: string): string =>
     `<div class="trait"><span class="eyebrow">${title}</span><b>${big}</b><span class="small muted">${small}</span></div>`;
+  const pairTile = (title: string, timing: PairTiming | null): string =>
+    timing
+      ? tile(title, pairLabel(timing.pair), `${Math.round(timing.gapMs)} ms`)
+      : tile(title, "–", "between keys");
   return `<div class="traits">
-    ${tile("Pace", `${t.wpm} wpm`, "on this line")}
-    ${tile("Typical hold", `${t.typicalHold} ms`, "per key")}
-    ${tile("Fastest pair", pairLabel(t.fastest[0]), `${Math.round(t.fastest[1])} ms`)}
-    ${tile("Slowest pair", pairLabel(t.slowest[0]), `${Math.round(t.slowest[1])} ms`)}
+    ${tile("Pace", t.wpm === null ? "–" : `${t.wpm} wpm`, "on this line")}
+    ${tile("Typical hold", t.typicalHoldMs === null ? "–" : `${t.typicalHoldMs} ms`, "per key")}
+    ${pairTile("Fastest pair", t.fastest)}
+    ${pairTile("Slowest pair", t.slowest)}
   </div>`;
 }
 
@@ -823,7 +796,7 @@ function revealView(): string {
         <div class="row"><button class="primary" id="to-room">Enter the room</button><button id="hear" data-id="${esc(p.id)}">Hear my rhythm</button></div>
       </div>
     </section>
-    ${traitsHTML()}
+    ${traitsHTML(p)}
     <div class="roll-box">${rollSVG(phrase(), [{ notes: p.notes, cls: "n-a" }])}</div>`;
 }
 

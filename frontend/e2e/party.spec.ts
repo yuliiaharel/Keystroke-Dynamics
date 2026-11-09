@@ -25,6 +25,23 @@ async function enrollPlayer(page: Page, name: string): Promise<void> {
     await typeLine(page);
   }
   await expect(page.locator("text=This is how you type.")).toBeVisible({ timeout: 10000 });
+
+  // The reveal's four stats come from the player's server-provided
+  // notes. They used to read enrollment lines that had already been
+  // cleared, and showed "undefined" and NaN.
+  const stats = page.locator(".traits .trait");
+  await expect(stats).toHaveCount(4);
+  const text = await page.locator(".traits").innerText();
+  expect(text).not.toContain("undefined");
+  expect(text).not.toContain("NaN");
+  await expect(stats.locator(".eyebrow")).toHaveText([
+    "Pace",
+    "Typical hold",
+    "Fastest pair",
+    "Slowest pair",
+  ]);
+  await expect(stats.nth(0).locator("b")).toHaveText(/^\d+ wpm$/);
+  await expect(stats.nth(1).locator("b")).toHaveText(/^\d+ ms$/);
 }
 
 test("a full one-keyboard party: two players, an attack, a replay, a rename, a deletion, and the scores page", async ({
