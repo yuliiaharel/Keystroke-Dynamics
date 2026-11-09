@@ -84,23 +84,29 @@ for path in (
     assert client.get(path).status_code == 404, path
 
 # A full game, end to end, with no database at all.
-party = client.post("/api/game/party", json={"level": "word"}).json()
-assert party["phrase"] == "nukiae"
+SENTENCE_PHRASE = "quiet rhythm hides in every small habit of your hands"
 
-LINE = [
-    {"code": "KeyN", "action": "down", "t_ms": 0.0},
-    {"code": "KeyN", "action": "up", "t_ms": 80.0},
-    {"code": "KeyU", "action": "down", "t_ms": 230.0},
-    {"code": "KeyU", "action": "up", "t_ms": 310.0},
-    {"code": "KeyK", "action": "down", "t_ms": 460.0},
-    {"code": "KeyK", "action": "up", "t_ms": 540.0},
-    {"code": "KeyI", "action": "down", "t_ms": 690.0},
-    {"code": "KeyI", "action": "up", "t_ms": 770.0},
-    {"code": "KeyA", "action": "down", "t_ms": 920.0},
-    {"code": "KeyA", "action": "up", "t_ms": 1000.0},
-    {"code": "KeyE", "action": "down", "t_ms": 1150.0},
-    {"code": "KeyE", "action": "up", "t_ms": 1230.0},
-]
+
+def _char_to_code(ch: str) -> str:
+    return "Space" if ch == " " else f"Key{ch.upper()}"
+
+
+def _line_for(phrase: str, *, hold_ms: float = 80.0, gap_ms: float = 150.0) -> list[dict]:
+    events: list[dict] = []
+    t = 0.0
+    for i, ch in enumerate(phrase):
+        if i > 0:
+            t += gap_ms
+        code = _char_to_code(ch)
+        events.append({"code": code, "action": "down", "t_ms": t})
+        events.append({"code": code, "action": "up", "t_ms": t + hold_ms})
+    return events
+
+
+party = client.post("/api/game/party", json={"level": "sentence"}).json()
+assert party["phrase"] == SENTENCE_PHRASE
+
+LINE = _line_for(SENTENCE_PHRASE)
 player = client.post(
     "/api/game/players", json={"name": "Alice", "training_lines": [LINE] * 5}
 ).json()

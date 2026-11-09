@@ -7,7 +7,7 @@
 
 import type { CapturedEvent } from "./capture";
 
-export type Level = "word" | "sentence" | "long";
+export type Level = "sentence" | "long";
 export type Mode = "attack" | "self" | "disguise" | "replay";
 export type TargetKind = "player" | "sample" | "target";
 

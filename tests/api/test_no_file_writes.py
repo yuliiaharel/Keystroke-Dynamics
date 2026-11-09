@@ -61,20 +61,27 @@ def test_register_login_sample_verify_and_delete_write_no_files(
     assert client.post("/api/logout").status_code == 204
 
 
-_WORD_LINE = [
-    {"code": "KeyN", "action": "down", "t_ms": 0.0},
-    {"code": "KeyN", "action": "up", "t_ms": 80.0},
-    {"code": "KeyU", "action": "down", "t_ms": 230.0},
-    {"code": "KeyU", "action": "up", "t_ms": 310.0},
-    {"code": "KeyK", "action": "down", "t_ms": 460.0},
-    {"code": "KeyK", "action": "up", "t_ms": 540.0},
-    {"code": "KeyI", "action": "down", "t_ms": 690.0},
-    {"code": "KeyI", "action": "up", "t_ms": 770.0},
-    {"code": "KeyA", "action": "down", "t_ms": 920.0},
-    {"code": "KeyA", "action": "up", "t_ms": 1000.0},
-    {"code": "KeyE", "action": "down", "t_ms": 1150.0},
-    {"code": "KeyE", "action": "up", "t_ms": 1230.0},
-]
+_SENTENCE_PHRASE = "quiet rhythm hides in every small habit of your hands"
+
+
+def _char_to_code(ch: str) -> str:
+    return "Space" if ch == " " else f"Key{ch.upper()}"
+
+
+def _line_for(phrase: str, *, hold_ms: float = 80.0, gap_ms: float = 150.0) -> list[dict]:
+    """A clean, consistent typing of `phrase`, down/up pairs in order."""
+    events: list[dict] = []
+    t = 0.0
+    for i, ch in enumerate(phrase):
+        if i > 0:
+            t += gap_ms
+        code = _char_to_code(ch)
+        events.append({"code": code, "action": "down", "t_ms": t})
+        events.append({"code": code, "action": "up", "t_ms": t + hold_ms})
+    return events
+
+
+_SENTENCE_LINE = _line_for(_SENTENCE_PHRASE)
 
 
 def test_a_full_game_writes_no_files(client: TestClient, no_file_writes: None) -> None:
@@ -82,9 +89,9 @@ def test_a_full_game_writes_no_files(client: TestClient, no_file_writes: None) -
     keystroke events are processed in memory and discarded, never
     persisted anywhere -- not just "never stored in a database",
     which public mode has none of anyway."""
-    party = client.post("/api/game/party", json={"level": "word"}).json()
+    party = client.post("/api/game/party", json={"level": "sentence"}).json()
     player = client.post(
-        "/api/game/players", json={"name": "Dana", "training_lines": [_WORD_LINE] * 5}
+        "/api/game/players", json={"name": "Dana", "training_lines": [_SENTENCE_LINE] * 5}
     ).json()
     assert (
         client.post(
@@ -93,7 +100,7 @@ def test_a_full_game_writes_no_files(client: TestClient, no_file_writes: None) -
                 "typist_id": None,
                 "target_id": player["id"],
                 "mode": "attack",
-                "events": _WORD_LINE,
+                "events": _SENTENCE_LINE,
                 "client_attempt_id": "a1",
             },
         ).status_code
@@ -105,4 +112,4 @@ def test_a_full_game_writes_no_files(client: TestClient, no_file_writes: None) -
     )
     assert client.delete(f"/api/game/players/{player['id']}").status_code == 204
     assert client.post("/api/game/party/reset").status_code == 204
-    assert party["phrase"] == "nukiae"  # sanity: the flow above actually ran
+    assert party["phrase"] == _SENTENCE_PHRASE  # sanity: the flow above actually ran

@@ -41,20 +41,26 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from keystroke_dynamics.main import app  # noqa: E402
 
-WORD_LINE = [
-    {"code": "KeyN", "action": "down", "t_ms": 0.0},
-    {"code": "KeyN", "action": "up", "t_ms": 80.0},
-    {"code": "KeyU", "action": "down", "t_ms": 230.0},
-    {"code": "KeyU", "action": "up", "t_ms": 310.0},
-    {"code": "KeyK", "action": "down", "t_ms": 460.0},
-    {"code": "KeyK", "action": "up", "t_ms": 540.0},
-    {"code": "KeyI", "action": "down", "t_ms": 690.0},
-    {"code": "KeyI", "action": "up", "t_ms": 770.0},
-    {"code": "KeyA", "action": "down", "t_ms": 920.0},
-    {"code": "KeyA", "action": "up", "t_ms": 1000.0},
-    {"code": "KeyE", "action": "down", "t_ms": 1150.0},
-    {"code": "KeyE", "action": "up", "t_ms": 1230.0},
-]
+SENTENCE_PHRASE = "quiet rhythm hides in every small habit of your hands"
+
+
+def _char_to_code(ch: str) -> str:
+    return "Space" if ch == " " else f"Key{ch.upper()}"
+
+
+def _line_for(phrase: str, *, hold_ms: float = 80.0, gap_ms: float = 150.0) -> list[dict]:
+    events: list[dict] = []
+    t = 0.0
+    for i, ch in enumerate(phrase):
+        if i > 0:
+            t += gap_ms
+        code = _char_to_code(ch)
+        events.append({"code": code, "action": "down", "t_ms": t})
+        events.append({"code": code, "action": "up", "t_ms": t + hold_ms})
+    return events
+
+
+SENTENCE_LINE = _line_for(SENTENCE_PHRASE)
 
 #: Generous even on a slow CI runner -- the point isn't to nail an
 #: exact millisecond budget, it's to catch "the request silently
@@ -74,7 +80,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     party = {}
 
     def create_party() -> None:
-        resp = client.post("/api/game/party", json={"level": "word"})
+        resp = client.post("/api/game/party", json={"level": "sentence"})
         assert resp.status_code == 200, resp.text
         party.update(resp.json())
 
@@ -85,7 +91,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     def create_player() -> None:
         resp = client.post(
             "/api/game/players",
-            json={"name": "Alice", "training_lines": [WORD_LINE] * 5, "share_scores": True},
+            json={"name": "Alice", "training_lines": [SENTENCE_LINE] * 5, "share_scores": True},
         )
         assert resp.status_code == 200, resp.text
         player.update(resp.json())
@@ -99,7 +105,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
                 "typist_id": None,
                 "target_id": player["id"],
                 "mode": "attack",
-                "events": WORD_LINE,
+                "events": SENTENCE_LINE,
                 "client_attempt_id": "attack-1",
                 "guest_shares_scores": True,
             },

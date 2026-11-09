@@ -37,12 +37,10 @@ SCORING_VERSION = "1"
 
 def line_feature_count(phrase: str) -> int:
     """How many distinct (hold + flight) features one correct typing
-    of `phrase` produces -- e.g. 11 for "nukiae" (6 distinct letters,
-    5 distinct consecutive pairs), matching the plan's own "about 11
-    features" for the one-word line. Used to size
-    min_compared_features as a fraction of what a given line can
-    actually produce, not a flat number every line must clear
-    regardless of length.
+    of `phrase` produces -- e.g. 11 for a 6-distinct-letter line with
+    5 distinct consecutive pairs. Used to size min_compared_features
+    as a fraction of what a given line can actually produce, not a
+    flat number every line must clear regardless of length.
     """
     chars = list(phrase)
     holds = set(chars)

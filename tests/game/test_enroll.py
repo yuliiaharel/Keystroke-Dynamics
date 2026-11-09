@@ -49,6 +49,6 @@ def test_median_notes_first_key_starts_at_zero() -> None:
 
 
 def test_build_profile_and_threshold_is_within_the_configured_clamp() -> None:
-    runs = [_run("nukiae", hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
-    _profile, threshold = build_profile_and_threshold("nukiae", runs)
+    runs = [_run("bridge", hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
+    _profile, threshold = build_profile_and_threshold("bridge", runs)
     assert GAME_MIN_THRESHOLD <= threshold <= GAME_MAX_THRESHOLD

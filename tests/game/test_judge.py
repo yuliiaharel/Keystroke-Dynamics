@@ -12,7 +12,7 @@ from keystroke_dynamics.game.enroll import build_profile_and_threshold, char_to_
 from keystroke_dynamics.game.judge import _clue, judge, pace_ratio, usual_duration_ms
 from keystroke_dynamics.game.store import Player
 
-PHRASE = "nukiae"
+PHRASE = "bridge"
 
 
 def _run(hold_ms: float, gap_ms: float) -> list[KeyEvent]:

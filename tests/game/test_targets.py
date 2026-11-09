@@ -24,6 +24,10 @@ from keystroke_dynamics.game.targets import (
 )
 
 PHRASE = "quiet rhythm hides in every small habit of your hands"
+LONG_PHRASE = (
+    "every keyboard keeps a quiet record of the hands that use it "
+    "and those records are surprisingly hard to fake"
+)
 
 
 def test_sample_targets_returns_the_three_labeled_bots() -> None:
@@ -52,15 +56,15 @@ def test_sample_targets_have_their_training_line_count() -> None:
 
 
 def test_sample_targets_is_deterministic() -> None:
-    first = sample_targets("word", "nukiae")
-    second = sample_targets("word", "nukiae")
+    first = sample_targets("long", LONG_PHRASE)
+    second = sample_targets("long", LONG_PHRASE)
     assert first == second  # same objects (cached) or at least equal data
 
 
 def test_sample_targets_differ_per_level() -> None:
-    word_targets = sample_targets("word", "nukiae")
+    long_targets = sample_targets("long", LONG_PHRASE)
     sentence_targets = sample_targets("sentence", PHRASE)
-    assert word_targets[0].profile != sentence_targets[0].profile
+    assert long_targets[0].profile != sentence_targets[0].profile
 
 
 def test_sample_targets_calibrated_threshold_is_within_the_clamp() -> None:
@@ -71,15 +75,21 @@ def test_sample_targets_calibrated_threshold_is_within_the_clamp() -> None:
 def test_a_sample_bot_can_be_attacked_and_scored() -> None:
     # A fresh attempt typed in that same bot's own style must actually
     # be scorable against it -- not INSUFFICIENT_DATA.
-    target = sample_targets("word", "nukiae")[0]
-    rng = random.Random("word:quick-fingers:probe")
-    run = _synthetic_run("nukiae", rng, speed=0.72)
+    target = sample_targets("long", LONG_PHRASE)[0]
+    rng = random.Random("long:quick-fingers:probe")
+    run = _synthetic_run(LONG_PHRASE, rng, speed=0.72)
     sample = extract_features(pair_presses(run))
-    result = score_sample(sample, target.profile, phrase="nukiae", threshold=target.threshold)
+    result = score_sample(sample, target.profile, phrase=LONG_PHRASE, threshold=target.threshold)
     assert result.score is not None
 
 
 # ---------- permanent target ----------
+
+#: Not a game level's real phrase -- these tests need one with no
+#: repeated letters, so each (hold/flight) feature key appears
+#: exactly once per run and RunningStats.count folds to exactly the
+#: number of runs, not some higher multiple.
+DISTINCT_PHRASE = "bridge"
 
 
 def _record_a_run(phrase: str, hold_ms: float, gap_ms: float) -> list[KeyEvent]:
@@ -96,27 +106,27 @@ def _record_a_run(phrase: str, hold_ms: float, gap_ms: float) -> list[KeyEvent]:
 
 def test_load_permanent_target_returns_none_with_no_file(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("keystroke_dynamics.game.targets.TARGETS_DIR", tmp_path)
-    assert load_permanent_target("word") is None
+    assert load_permanent_target("sentence") is None
 
 
 def test_save_and_load_permanent_target_round_trips(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("keystroke_dynamics.game.targets.TARGETS_DIR", tmp_path)
-    runs = [_record_a_run("nukiae", hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
-    save_permanent_target(tmp_path / "yuliia.json", name="Yuliia", lines={"word": runs})
+    runs = [_record_a_run(DISTINCT_PHRASE, hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
+    save_permanent_target(tmp_path / "yuliia.json", name="Yuliia", lines={"sentence": runs})
 
-    target = load_permanent_target("word")
+    target = load_permanent_target("sentence")
     assert target is not None
     assert target.name == "Yuliia"
     assert target.id == f"{PERMANENT_TARGET_ID_PREFIX}yuliia"
     assert GAME_MIN_THRESHOLD <= target.threshold <= GAME_MAX_THRESHOLD
-    assert len(target.notes) == len("nukiae")
+    assert len(target.notes) == len(DISTINCT_PHRASE)
     assert target.training_line_count == 5
 
     # load_permanent_target() rebuilds a fresh Player from the file on
     # every call, unlike sample_targets()'s caching -- score_id must
     # still come back the same both times, or score_attempts rows
     # would scatter this one target across different target_ids.
-    again = load_permanent_target("word")
+    again = load_permanent_target("sentence")
     assert again is not None
     assert again.score_id == target.score_id
     assert target.score_id != target.id
@@ -128,13 +138,13 @@ def test_permanent_target_file_holds_no_raw_events(tmp_path) -> None:
     # per-run values) and one median note per key position -- never
     # a per-run list that would let the 5 individual runs be
     # reconstructed.
-    runs = [_record_a_run("nukiae", hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
+    runs = [_record_a_run(DISTINCT_PHRASE, hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
     path = tmp_path / "yuliia.json"
-    save_permanent_target(path, name="Yuliia", lines={"word": runs})
+    save_permanent_target(path, name="Yuliia", lines={"sentence": runs})
 
     raw = json.loads(path.read_text())
     assert set(raw.keys()) == {"name", "lines"}
-    line = raw["lines"]["word"]
+    line = raw["lines"]["sentence"]
     # training_line_count is just an int (score_attempts.training_lines,
     # PARTY_LAUNCH_PLAN.md section 10) -- not a raw event either.
     assert set(line.keys()) == {"threshold", "profile", "notes", "training_line_count"}
@@ -148,10 +158,10 @@ def test_permanent_target_file_holds_no_raw_events(tmp_path) -> None:
 
 def test_load_permanent_target_returns_none_for_an_unrecorded_level(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("keystroke_dynamics.game.targets.TARGETS_DIR", tmp_path)
-    runs = [_record_a_run("nukiae", hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
-    save_permanent_target(tmp_path / "yuliia.json", name="Yuliia", lines={"word": runs})
+    runs = [_record_a_run(PHRASE, hold_ms=80.0 + i, gap_ms=150.0 + i) for i in range(5)]
+    save_permanent_target(tmp_path / "yuliia.json", name="Yuliia", lines={"sentence": runs})
 
-    assert load_permanent_target("sentence") is None
+    assert load_permanent_target("long") is None
 
 
 def test_the_game_still_works_with_no_permanent_target(tmp_path, monkeypatch) -> None:
@@ -159,5 +169,5 @@ def test_the_game_still_works_with_no_permanent_target(tmp_path, monkeypatch) ->
     # level, with zero permanent targets committed, must still have a
     # fully playable set of sample targets to attack.
     monkeypatch.setattr("keystroke_dynamics.game.targets.TARGETS_DIR", tmp_path)
-    assert load_permanent_target("word") is None
-    assert len(sample_targets("word", "nukiae")) == 3
+    assert load_permanent_target("sentence") is None
+    assert len(sample_targets("sentence", PHRASE)) == 3

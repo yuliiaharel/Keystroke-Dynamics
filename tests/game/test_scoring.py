@@ -1,8 +1,8 @@
 """Game scoring: line_feature_count/min_compared_features_for sizing,
 calibrate_threshold's leave-one-line-out logic, and -- the plan's own
 required check -- that a real game can actually complete (reach a
-scorable MATCH/NO_MATCH, not INSUFFICIENT_DATA) on all three lines
-with a realistic, small number of training lines."""
+scorable MATCH/NO_MATCH, not INSUFFICIENT_DATA) on both lines with a
+realistic, small number of training lines."""
 
 from __future__ import annotations
 
@@ -24,13 +24,17 @@ from keystroke_dynamics.game.scoring import (
 )
 
 LEVEL_PHRASES = {
-    "word": "nukiae",
     "sentence": "quiet rhythm hides in every small habit of your hands",
     "long": (
         "every keyboard keeps a quiet record of the hands that use it "
         "and those records are surprisingly hard to fake"
     ),
 }
+
+#: Not a game level -- just a short phrase to exercise
+#: line_feature_count/min_compared_features_for/calibrate_threshold's
+#: behavior at the small end of the size range they have to handle.
+SHORT_PHRASE = "bridge"
 
 
 def _char_to_code(ch: str) -> str:
@@ -63,14 +67,14 @@ def _synthetic_lines(phrase: str, count: int, seed: int) -> list[list[Feature]]:
 
 
 def test_line_feature_count_matches_the_plans_example() -> None:
-    # "about 11 features" for the one-word line, per the plan.
-    assert line_feature_count("nukiae") == 11
+    # "about 11 features" for a 6-distinct-letter line, per the plan.
+    assert line_feature_count(SHORT_PHRASE) == 11
 
 
 def test_min_compared_features_is_a_fraction_of_the_lines_own_size() -> None:
-    word = min_compared_features_for(LEVEL_PHRASES["word"])
+    short = min_compared_features_for(SHORT_PHRASE)
     sentence = min_compared_features_for(LEVEL_PHRASES["sentence"])
-    assert word < sentence  # the short line can't demand as many features
+    assert short < sentence  # the short line can't demand as many features
     assert sentence <= 20  # capped
 
 
@@ -91,14 +95,14 @@ def test_calibrate_threshold_is_within_the_configured_clamp() -> None:
 def test_calibrate_threshold_falls_back_to_the_minimum_with_too_few_lines() -> None:
     # A single training line has no "other lines" to hold it out
     # against for any iteration.
-    lines = _synthetic_lines(LEVEL_PHRASES["word"], count=1, seed=2)
-    assert calibrate_threshold(lines, phrase=LEVEL_PHRASES["word"]) == GAME_MIN_THRESHOLD
+    lines = _synthetic_lines(SHORT_PHRASE, count=1, seed=2)
+    assert calibrate_threshold(lines, phrase=SHORT_PHRASE) == GAME_MIN_THRESHOLD
 
 
 # ---------- a real game can complete on every line ----------
 
 
-@pytest.mark.parametrize("level", ["word", "sentence", "long"])
+@pytest.mark.parametrize("level", ["sentence", "long"])
 def test_a_real_game_can_complete_on_every_line(level: str) -> None:
     phrase = LEVEL_PHRASES[level]
     training = _synthetic_lines(phrase, count=5, seed=42)
@@ -107,7 +111,7 @@ def test_a_real_game_can_complete_on_every_line(level: str) -> None:
 
     # A fresh, similarly-typed line from the same (synthetic) typist
     # must be scorable -- not INSUFFICIENT_DATA -- on every line
-    # length, including the one-word line's much smaller feature set.
+    # length.
     genuine = _synthetic_lines(phrase, count=1, seed=43)[0]
     result = score_sample(genuine, profile, phrase=phrase, threshold=threshold)
     assert result.decision in (Decision.MATCH, Decision.NO_MATCH)

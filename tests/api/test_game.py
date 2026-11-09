@@ -12,32 +12,42 @@ from fastapi.testclient import TestClient
 from keystroke_dynamics.game.rate_limit import game_rate_limiter
 from keystroke_dynamics.main import app
 
-#: A clean, consistent typing of "nukiae" (the word level's phrase) --
-#: used as both a training line and a matching attempt.
-WORD_LINE = [
-    {"code": "KeyN", "action": "down", "t_ms": 0.0},
-    {"code": "KeyN", "action": "up", "t_ms": 80.0},
-    {"code": "KeyU", "action": "down", "t_ms": 230.0},
-    {"code": "KeyU", "action": "up", "t_ms": 310.0},
-    {"code": "KeyK", "action": "down", "t_ms": 460.0},
-    {"code": "KeyK", "action": "up", "t_ms": 540.0},
-    {"code": "KeyI", "action": "down", "t_ms": 690.0},
-    {"code": "KeyI", "action": "up", "t_ms": 770.0},
-    {"code": "KeyA", "action": "down", "t_ms": 920.0},
-    {"code": "KeyA", "action": "up", "t_ms": 1000.0},
-    {"code": "KeyE", "action": "down", "t_ms": 1150.0},
-    {"code": "KeyE", "action": "up", "t_ms": 1230.0},
-]
+SENTENCE_PHRASE = "quiet rhythm hides in every small habit of your hands"
 
 
-def _create_party(client: TestClient, level: str = "word") -> dict:
+def _char_to_code(ch: str) -> str:
+    return "Space" if ch == " " else f"Key{ch.upper()}"
+
+
+def _line_for(phrase: str, *, hold_ms: float = 80.0, gap_ms: float = 150.0) -> list[dict]:
+    """A clean, consistent typing of `phrase`, down/up pairs in order."""
+    events: list[dict] = []
+    t = 0.0
+    for i, ch in enumerate(phrase):
+        if i > 0:
+            t += gap_ms
+        code = _char_to_code(ch)
+        events.append({"code": code, "action": "down", "t_ms": t})
+        events.append({"code": code, "action": "up", "t_ms": t + hold_ms})
+    return events
+
+
+#: A clean, consistent typing of the sentence level's own phrase --
+#: used as both a training line and a matching attempt throughout
+#: this file.
+SENTENCE_LINE = _line_for(SENTENCE_PHRASE)
+
+
+def _create_party(client: TestClient, level: str = "sentence") -> dict:
     resp = client.post("/api/game/party", json={"level": level})
     assert resp.status_code == 200, resp.text
     return resp.json()
 
 
 def _create_player(client: TestClient, name: str | None = None) -> dict:
-    resp = client.post("/api/game/players", json={"name": name, "training_lines": [WORD_LINE] * 5})
+    resp = client.post(
+        "/api/game/players", json={"name": name, "training_lines": [SENTENCE_LINE] * 5}
+    )
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -47,7 +57,7 @@ def _create_player(client: TestClient, name: str | None = None) -> dict:
 
 def test_create_party_returns_the_phrase_and_no_players(client: TestClient) -> None:
     party = _create_party(client)
-    assert party["phrase"] == "nukiae"
+    assert party["phrase"] == SENTENCE_PHRASE
     assert party["players"] == []
     assert len(party["targets"]) == 3  # the three sample bots, always present
 
@@ -105,7 +115,7 @@ def test_a_players_id_from_another_party_is_not_a_valid_target() -> None:
                 "typist_id": None,
                 "target_id": alice_player["id"],
                 "mode": "attack",
-                "events": WORD_LINE,
+                "events": SENTENCE_LINE,
                 "client_attempt_id": "x1",
             },
         )
@@ -125,7 +135,7 @@ def test_create_player_generates_a_name_when_none_given(client: TestClient) -> N
 def test_create_player_rejects_a_blocked_word_name(client: TestClient) -> None:
     _create_party(client)
     resp = client.post(
-        "/api/game/players", json={"name": "admin", "training_lines": [WORD_LINE] * 5}
+        "/api/game/players", json={"name": "admin", "training_lines": [SENTENCE_LINE] * 5}
     )
     assert resp.status_code == 400
 
@@ -134,7 +144,7 @@ def test_create_player_rejects_a_duplicate_name_within_the_party(client: TestCli
     _create_party(client)
     _create_player(client, "Alice")
     resp = client.post(
-        "/api/game/players", json={"name": "alice", "training_lines": [WORD_LINE] * 5}
+        "/api/game/players", json={"name": "alice", "training_lines": [SENTENCE_LINE] * 5}
     )
     assert resp.status_code == 400
 
@@ -207,7 +217,9 @@ def test_players_per_party_limit_returns_409(client: TestClient, monkeypatch) ->
     monkeypatch.setattr(game_api, "_store", tiny_store)
     _create_party(client)
     _create_player(client, "Alice")
-    resp = client.post("/api/game/players", json={"name": "Bob", "training_lines": [WORD_LINE] * 5})
+    resp = client.post(
+        "/api/game/players", json={"name": "Bob", "training_lines": [SENTENCE_LINE] * 5}
+    )
     assert resp.status_code == 409
 
 
@@ -223,7 +235,7 @@ def test_attack_against_a_real_player_with_matching_rhythm_fools_it(client: Test
             "typist_id": None,
             "target_id": player["id"],
             "mode": "attack",
-            "events": WORD_LINE,
+            "events": SENTENCE_LINE,
             "client_attempt_id": "a1",
         },
     )
@@ -246,7 +258,7 @@ def test_attack_against_a_sample_bot(client: TestClient) -> None:
             "typist_id": None,
             "target_id": bot_id,
             "mode": "attack",
-            "events": WORD_LINE,
+            "events": SENTENCE_LINE,
             "client_attempt_id": "a1",
         },
     )
@@ -261,7 +273,7 @@ def test_unknown_target_returns_400(client: TestClient) -> None:
             "typist_id": None,
             "target_id": "does-not-exist",
             "mode": "attack",
-            "events": WORD_LINE,
+            "events": SENTENCE_LINE,
             "client_attempt_id": "a1",
         },
     )
@@ -277,7 +289,7 @@ def test_unknown_typist_returns_400(client: TestClient) -> None:
             "typist_id": "does-not-exist",
             "target_id": player["id"],
             "mode": "attack",
-            "events": WORD_LINE,
+            "events": SENTENCE_LINE,
             "client_attempt_id": "a1",
         },
     )
@@ -291,7 +303,7 @@ def test_attempt_is_idempotent_on_client_attempt_id(client: TestClient) -> None:
         "typist_id": None,
         "target_id": player["id"],
         "mode": "attack",
-        "events": WORD_LINE,
+        "events": SENTENCE_LINE,
         "client_attempt_id": "same-key",
     }
     first = client.post("/api/game/attempts", json=body).json()
@@ -312,7 +324,7 @@ def test_a_different_client_attempt_id_is_recorded_separately(client: TestClient
                 "typist_id": None,
                 "target_id": player["id"],
                 "mode": "attack",
-                "events": WORD_LINE,
+                "events": SENTENCE_LINE,
                 "client_attempt_id": key,
             },
         )
@@ -343,9 +355,9 @@ def test_replay_against_an_unknown_target_returns_400(client: TestClient) -> Non
 
 
 STATE_CHANGING_REQUESTS = [
-    ("post", "/api/game/party", {"level": "word"}),
+    ("post", "/api/game/party", {"level": "sentence"}),
     ("post", "/api/game/party/reset", None),
-    ("post", "/api/game/players", {"name": None, "training_lines": [WORD_LINE] * 5}),
+    ("post", "/api/game/players", {"name": None, "training_lines": [SENTENCE_LINE] * 5}),
     ("patch", "/api/game/players/x", {"name": "New Name"}),
     ("delete", "/api/game/players/x", None),
     (
@@ -355,7 +367,7 @@ STATE_CHANGING_REQUESTS = [
             "typist_id": None,
             "target_id": "x",
             "mode": "attack",
-            "events": WORD_LINE,
+            "events": SENTENCE_LINE,
             "client_attempt_id": "a1",
         },
     ),
@@ -422,12 +434,12 @@ def test_record_target_writes_a_file_the_game_can_then_load(
 
     resp = client.post(
         "/api/game/debug/record-target",
-        json={"name": "Yuliia", "lines": {"word": [WORD_LINE] * 5}},
+        json={"name": "Yuliia", "lines": {"sentence": [SENTENCE_LINE] * 5}},
     )
     assert resp.status_code == 204, resp.text
     assert list(tmp_path.glob("*.json"))
 
-    _create_party(client, level="word")
+    _create_party(client, level="sentence")
     party = client.get("/api/game/party").json()
     recorded = [t for t in party["targets"] if t["kind"] == "target"]
     assert recorded and recorded[0]["name"] == "Yuliia"
@@ -437,6 +449,6 @@ def test_record_target_requires_a_matching_origin(client: TestClient) -> None:
     with TestClient(app) as bare_client:  # no Origin header
         resp = bare_client.post(
             "/api/game/debug/record-target",
-            json={"name": "Yuliia", "lines": {"word": [WORD_LINE] * 5}},
+            json={"name": "Yuliia", "lines": {"sentence": [SENTENCE_LINE] * 5}},
         )
         assert resp.status_code == 403
