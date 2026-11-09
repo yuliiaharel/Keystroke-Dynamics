@@ -1,6 +1,6 @@
 """Bounded in-memory queue + a background thread that batches writes
 to the scores database, so no request ever waits on it
-(PARTY_LAUNCH_PLAN.md section 10: "Never let a request wait on the
+(docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: "Never let a request wait on the
 database"). If the queue is full -- the database is slow, down,
 asleep, or full -- a new command is dropped, with only a count
 logged, never the row itself (logging it would partially defeat

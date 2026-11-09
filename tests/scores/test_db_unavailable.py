@@ -1,4 +1,4 @@
-"""PARTY_LAUNCH_PLAN.md section 10's own 'Done when' bullet: 'a
+"""docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's own 'Done when' bullet: 'a
 stopped, slow, or unavailable database doesn't delay requests or
 break a game.' Needs a fresh process -- see
 tests/_scores_db_unavailable_subprocess.py's own docstring for why.

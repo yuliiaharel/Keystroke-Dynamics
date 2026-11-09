@@ -14,7 +14,7 @@ os.environ["SESSION_SECRET"] = "test-secret-not-for-production"
 os.environ["ALLOWED_ORIGIN"] = "http://testserver"
 os.environ["DEBUG"] = "true"
 # This test config uses Postgres, so the account system (and its own
-# tests) needs it mounted -- see PARTY_LAUNCH_PLAN.md Part 1 section 1.
+# tests) needs it mounted -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 1.
 # The *other* mode (no accounts, no database) gets its own dedicated
 # test module (tests/test_public_mode.py) that sets its own env and
 # builds its own app instance, since this module-level app is only

@@ -1,7 +1,7 @@
 services:
   # The default stack: public mode, no database at all. `docker
   # compose up --build` opens Typing Twin Party at http://localhost:8000/
-  # with nothing else running -- see PARTY_LAUNCH_PLAN.md Part 1.
+  # with nothing else running -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1.
   # For the account system too, layer compose.accounts.yaml on top
   # (see README.md's Quick start).
   app:

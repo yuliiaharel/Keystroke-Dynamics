@@ -1,6 +1,6 @@
 """Global, non-party-scoped game targets: the simulated practice bots
 (always present) and an optional permanent recorded target (e.g. "Can
-you pass as Yuliia?" -- PARTY_LAUNCH_PLAN.md Part 1 section 7).
+you pass as Yuliia?" -- docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 7).
 
 Neither lives in a Party's own players dict -- Party.players (see
 game/store.py) holds only real, party-scoped human players. These are
@@ -139,7 +139,7 @@ def save_permanent_target(path: Path, *, name: str, lines: dict[str, list[list[K
             "notes": [
                 {"ch": n.ch, "start_ms": n.start_ms, "dur_ms": n.dur_ms} for n in player.notes
             ],
-            # score_attempts.training_lines (PARTY_LAUNCH_PLAN.md
+            # score_attempts.training_lines (docs/plans/done/PARTY_LAUNCH_PLAN.md
             # section 10) when this target is opted-in-attacked -- the
             # raw lines themselves are never kept, same as a real
             # player, but the count is cheap to persist.

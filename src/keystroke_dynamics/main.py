@@ -29,7 +29,7 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
     # Both are constructed unconditionally (scores/writer.py,
     # scores/retention.py) and touch no database until started --
     # only actually run when score collection is configured at all
-    # (PARTY_LAUNCH_PLAN.md section 10: off by default, the game
+    # (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: off by default, the game
     # works normally either way). .stop() makes a best-effort flush;
     # a crash (or SIGKILL, which skips this entirely) can still lose
     # queued rows, per the plan's own allowance.

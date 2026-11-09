@@ -1,4 +1,4 @@
-"""Load generator for PARTY_LAUNCH_PLAN.md Part 1's Done-when check:
+"""Load generator for docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1's Done-when check:
 "A short load test against a container limited to 512 MiB, with 100
 parties at the player limit, stays within memory."
 
@@ -12,7 +12,7 @@ memory.
     uv run python3 scripts/load_test_party.py --base-url http://127.0.0.1:8000
 
 Each party gets its own httpx.Client (so its own cookie jar --
-PARTY_LAUNCH_PLAN.md's whole identity model is one party per session)
+docs/plans/done/PARTY_LAUNCH_PLAN.md's whole identity model is one party per session)
 and is built up to the configured player limit, each player enrolled
 with a handful of training lines through the real backend pipeline --
 the same shape a real party actually reaches in memory, not a

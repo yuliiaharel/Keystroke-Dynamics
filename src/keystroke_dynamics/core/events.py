@@ -1,7 +1,7 @@
 """Validate raw keystroke events and pair keydown/keyup into completed
 key presses.
 
-See MODERNIZATION_PLAN.md Phase 2 for the input event format and the
+See docs/plans/done/MODERNIZATION_PLAN.md Phase 2 for the input event format and the
 rules this module implements.
 """
 

@@ -22,9 +22,9 @@ good enough to illustrate the idea, not to gate access to anything that
 matters on its own. See [Known limitations](#known-limitations).
 
 Originally a 2018 Python 2/Flask class project; rewritten from scratch in
-Python 3 following [`MODERNIZATION_PLAN.md`](MODERNIZATION_PLAN.md), which
+Python 3 following [`docs/plans/done/MODERNIZATION_PLAN.md`](docs/plans/done/MODERNIZATION_PLAN.md), which
 also has the full phase-by-phase history of that rewrite. The party game
-was added later -- see [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md).
+was added later -- see [`docs/plans/done/PARTY_LAUNCH_PLAN.md`](docs/plans/done/PARTY_LAUNCH_PLAN.md).
 
 ## Quick start
 
@@ -116,7 +116,7 @@ a few friends type on one keyboard and get scored by the same `core/`
 engine above, under a signed session cookie instead of an account.
 `ENABLE_ACCOUNTS=true` mounts the account system too, and the game moves
 to `/party` so it doesn't collide with the account system's own home
-page at `/`. See [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the
+page at `/`. See [`docs/plans/done/PARTY_LAUNCH_PLAN.md`](docs/plans/done/PARTY_LAUNCH_PLAN.md) for the
 full design and `src/keystroke_dynamics/game/` for the implementation.
 
 ## Method and results
@@ -163,7 +163,7 @@ Full method, numbers, and how to reproduce them:
   no database, ever, in this mode -- and disappear when the party is
   deleted, expires (2 hours idle), or the process restarts. See the
   game's own How it works tab, or
-  [`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md), for the full model.
+  [`docs/plans/done/PARTY_LAUNCH_PLAN.md`](docs/plans/done/PARTY_LAUNCH_PLAN.md), for the full model.
 
 ## Known limitations
 
@@ -175,7 +175,7 @@ Full method, numbers, and how to reproduce them:
   does not share state across multiple app instances/workers.
 - Out of scope by design: microservices, message queues, Kubernetes, a
   separate frontend app, passkeys, cloud deployment. See
-  `MODERNIZATION_PLAN.md`.
+  `docs/plans/done/MODERNIZATION_PLAN.md`.
 - See [`TODO.md`](TODO.md) for anything still open.
 
 ## Running the tests

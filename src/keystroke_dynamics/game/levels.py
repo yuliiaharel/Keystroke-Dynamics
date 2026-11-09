@@ -1,7 +1,7 @@
 """Canonical level/phrase definitions -- the one source of truth for
 what each level's line actually is, taken directly from the approved
 mockup's own LEVELS object (design/typing-twin-party.html) per
-PARTY_LAUNCH_PLAN.md's rule to keep its copy unless told otherwise.
+docs/plans/done/PARTY_LAUNCH_PLAN.md's rule to keep its copy unless told otherwise.
 
 The backend needs the phrase to extract and score features against;
 the API exposes it in party state (game/schemas.py) so the frontend

@@ -1,4 +1,4 @@
-"""The score_attempts table: PARTY_LAUNCH_PLAN.md section 10's one
+"""The score_attempts table: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's one
 append-only table, on its own database (settings.scores_database_url),
 written only by the background writer (scores/writer.py). This
 module's Base is deliberately separate from db/models.py's -- a
@@ -8,7 +8,7 @@ only INSERT and DELETE rows here, nothing else.
 
 The column set is exhaustive and intentionally not open to
 extension -- see tests/scores/test_models.py's test that fails if a
-column outside PARTY_LAUNCH_PLAN.md's own list is added. In
+column outside docs/plans/done/PARTY_LAUNCH_PLAN.md's own list is added. In
 particular, there is no name, IP address, user agent, key timing, key
 identity, or profile-statistics column, and party_id/typist_id/
 target_id are random ids created only for this table (game/store.py's
@@ -42,7 +42,7 @@ class ScoreAttempt(Base):
     )
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
-    #: Date only, no time -- see PARTY_LAUNCH_PLAN.md section 10's
+    #: Date only, no time -- see docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's
     #: table definition. Never a timestamp: a time-of-day would be one
     #: more thing that, combined with other signals, narrows down who
     #: this row could be. Indexed: the daily retention task

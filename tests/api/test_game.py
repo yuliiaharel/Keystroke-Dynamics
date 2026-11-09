@@ -152,7 +152,7 @@ def test_create_player_rejects_a_duplicate_name_within_the_party(client: TestCli
 def test_player_name_with_html_round_trips_as_plain_text(client: TestClient) -> None:
     # The API stores and returns it verbatim -- escaping it on display
     # is the frontend's job (Jinja autoescape / DOM text assignment),
-    # not something the wire format does. See PARTY_LAUNCH_PLAN.md
+    # not something the wire format does. See docs/plans/done/PARTY_LAUNCH_PLAN.md
     # Part 1 section 3 for the full "render as text only" requirement,
     # which still needs a frontend/Playwright check once that exists.
     _create_party(client)
@@ -243,7 +243,7 @@ def test_attack_against_a_real_player_with_matching_rhythm_fools_it(client: Test
     body = resp.json()
     assert body["attempt"]["word"] == "Fooled it!"
     assert body["attempt"]["passed"] is True
-    # Pace and clue (PARTY_LAUNCH_PLAN.md section 8): present on every
+    # Pace and clue (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8): present on every
     # scoreable attempt, not just disguise mode.
     assert isinstance(body["attempt"]["pace"], float)
     assert isinstance(body["clue"], str)

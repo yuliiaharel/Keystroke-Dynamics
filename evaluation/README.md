@@ -51,7 +51,7 @@ one fixed password.
 
 `analyze_scores.py` is a separate, unrelated script: a read-only look at
 `score_attempts`, the party game's own opt-in score table
-(`PARTY_LAUNCH_PLAN.md` section 10) -- not the CMU benchmark above, and
+(`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10) -- not the CMU benchmark above, and
 not something that runs against benchmark data at all.
 
 ```bash

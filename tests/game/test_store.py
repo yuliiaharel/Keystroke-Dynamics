@@ -161,7 +161,7 @@ def test_rename_player_changes_the_name_only() -> None:
     assert renamed.threshold == 1.5  # everything else carried over
     # A rename must never mint a new score_id or touch consent --
     # score_attempts rows recorded before the rename must still be
-    # reachable by "Delete me" afterward (PARTY_LAUNCH_PLAN.md
+    # reachable by "Delete me" afterward (docs/plans/done/PARTY_LAUNCH_PLAN.md
     # section 10), and consent is set once, at enrollment.
     assert renamed.score_id == original.score_id
     assert renamed.shares_scores == original.shares_scores

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     #: Whether the account system (register/login/profile routes, the
     #: old account-based pages, and Postgres) is mounted at all. False
-    #: is the public-launch mode PARTY_LAUNCH_PLAN.md Part 1 adds: the
+    #: is the public-launch mode docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 adds: the
     #: app must start and a full game must be playable with no
     #: DATABASE_URL and no database connection whatsoever. The anonymous
     #: game (api/game.py) never depends on this flag either way -- it
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: float = 60.0
 
     #: In-memory game store limits (game/store.py) -- see
-    #: PARTY_LAUNCH_PLAN.md Part 1 section 2. Same in-memory/per-process
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 2. Same in-memory/per-process
     #: caveat as the rate limiters above: this is deliberately a
     #: single-worker app (see main.py's docstring on why).
     game_party_limit: int = 500
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     game_rate_limit_max_attempts: int = 20
     game_rate_limit_window_seconds: float = 60.0
 
-    #: PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
     #: for opted-in score collection -- empty/None means collection is
     #: off and the game works normally with no opt-in shown at all.
     #: Deliberately independent of database_url/enable_accounts: the

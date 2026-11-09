@@ -5,7 +5,7 @@ _debug_false_subprocess.py/_scores_enabled_subprocess.py: config.py's
 settings (and the module-level score_writer) are already built by the
 time tests/conftest.py's own imports run.
 
-PARTY_LAUNCH_PLAN.md section 10's own "Done when" bullet: "a stopped,
+docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's own "Done when" bullet: "a stopped,
 slow, or unavailable database doesn't delay requests or break a
 game." SCORES_DATABASE_URL here points at port 1 on localhost --
 nothing listens there, so the OS refuses the connection immediately

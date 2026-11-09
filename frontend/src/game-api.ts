@@ -50,7 +50,7 @@ export interface PartyView {
   players: PlayerView[];
   targets: PlayerView[];
   attempts: AttemptView[];
-  /** PARTY_LAUNCH_PLAN.md section 10: show the opt-in only when this
+  /** docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: show the opt-in only when this
    * is true -- never inferred any other way. */
   scores_enabled: boolean;
   consent_label: string;

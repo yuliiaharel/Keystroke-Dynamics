@@ -1,5 +1,5 @@
 """The opt-in score-sharing checkbox's wording and version
-(PARTY_LAUNCH_PLAN.md section 10): "show an unchecked option: 'Share
+(docs/plans/done/PARTY_LAUNCH_PLAN.md section 10): "show an unchecked option: 'Share
 my scores to help test this'. Explain in one or two lines what is
 stored... Record a consent_version on each row, and change it if the
 wording changes materially."

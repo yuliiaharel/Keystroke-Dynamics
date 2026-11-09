@@ -3,7 +3,7 @@ reused unmodified in behavior for every other caller (see its
 min_std_ratio parameter's docstring), just called with different
 constants sized for 3-8 training lines instead of that module's own
 benchmark-sized defaults. No second implementation of scoring lives
-here -- see PARTY_LAUNCH_PLAN.md Part 1 section 5, whose mockup rules
+here -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5, whose mockup rules
 these constants come from directly.
 """
 
@@ -26,7 +26,7 @@ GAME_MIN_THRESHOLD = 1.3
 GAME_MAX_THRESHOLD = 3.5
 GAME_THRESHOLD_MULTIPLIER = 1.2
 
-#: PARTY_LAUNCH_PLAN.md section 10's score_attempts.scoring_version:
+#: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's score_attempts.scoring_version:
 #: "Set in code, and changed whenever scoring or game settings
 #: change." Bump this alongside any change to the constants above,
 #: core/scoring.py's own defaults (not currently used by the game,

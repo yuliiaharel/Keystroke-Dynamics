@@ -1,6 +1,6 @@
 /**
  * Typing Twin Party: the anonymous, no-database party game
- * (PARTY_LAUNCH_PLAN.md Part 1). Every score -- a real player's own
+ * (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1). Every score -- a real player's own
  * limit, a sample bot's, the permanent target's -- comes from the
  * backend's /api/game/* endpoints (api/game.py); nothing here
  * duplicates core/scoring.py. The only thing computed in the browser
@@ -82,7 +82,7 @@ interface State {
   target: string | null;
   mode: ApiMode;
   enrollName: string;
-  //: PARTY_LAUNCH_PLAN.md section 10's opt-in, captured once at the
+  //: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's opt-in, captured once at the
   //: name-form submit (before enrollment typing starts) and sent with
   //: createPlayer -- never pre-checked, never required.
   enrollShareScores: boolean;
@@ -726,7 +726,7 @@ function introView(): string {
 function shareScoresCheckboxHTML(id: string, checked: boolean): string {
   // Not shown at all unless the server says collection is actually
   // on (PartyView.scores_enabled) -- never inferred any other way,
-  // and never pre-checked (PARTY_LAUNCH_PLAN.md section 10).
+  // and never pre-checked (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10).
   if (!S.party?.scores_enabled) return "";
   return `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;max-width:48ch">
     <input type="checkbox" id="${id}" ${checked ? "checked" : ""} style="margin-top:3px">
@@ -853,7 +853,7 @@ function resultHTML(): string {
   const { attempt, text, target, clue } = L;
   const good = attempt.mode === "attack" ? attempt.passed === false : attempt.passed === true;
   // Pace and a one-line clue, shown on every scoreable result
-  // (PARTY_LAUNCH_PLAN.md section 8, following
+  // (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8, following
   // design/typing-twin-touch.html) -- hidden together with the
   // distance gauge below on a "Too messy" result, where
   // attempt.distance/pace and clue are all null: there's no honest
@@ -892,7 +892,7 @@ function attackView(): string {
   const title = same ? (S.mode === "disguise" ? "Fool your own signature" : "Prove it's you") : `Pass as ${esc(target.name)}`;
   const hint = same ? "Type the line" : "Match the pink bars on the roll";
   const replay = !same ? `<button class="quiet" id="replay" ${S.busy ? "disabled" : ""}>Watch a replay attack</button>` : "";
-  // "for a Guest before their first attack" (PARTY_LAUNCH_PLAN.md
+  // "for a Guest before their first attack" (docs/plans/done/PARTY_LAUNCH_PLAN.md
   // section 10) -- not shown once a real enrolled player is typing;
   // their own choice from enrollment is what's authoritative then.
   const guestConsent = !S.typingAs ? shareScoresCheckboxHTML("guest-share-scores", S.guestSharesScores) : "";
@@ -1193,7 +1193,7 @@ document.addEventListener("click", (e) => {
 
 // Show the page right away (the intro view needs no network request),
 // then check in the background whether this session already owns a
-// party (e.g. a page reload) -- PARTY_LAUNCH_PLAN.md Part 1 section
+// party (e.g. a page reload) -- docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section
 // 8: "Show the page right away, even if a request is slow."
 render();
 void (async () => {

@@ -1,4 +1,4 @@
-"""score_attempts' column set is exhaustive, per PARTY_LAUNCH_PLAN.md
+"""score_attempts' column set is exhaustive, per docs/plans/done/PARTY_LAUNCH_PLAN.md
 section 10: this fails loudly if a column outside the plan's own list
 is ever added, rather than silently letting one more field in
 (name, IP address, user agent, key timing, key identity, profile
@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 from keystroke_dynamics.scores.models import ScoreAttempt
 
-#: Exactly PARTY_LAUNCH_PLAN.md section 10's table definition -- add a
+#: Exactly docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's table definition -- add a
 #: column here (with a one-line note of which plan line it's from)
 #: only alongside an actual plan update, never just to make this pass.
 _ALLOWED_COLUMNS = {

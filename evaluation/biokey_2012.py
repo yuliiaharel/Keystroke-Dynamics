@@ -7,7 +7,7 @@ Evaluation only. Never imported by the app -- keep it that way.
 
 The formulas below are transcribed as written in the thesis, with two
 corrections noted inline (half-open Haar intervals, r stopping at
-n-1) that MODERNIZATION_PLAN.md calls out as matching the thesis's own
+n-1) that docs/plans/done/MODERNIZATION_PLAN.md calls out as matching the thesis's own
 flowchart despite a slip in its text. Everything under "Reconstruction"
 is this module's own choice, since the thesis doesn't specify it and
 the original code no longer exists -- treat those numbers as an
@@ -50,7 +50,7 @@ def haar_matrix(n: int) -> np.ndarray:
 
     t ranges over N evenly spaced samples in [0, 1) (t_idx / N).
 
-    Two corrections to the thesis's text, per MODERNIZATION_PLAN.md
+    Two corrections to the thesis's text, per docs/plans/done/MODERNIZATION_PLAN.md
     (matching the thesis's own flowchart): the intervals above are
     half-open as shown (not closed), and r stops at n-1, not n.
     """

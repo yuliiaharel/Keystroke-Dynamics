@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The anonymous party game (PARTY_LAUNCH_PLAN.md Part 1), driven end
+ * The anonymous party game (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1), driven end
  * to end against the real backend: two players enrolled on one
  * keyboard, an attack, a server-run replay, a rename, a deletion,
  * and the scores page. Every verdict comes from a real
@@ -69,7 +69,7 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   // The opt-in checkbox's presence must track the server's own
   // scores_enabled, not any hardcoded assumption -- this suite runs
   // against both the default (off) stack and, run locally with
-  // SCORES_DATABASE_URL set, an on one (PARTY_LAUNCH_PLAN.md section
+  // SCORES_DATABASE_URL set, an on one (docs/plans/done/PARTY_LAUNCH_PLAN.md section
   // 10: "the game works normally without showing the opt-in" when
   // off).
   const party = await page.evaluate(() => fetch("/api/game/party").then((r) => r.json()));
@@ -113,7 +113,7 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   await expect(attackResult).toBeVisible({ timeout: 10000 });
   await expect(attackResult).toContainText(/Fooled it!|Caught!|Too messy/);
   // Pace and a one-line clue show on every scoreable result
-  // (PARTY_LAUNCH_PLAN.md section 8) -- "Too messy" is the one
+  // (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8) -- "Too messy" is the one
   // outcome that hides both, so only assert this when the attack
   // actually got scored.
   const resultText = (await attackResult.textContent()) ?? "";

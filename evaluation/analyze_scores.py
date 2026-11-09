@@ -1,5 +1,5 @@
 """Read-only analysis of the opt-in score_attempts table
-(PARTY_LAUNCH_PLAN.md section 10). Run with a read-only connection
+(docs/plans/done/PARTY_LAUNCH_PLAN.md section 10). Run with a read-only connection
 string -- never the app's own SCORES_DATABASE_URL, which is write-only
 by design (scores/db.py, the restricted app database role):
 
@@ -271,7 +271,7 @@ def analyze(rows: list[Row]) -> None:
                 pace_table.append([rr.label, rr.kind, str(rr.n), f"{rr.rate:.3f}"])
         _print_table(
             "False rejection / false acceptance by pace bucket "
-            "(in-band is PARTY_LAUNCH_PLAN.md's 0.85x-1.15x)",
+            "(in-band is docs/plans/done/PARTY_LAUNCH_PLAN.md's 0.85x-1.15x)",
             ["group, limit", "kind", "n", "rate"],
             pace_table,
         )

@@ -75,7 +75,7 @@ class AttemptView(BaseModel):
     ratio: float | None
     #: This attempt's duration over the target's own usual duration,
     #: where 1.0 is the same pace -- shown as its own measure
-    #: alongside distance (PARTY_LAUNCH_PLAN.md section 8), kept in
+    #: alongside distance (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8), kept in
     #: history the same way distance/ratio are. None exactly when
     #: distance is None.
     pace: float | None
@@ -115,7 +115,7 @@ class PartyView(BaseModel):
     #: merged in here for the frontend's convenience.
     targets: list[PlayerView]
     attempts: list[AttemptView]
-    #: PARTY_LAUNCH_PLAN.md section 10: "If it's empty, collection is
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: "If it's empty, collection is
     #: off, and the game works normally without showing the opt-in."
     #: The frontend shows the consent checkbox only when this is
     #: True -- never derives it from anything else.
@@ -129,9 +129,9 @@ class PartyView(BaseModel):
 class CreatePlayerRequest(BaseModel):
     #: None -> the server generates one (game/names.py).
     name: str | None = None
-    #: 3-8 training lines, per PARTY_LAUNCH_PLAN.md Part 1 section 5.
+    #: 3-8 training lines, per docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5.
     training_lines: list[list[KeyEventSchema]] = Field(min_length=3, max_length=8)
-    #: PARTY_LAUNCH_PLAN.md section 10's opt-in checkbox, unchecked by
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's opt-in checkbox, unchecked by
     #: default on the client and never a condition of playing --
     #: ignored outright when score collection is off (settings.
     #: scores_database_url unset), same as the checkbox not being
@@ -155,7 +155,7 @@ class AttemptRequest(BaseModel):
     client_attempt_id: str = Field(min_length=1, max_length=64)
     #: The same opt-in as CreatePlayerRequest.share_scores, but for a
     #: Guest attacker, who has no enrolled Player to have opted in at
-    #: creation time -- PARTY_LAUNCH_PLAN.md section 10: "for a Guest
+    #: creation time -- docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: "for a Guest
     #: before their first attack, show an unchecked option." Ignored
     #: entirely when typist_id is set (a real player's own stored
     #: choice is authoritative then, not anything re-askable per
@@ -191,7 +191,7 @@ class ReplayResponse(BaseModel):
 
 class RecordTargetRequest(BaseModel):
     """Only reachable when settings.debug is true (see api/game.py) --
-    a local-only way to record a permanent target (PARTY_LAUNCH_PLAN.md
+    a local-only way to record a permanent target (docs/plans/done/PARTY_LAUNCH_PLAN.md
     Part 1 section 7). `lines` maps level -> 3-8 training runs, the
     same shape POST /api/game/players takes, just across every level
     at once instead of one party's own.

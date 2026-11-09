@@ -1,6 +1,6 @@
 /* Self-hosted basic-Latin subsets of the three families the approved
    mockup (design/typing-twin-party.html) uses, replacing the Google
-   Fonts <link> tags -- see PARTY_LAUNCH_PLAN.md Part 1 section 8:
+   Fonts <link> tags -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 8:
    "Self-host the fonts and remove third-party requests." Only the
    basic-Latin subset is kept (the game's lines are plain English
    text); the party.* module's own CSP has no connect to fonts.* at

@@ -28,7 +28,7 @@ _score_ids: dict[str, str] = {}
 def score_id_for_target(real_id: str) -> str:
     """A random id that stays the same for this real_id for the rest
     of the process's life, and is never derived from it (per
-    PARTY_LAUNCH_PLAN.md section 10's "must not be derived from ... a
+    docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's "must not be derived from ... a
     game ID") -- only looked up by it, in memory, never persisted
     anywhere alongside real_id itself. Forgotten on restart, same as
     every other in-memory game state.

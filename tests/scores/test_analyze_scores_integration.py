@@ -1,6 +1,6 @@
 """evaluation/analyze_scores.py's one database-touching function,
 fetch_rows(), against the real scores test database -- and
-end_to_end() on known seeded data, matching PARTY_LAUNCH_PLAN.md
+end_to_end() on known seeded data, matching docs/plans/done/PARTY_LAUNCH_PLAN.md
 section 10's own 'Done when' bullet: "evaluation/analyze_scores.py
 produces correct results on known test data."
 """

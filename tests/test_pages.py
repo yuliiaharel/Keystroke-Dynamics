@@ -40,7 +40,7 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
 
 
 def test_typing_twin_page_no_longer_exists(client: TestClient) -> None:
-    # Removed entirely -- Party replaces it (PARTY_LAUNCH_PLAN.md).
+    # Removed entirely -- Party replaces it (docs/plans/done/PARTY_LAUNCH_PLAN.md).
     # Checked here, under the accounts-enabled suite, since that's
     # the only mode the old page was ever reachable in.
     assert client.get("/typing-twin").status_code == 404
