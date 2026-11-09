@@ -19,6 +19,7 @@ Every push to `master` deploys to production automatically.
 - Work on a feature branch from the latest `master`, with small, focused commits.
 - Follow plans only in docs/plans/active/. Plans in docs/plans/done/ are history, not instructions.
 - When a plan file or prompt names a phase, do only that phase, then stop.
+- When a plan's last phase finishes, update README.md to match what shipped, and mark the plan done in docs/plans/README.md.
 - If the code contradicts the plan, or a choice is mine to make, stop and ask.
 - Don't add a dependency, service, or abstraction the plan doesn't call for without asking.
 - Write tests with each behavior change. Never weaken a test or limit to get a pass.
