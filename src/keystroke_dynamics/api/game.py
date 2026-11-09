@@ -1,14 +1,32 @@
-"""POST/GET /api/game/party, POST /api/game/party/reset,
-POST /api/game/players, PATCH/DELETE /api/game/players/{id},
-POST /api/game/attempts, POST /api/game/replay.
+"""The anonymous party game's API, all under /api/game.
 
-The anonymous party game: no accounts, no database (see config.py's
-enable_accounts). A party's identity comes entirely from
-request.session["party_id"] -- never trusted from the request body or
-a path parameter without first checking the session actually owns it
-(_party_for_session). A target_id/typist_id is only ever resolved
-*within* that same party, so a value that happens to name something
-in a different party is simply "not found", never a cross-party leak.
+Rooms (docs/plans/active/ROOMS_PLAN.md Phase 1):
+POST /rooms, POST /rooms/{code}/join, POST /rooms/leave, GET /room,
+POST /room/lock, POST /room/end, DELETE /room/players/{id},
+DELETE /room/members/{id}.
+Play, inside the session's room: POST /players,
+PATCH/DELETE /players/{id}, POST /attempts, POST /replay.
+The paths the game used before rooms still answer, so the current
+frontend keeps working until it moves over in Phase 3:
+POST /party = POST /rooms, GET /party = GET /room,
+POST /party/reset = POST /rooms/leave.
+
+No accounts, no database (see config.py's enable_accounts). Who a
+request comes from is entirely request.session's "room_id" and
+"member_id" -- both random, server-generated, and carried in the
+signed session cookie, never trusted from a body or a path. Every
+route but create and join goes through _room_for_session, which
+checks that this member still belongs to this room. A target_id/
+typist_id is only ever resolved *within* that room, so a value that
+happens to name something in a different room is simply "not found",
+never a cross-room leak.
+
+Permissions, in one place:
+- any member: read the room, enroll a player, attack any player
+- a player's owner (the member who enrolled them): type as, rename,
+  or delete that player
+- the host: also delete any player, remove a member, lock or unlock
+  the room, end the room
 
 Origin check + rate limiting are applied per-route (not at the router
 level) because this router, unlike auth.py/profile.py, mixes a
@@ -19,6 +37,7 @@ note on why GETs skip the Origin check.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -27,11 +46,12 @@ from keystroke_dynamics.api.security import rate_limited, require_matching_origi
 from keystroke_dynamics.config import settings
 from keystroke_dynamics.core.events import InvalidSampleError, KeyEvent, pair_presses, validate
 from keystroke_dynamics.core.features import extract_features
+from keystroke_dynamics.game.codes import normalize_code
 from keystroke_dynamics.game.enroll import build_profile_and_threshold, median_notes
 from keystroke_dynamics.game.judge import judge, pace_ratio
 from keystroke_dynamics.game.levels import LEVELS
 from keystroke_dynamics.game.names import InvalidNameError, generate_name, validate_custom_name
-from keystroke_dynamics.game.rate_limit import game_rate_limiter
+from keystroke_dynamics.game.rate_limit import game_join_rate_limiter, game_rate_limiter
 from keystroke_dynamics.game.replay import notes_to_events
 from keystroke_dynamics.game.schemas import (
     AttemptRequest,
@@ -39,6 +59,8 @@ from keystroke_dynamics.game.schemas import (
     AttemptView,
     CreatePartyRequest,
     CreatePlayerRequest,
+    JoinRoomRequest,
+    LockRoomRequest,
     NoteView,
     PartyView,
     PlayerView,
@@ -52,10 +74,15 @@ from keystroke_dynamics.game.store import (
     Attempt,
     GameStore,
     InMemoryGameStore,
+    Member,
+    MemberRemoval,
     Party,
     PartyFullError,
     PartyLimitReached,
     Player,
+    RoomLockedError,
+    RoomMembersFullError,
+    RoomNotFoundError,
 )
 from keystroke_dynamics.game.targets import (
     SAMPLE_TARGET_ID_PREFIX,
@@ -94,6 +121,7 @@ _store: GameStore = InMemoryGameStore(
     players_per_party_limit=settings.game_players_per_party_limit,
     attempts_per_party_limit=settings.game_attempts_per_party_limit,
     idle_expiry_seconds=settings.game_idle_expiry_seconds,
+    members_per_party_limit=settings.game_members_per_party_limit,
 )
 
 
@@ -101,17 +129,82 @@ def get_game_store() -> GameStore:
     return _store
 
 
-def _party_for_session(request: Request, store: GameStore = Depends(get_game_store)) -> Party:
-    party_id = request.session.get("party_id")
-    if party_id is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no active party")
-    party = store.get_party(party_id)
-    if party is None:
-        # Gone (expired or the process restarted) -- drop the stale
-        # reference so the next request doesn't keep hitting this.
-        request.session.pop("party_id", None)
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "party not found or expired")
-    return party
+@dataclass(frozen=True)
+class RoomSession:
+    """The room this request's session belongs to, and which of its
+    members is asking."""
+
+    party: Party
+    member: Member
+
+    @property
+    def is_host(self) -> bool:
+        return self.party.host_member_id == self.member.id
+
+
+#: One answer for a code that never existed, an ended room, and an
+#: expired one -- a response that told them apart would tell a
+#: guesser which codes were once real.
+_ROOM_NOT_FOUND = "room not found"
+
+
+def _forget_room(request: Request) -> None:
+    request.session.pop("room_id", None)
+    request.session.pop("member_id", None)
+
+
+def _current_room(request: Request, store: GameStore) -> RoomSession | None:
+    """The session's room, if it still has one. A session pointing at
+    a room that's gone (ended, expired, or the process restarted), or
+    at a room this member was removed from, loses that link here."""
+    room_id = request.session.get("room_id")
+    member_id = request.session.get("member_id")
+    if room_id is None or member_id is None:
+        return None
+    party = store.get_party(room_id)
+    member = party.members.get(member_id) if party is not None else None
+    if party is None or member is None:
+        _forget_room(request)
+        return None
+    store.mark_member_seen(party.id, member.id)
+    return RoomSession(party=party, member=member)
+
+
+def _room_for_session(request: Request, store: GameStore = Depends(get_game_store)) -> RoomSession:
+    room = _current_room(request, store)
+    if room is None:
+        # Deliberately the same whether there was never a room, it
+        # ended, or this member was removed from it.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no active room")
+    return room
+
+
+def _host_room_for_session(room: RoomSession = Depends(_room_for_session)) -> RoomSession:
+    if not room.is_host:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only the host can do that")
+    return room
+
+
+def _leave(request: Request, store: GameStore, room: RoomSession) -> None:
+    """Takes this member out of their room -- their players go with
+    them, and so do those players' stored scores (the same promise
+    "Delete me" makes). The last member out ends the room."""
+    removal = store.remove_member(room.party.id, room.member.id)
+    _forget_room(request)
+    _delete_scores_after_removal(room.party, removal)
+
+
+def _delete_scores_after_removal(party: Party, removal: MemberRemoval | None) -> None:
+    if removal is None or not settings.scores_database_url:
+        return
+    if removal.room_ended:
+        # party.score_id, not party.id -- the random id score_attempts
+        # rows actually carry. Still readable: removing the room from
+        # the store doesn't clear this object's own attributes.
+        score_writer.enqueue(DeleteByPartyId(party.score_id))
+        return
+    for player in removal.players:
+        score_writer.enqueue(DeleteByPlayerScoreId(player.score_id))
 
 
 def _validate_events(events_schema: list[KeyEventSchema]) -> list[KeyEvent]:
@@ -151,7 +244,21 @@ def _score_target_kind(party: Party, target: Player) -> ScoreTargetKind:
     return "permanent"
 
 
-def _party_view(party: Party) -> PartyView:
+_NOT_YOUR_PLAYER = "that player belongs to another member of this room"
+
+
+def _same_keyboard(room: RoomSession, target: Player) -> bool | None:
+    """Whether the typist and the target belong to the same member.
+    The typist's member is always the sender: a member can only type
+    as their own players or as Guest. None for a target that isn't a
+    player in this room (a sample bot or the permanent target)."""
+    if target.id not in room.party.players:
+        return None
+    return target.owner_member_id == room.member.id
+
+
+def _party_view(room: RoomSession) -> PartyView:
+    party = room.party
     phrase = LEVELS[party.level].phrase
     bots = sample_targets(party.level, phrase)
     targets = [PlayerView.from_player(b, kind="sample") for b in bots]
@@ -160,6 +267,12 @@ def _party_view(party: Party) -> PartyView:
         targets.append(PlayerView.from_player(permanent, kind="target"))
     return PartyView(
         id=party.id,
+        code=party.code,
+        version=party.version,
+        locked=party.locked,
+        member_id=room.member.id,
+        is_host=room.is_host,
+        member_count=len(party.members),
         level=party.level,
         phrase=phrase,
         players=[PlayerView.from_player(p, kind="player") for p in party.players.values()],
@@ -169,53 +282,149 @@ def _party_view(party: Party) -> PartyView:
     )
 
 
+@router.post("/rooms", dependencies=_STATE_CHANGING)
 @router.post("/party", dependencies=_STATE_CHANGING)
-def create_party(
+def create_room(
     body: CreatePartyRequest, request: Request, store: GameStore = Depends(get_game_store)
 ) -> PartyView:
     if body.level not in LEVELS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown level {body.level!r}")
+    previous = _current_room(request, store)
     try:
         party = store.create_party(body.level)
     except PartyLimitReached as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    # Replaces any party this session already had -- the old one is
-    # simply orphaned and expires normally, same as an abandoned tab.
-    request.session["party_id"] = party.id
-    return _party_view(party)
+    # A browser is in one room at a time. Leaving the old one only
+    # after the new one exists means a "try again soon" above costs
+    # nobody the room they already had.
+    if previous is not None:
+        _leave(request, store, previous)
+    request.session["room_id"] = party.id
+    request.session["member_id"] = party.host_member_id
+    return _party_view(RoomSession(party=party, member=party.members[party.host_member_id]))
 
 
+@router.post(
+    "/rooms/{code}/join",
+    dependencies=[*_STATE_CHANGING, Depends(rate_limited(game_join_rate_limiter))],
+)
+def join_room(
+    code: str,
+    request: Request,
+    body: JoinRoomRequest | None = None,
+    store: GameStore = Depends(get_game_store),
+) -> PartyView:
+    normalized = normalize_code(code)
+    if normalized is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _ROOM_NOT_FOUND)
+    previous = _current_room(request, store)
+    if previous is not None and previous.party.code == normalized:
+        # Reopening your own room's link: you're already in it.
+        return _party_view(previous)
+    if previous is not None and not (body is not None and body.leave_current):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "You're already in another room. Leave it to join this one.",
+        )
+    try:
+        party, member = store.join_party(normalized)
+    except RoomNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _ROOM_NOT_FOUND) from exc
+    except RoomLockedError as exc:
+        raise HTTPException(status.HTTP_423_LOCKED, str(exc)) from exc
+    except RoomMembersFullError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    # Only once the join worked -- a bad code must never cost someone
+    # the room they were in.
+    if previous is not None:
+        _leave(request, store, previous)
+    request.session["room_id"] = party.id
+    request.session["member_id"] = member.id
+    return _party_view(RoomSession(party=party, member=member))
+
+
+@router.get("/room")
 @router.get("/party")
-def get_party(party: Party = Depends(_party_for_session)) -> PartyView:
-    return _party_view(party)
+def get_room(room: RoomSession = Depends(_room_for_session)) -> PartyView:
+    return _party_view(room)
 
 
+@router.post(
+    "/rooms/leave",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=_STATE_CHANGING,
+)
 @router.post(
     "/party/reset",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=_STATE_CHANGING,
 )
-def reset_party(
+def leave_room(
     request: Request,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> None:
-    store.delete_party(party.id)
-    request.session.pop("party_id", None)
+    _leave(request, store, room)
+
+
+@router.post("/room/lock", dependencies=_STATE_CHANGING)
+def lock_room(
+    body: LockRoomRequest,
+    room: RoomSession = Depends(_host_room_for_session),
+    store: GameStore = Depends(get_game_store),
+) -> PartyView:
+    store.set_locked(room.party.id, body.locked)
+    return _party_view(room)
+
+
+@router.post(
+    "/room/end",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=_STATE_CHANGING,
+)
+def end_room(
+    request: Request,
+    room: RoomSession = Depends(_host_room_for_session),
+    store: GameStore = Depends(get_game_store),
+) -> None:
+    """Ends the room for everyone. Other members find out on their
+    next request, when _current_room drops their session's link."""
+    store.delete_party(room.party.id)
+    _forget_room(request)
     if settings.scores_database_url:
-        # party.score_id, not party.id -- the random id score_attempts
-        # rows actually carry (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10). Still
-        # readable here: deleting from the store's internal dict
-        # doesn't clear this local Party object's own attributes.
-        score_writer.enqueue(DeleteByPartyId(party.score_id))
+        score_writer.enqueue(DeleteByPartyId(room.party.score_id))
+
+
+@router.delete(
+    "/room/members/{member_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=_STATE_CHANGING,
+)
+def remove_member(
+    member_id: str,
+    room: RoomSession = Depends(_host_room_for_session),
+    store: GameStore = Depends(get_game_store),
+) -> None:
+    """Host only: removes another browser from the room, with its
+    players. That browser's session loses the room on its next
+    request."""
+    if member_id == room.member.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "leave the room instead of removing yourself"
+        )
+    removal = store.remove_member(room.party.id, member_id)
+    if removal is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "member not found")
+    _delete_scores_after_removal(room.party, removal)
 
 
 @router.post("/players", dependencies=_STATE_CHANGING)
 def create_player(
     body: CreatePlayerRequest,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> PlayerView:
+    party = room.party
     phrase = LEVELS[party.level].phrase
     runs = [_validate_events(line) for line in body.training_lines]
 
@@ -240,6 +449,7 @@ def create_player(
         threshold=threshold,
         notes=notes,
         training_line_count=len(runs),
+        owner_member_id=room.member.id,
     )
     try:
         store.add_player(party.id, player)
@@ -255,11 +465,16 @@ def create_player(
 def rename_player(
     player_id: str,
     body: RenamePlayerRequest,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> PlayerView:
-    if player_id not in party.players:
+    party = room.party
+    player = party.players.get(player_id)
+    if player is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "player not found")
+    # Owner only -- not even the host renames someone else's player.
+    if player.owner_member_id != room.member.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_YOUR_PLAYER)
     existing_names = {p.name.lower() for p in party.players.values() if p.id != player_id}
     try:
         name = validate_custom_name(body.name, existing_names=existing_names)
@@ -272,32 +487,50 @@ def rename_player(
 
 
 @router.delete(
+    "/room/players/{player_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=_STATE_CHANGING,
+)
+@router.delete(
     "/players/{player_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=_STATE_CHANGING,
 )
 def delete_player(
     player_id: str,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> None:
+    party = room.party
     # Read before deleting: once gone from the store, there's no
     # other way to find this player's score_id.
     player = party.players.get(player_id)
+    if player is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "player not found")
+    if player.owner_member_id != room.member.id and not room.is_host:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_YOUR_PLAYER)
     if not store.delete_player(party.id, player_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "player not found")
-    if settings.scores_database_url and player is not None:
+    if settings.scores_database_url:
         score_writer.enqueue(DeleteByPlayerScoreId(player.score_id))
 
 
 @router.post("/attempts", dependencies=_STATE_CHANGING)
 def create_attempt(
     body: AttemptRequest,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> AttemptResponse:
-    if body.typist_id is not None and body.typist_id not in party.players:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown typist")
+    party = room.party
+    if body.typist_id is not None:
+        typist = party.players.get(body.typist_id)
+        if typist is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown typist")
+        # You may only type as a player you enrolled. Anyone may
+        # attack as Guest (typist_id None), tied to the sending member
+        # through Attempt.member_id below.
+        if typist.owner_member_id != room.member.id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_YOUR_PLAYER)
     target = _resolve_target(party, body.target_id)
     if target is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown target")
@@ -320,7 +553,9 @@ def create_attempt(
         (
             a
             for a in party.attempts
-            if a.typist_id == body.typist_id and a.client_attempt_id == body.client_attempt_id
+            if a.member_id == room.member.id
+            and a.typist_id == body.typist_id
+            and a.client_attempt_id == body.client_attempt_id
         ),
         None,
     )
@@ -344,6 +579,8 @@ def create_attempt(
         counted=verdict.counted,
         passed=verdict.passed,
         client_attempt_id=body.client_attempt_id,
+        member_id=room.member.id,
+        same_keyboard=_same_keyboard(room, target),
     )
     store.add_attempt(party.id, attempt)
 
@@ -366,6 +603,7 @@ def create_attempt(
             target_id=target.score_id,
             training_lines=target.training_line_count,
             limit_value=target.threshold,
+            same_keyboard=attempt.same_keyboard,
         )
         score_writer.enqueue(InsertRow(row))
 
@@ -377,9 +615,10 @@ def create_attempt(
 @router.post("/replay", dependencies=_STATE_CHANGING)
 def create_replay(
     body: ReplayRequest,
-    party: Party = Depends(_party_for_session),
+    room: RoomSession = Depends(_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> ReplayResponse:
+    party = room.party
     target = _resolve_target(party, body.target_id)
     if target is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown target")
@@ -410,6 +649,7 @@ def create_replay(
         word=verdict.word,
         counted=verdict.counted,
         passed=verdict.passed,
+        member_id=room.member.id,
     )
     store.add_attempt(party.id, attempt)
 
@@ -427,6 +667,8 @@ def create_replay(
             target_id=target.score_id,
             training_lines=target.training_line_count,
             limit_value=target.threshold,
+            # Nobody typed a replay, so there's no keyboard to compare.
+            same_keyboard=None,
         )
         score_writer.enqueue(InsertRow(row))
 

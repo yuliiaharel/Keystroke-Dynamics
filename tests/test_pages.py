@@ -39,6 +39,17 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
     assert "fonts.gstatic.com" not in resp.text
 
 
+@pytest.mark.parametrize("code", ["ABCDEFGH", "abcd-efgh", "ZZZZZZZZ", "nonsense"])
+def test_a_room_link_serves_the_game_page_whatever_the_code(client: TestClient, code: str) -> None:
+    # No room exists for any of these. The page never looks a code up
+    # (the join request does, behind its rate limit), so a GET can't
+    # tell a real code from a made-up one.
+    room_page = client.get(f"/r/{code}")
+    assert room_page.status_code == 200
+    assert room_page.text == client.get("/party").text
+    assert "script-src 'self'" in room_page.headers["content-security-policy"]
+
+
 def test_typing_twin_page_no_longer_exists(client: TestClient) -> None:
     # Removed entirely -- Party replaces it (docs/plans/done/PARTY_LAUNCH_PLAN.md).
     # Checked here, under the accounts-enabled suite, since that's

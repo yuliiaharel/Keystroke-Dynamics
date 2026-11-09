@@ -52,6 +52,7 @@ def build_score_row(
     target_id: str,
     training_lines: int,
     limit_value: float,
+    same_keyboard: bool | None,
 ) -> dict[str, object]:
     """Builds the row dict scores/writer.py's InsertRow carries.
     party_id/typist_id/target_id must already be score_ids (random,
@@ -94,4 +95,8 @@ def build_score_row(
         "limit_value": limit_value,
         "pace": pace,
         "outcome": outcome,
+        # Whether typist and target share a room member (a keyboard)
+        # -- docs/plans/active/ROOMS_PLAN.md Phase 1 section 5. A plain
+        # true/false/null, not an id: it says nothing about who.
+        "same_keyboard": same_keyboard,
     }

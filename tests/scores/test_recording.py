@@ -3,6 +3,8 @@ function -- no database, no app wiring."""
 
 from __future__ import annotations
 
+import pytest
+
 from keystroke_dynamics.game.judge import Verdict
 from keystroke_dynamics.game.scoring import SCORING_VERSION
 from keystroke_dynamics.scores.models import ScoreAttempt
@@ -40,6 +42,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "target_id": "target-score-id",
         "training_lines": 5,
         "limit_value": 1.5,
+        "same_keyboard": True,
     }
     defaults.update(overrides)
     return build_score_row(**defaults)  # type: ignore[arg-type]
@@ -60,6 +63,11 @@ def test_row_has_exactly_the_table_columns_and_nothing_else() -> None:
     # Automatic saving must store the same fields the opted-in rows
     # always had -- no name, keystrokes, timings, or IP can ride along.
     assert set(_row()) == {column.name for column in ScoreAttempt.__table__.columns}
+
+
+@pytest.mark.parametrize("same_keyboard", [True, False, None])
+def test_same_keyboard_passes_through(same_keyboard: bool | None) -> None:
+    assert _row(same_keyboard=same_keyboard)["same_keyboard"] is same_keyboard
 
 
 def test_rhythm_and_total_mirror_distance_place_stays_null() -> None:

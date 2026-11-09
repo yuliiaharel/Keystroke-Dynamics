@@ -166,7 +166,15 @@ def test_player_name_with_html_round_trips_as_plain_text(client: TestClient) -> 
 def test_player_view_never_includes_the_underlying_profile(client: TestClient) -> None:
     _create_party(client)
     player = _create_player(client, "Alice")
-    assert set(player.keys()) == {"id", "name", "color", "threshold", "notes", "kind"}
+    assert set(player.keys()) == {
+        "id",
+        "name",
+        "color",
+        "threshold",
+        "notes",
+        "kind",
+        "owner_member_id",
+    }
 
 
 def test_rename_player(client: TestClient) -> None:

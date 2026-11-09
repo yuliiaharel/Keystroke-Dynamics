@@ -92,11 +92,20 @@ class Settings(BaseSettings):
     game_party_limit: int = 500
     game_players_per_party_limit: int = 12
     game_attempts_per_party_limit: int = 200
+    #: How many browsers may join one room
+    #: (docs/plans/active/ROOMS_PLAN.md, open decision 1).
+    game_members_per_party_limit: int = 12
     game_idle_expiry_seconds: float = 2 * 60 * 60
     #: Separate from the account system's rate limiters (different
     #: endpoints, different abuse shape) but the same mechanism.
     game_rate_limit_max_attempts: int = 20
     game_rate_limit_window_seconds: float = 60.0
+    #: Joining a room by code, successful or not, has its own budget
+    #: per client IP on top of the one above -- it's the one route
+    #: where guessing pays off. 20 leaves room for a full room of 12
+    #: friends joining from behind one shared address.
+    game_join_rate_limit_max_attempts: int = 20
+    game_join_rate_limit_window_seconds: float = 60.0
 
     #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
     #: for score collection -- empty/None means collection is off and

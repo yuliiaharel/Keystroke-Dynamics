@@ -70,6 +70,18 @@ def party_page(request: Request) -> HTMLResponse:
     return response
 
 
+@router.get("/r/{code}", response_class=HTMLResponse)
+def room_page(request: Request, code: str) -> HTMLResponse:
+    """A room link (docs/plans/active/ROOMS_PLAN.md). Serves the same
+    game page whatever the code is, and never looks the code up: the
+    page joins through POST /api/game/rooms/{code}/join, which is
+    where the rate limit and the single "room not found" answer live.
+    A plain GET therefore can't be used to test whether a code is
+    real, and the page's link preview never carries anything about a
+    room."""
+    return party_page(request)
+
+
 if PARTY_PATH == "/":
     # The game used to live at /party before public mode moved it to
     # "/" (its only page); redirect old links/bookmarks rather than
