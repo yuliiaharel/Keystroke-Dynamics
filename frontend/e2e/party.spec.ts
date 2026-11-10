@@ -47,8 +47,8 @@ async function enrollPlayer(page: Page, name: string): Promise<void> {
 test("a full one-keyboard party: two players, an attack, a replay, a rename, a deletion, and the scores page", async ({
   page,
 }) => {
-  // GET /api/game/party legitimately 404s once, on first load, before
-  // any party exists (party.ts probes for one in the background and
+  // GET /api/game/room legitimately 404s once, on first load, before
+  // any room exists (party.ts probes for one in the background and
   // catches the rejection) -- that one network-level 404 log is
   // expected, not a bug, so it's filtered out below rather than
   // loosening the check for every other console error.
@@ -72,7 +72,7 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   // against both the default (off) stack and, run locally with
   // SCORES_DATABASE_URL set, an on one. With collection off nothing
   // is saved, so the memo isn't shown.
-  const party = await page.evaluate(() => fetch("/api/game/party").then((r) => r.json()));
+  const party = await page.evaluate(() => fetch("/api/game/room").then((r) => r.json()));
   const memo = page.locator("#scores-memo");
   const expectMemo = async (): Promise<void> => {
     if (party.scores_enabled) {
@@ -148,11 +148,26 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   await expect(page.locator("h2", { hasText: "Scores" })).toBeVisible();
   await expect(page.locator("text=Latest attempts")).toBeVisible();
 
-  // New party resets the UI back to the start.
+  // New room asks first, then opens a fresh, empty room at its own
+  // link, on the name step.
   await page.click('button[data-tab="room"]');
-  await page.click("#new-party");
-  await page.click("#new-party");
+  const oldRoom = new URL(page.url()).pathname;
+  await page.click("#new-room");
+  await expect(page.locator("#confirm")).toContainText("Start a new room?");
+  await page.click("#confirm-yes");
+  await expect(page.locator("#name-form")).toBeVisible();
+  expect(new URL(page.url()).pathname).toMatch(/^\/r\/[A-HJ-NP-Z2-9]{8}$/);
+  expect(new URL(page.url()).pathname).not.toBe(oldRoom);
+  const fresh = await page.evaluate(() => fetch("/api/game/room").then((r) => r.json()));
+  expect(fresh.players).toEqual([]);
+
+  // Leave room asks first too, then resets the UI back to the start.
+  await enrollPlayer(page, "Dana");
+  await page.click("#to-room");
+  await page.click("#leave-room");
+  await page.click("#confirm-yes");
   await expect(page.locator('[data-level="sentence"]')).toBeVisible();
+  expect(new URL(page.url()).pathname).not.toMatch(/^\/r\//);
 
   expect(consoleErrors).toEqual([]);
 });

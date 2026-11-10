@@ -5,8 +5,8 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
  * see each other's changes without a refresh -- through the event
  * stream, and through polling when the stream is blocked.
  *
- * There's no join screen until Phase 3, so the second browser joins
- * with the same request that screen will make, then opens the page.
+ * The second browser joins with the request a room link makes
+ * (rooms.spec.ts covers the link itself), then opens the page.
  * Players are enrolled the same way, to keep the typing out of a test
  * that's about something else. Every assertion is on what the page
  * shows.
@@ -104,7 +104,7 @@ test("two browsers see each other's changes within 2 seconds over the event stre
 
   // When the host ends the room, the friend is told, not left with a stale page.
   await post(host, baseURL!, "/api/game/room/end");
-  await expect(friendPage.locator("text=This party is gone")).toBeVisible({ timeout: LIVE_MS });
+  await expect(friendPage.locator("text=This room has ended")).toBeVisible({ timeout: LIVE_MS });
 
   await host.close();
   await friend.close();
@@ -129,7 +129,7 @@ test("a browser whose event stream is blocked still sees changes, by polling", a
 
   // A room that ends is noticed by polling too.
   await post(host, baseURL!, "/api/game/room/end");
-  await expect(friendPage.locator("text=This party is gone")).toBeVisible({ timeout: POLLED_MS });
+  await expect(friendPage.locator("text=This room has ended")).toBeVisible({ timeout: POLLED_MS });
 
   await host.close();
   await friend.close();
