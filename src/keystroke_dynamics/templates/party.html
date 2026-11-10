@@ -18,6 +18,10 @@
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/party.css">
 <script type="module" src="/static/js/party.js"></script>
+{% if goatcounter_site_code %}
+{# Visitor counting, only when GOATCOUNTER_SITE_CODE is set. no_onload: count.js never counts by itself. frontend/src/analytics.ts makes every count, so a room code is never sent. #}
+<script data-goatcounter="https://{{ goatcounter_site_code }}.goatcounter.com/count" data-goatcounter-settings='{"no_onload": true}' async src="https://gc.zgo.at/count.js"></script>
+{% endif %}
 </head>
 <body>
 <div class="wrap">
