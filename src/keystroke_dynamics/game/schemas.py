@@ -51,6 +51,12 @@ class PlayerView(BaseModel):
     threshold: float
     notes: list[NoteView]
     kind: TargetKind
+    #: The member (browser) that enrolled this player; compare with
+    #: PartyView.member_id to tell "on this keyboard" from "on
+    #: another one". None for sample bots and the permanent target.
+    #: Useless on its own: a member id only counts inside a signed
+    #: session cookie.
+    owner_member_id: str | None
 
     @classmethod
     def from_player(cls, player: Player, *, kind: TargetKind) -> PlayerView:
@@ -61,6 +67,7 @@ class PlayerView(BaseModel):
             threshold=player.threshold,
             notes=[NoteView.from_core(n) for n in player.notes],
             kind=kind,
+            owner_member_id=player.owner_member_id,
         )
 
 
@@ -86,6 +93,10 @@ class AttemptView(BaseModel):
     word: str
     counted: bool
     passed: bool | None
+    #: False -> typed on a different keyboard from the target's own,
+    #: which can change timing (shown as "different keyboard"). None
+    #: when it doesn't apply: a bot target, or a replay.
+    same_keyboard: bool | None
 
     @classmethod
     def from_core(cls, attempt: Attempt) -> AttemptView:
@@ -102,11 +113,24 @@ class AttemptView(BaseModel):
             word=attempt.word,
             counted=attempt.counted,
             passed=attempt.passed,
+            same_keyboard=attempt.same_keyboard,
         )
 
 
 class PartyView(BaseModel):
+    """A room, as one of its members sees it."""
+
     id: str
+    #: The room code, 8 characters with no dash -- the link is
+    #: /r/<code>.
+    code: str
+    #: Goes up on every change to the room.
+    version: int
+    locked: bool
+    #: The member this response was built for.
+    member_id: str
+    is_host: bool
+    member_count: int
     level: Level
     phrase: str
     players: list[PlayerView]
@@ -127,6 +151,17 @@ class CreatePlayerRequest(BaseModel):
     name: str | None = None
     #: 3-8 training lines, per docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5.
     training_lines: list[list[KeyEventSchema]] = Field(min_length=3, max_length=8)
+
+
+class JoinRoomRequest(BaseModel):
+    #: A browser is in one room at a time. Joining a second room is
+    #: refused (409) unless this is set, so the page can ask "Leave
+    #: your current room and join this one?" first.
+    leave_current: bool = False
+
+
+class LockRoomRequest(BaseModel):
+    locked: bool
 
 
 class RenamePlayerRequest(BaseModel):

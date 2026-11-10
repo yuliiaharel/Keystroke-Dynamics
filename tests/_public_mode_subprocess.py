@@ -64,6 +64,11 @@ for old_marker in (
     assert old_marker not in home.text, old_marker
 
 # The game's old path redirects to its new one instead of 404ing.
+# A room link serves the same game page, with no database either.
+room_link = client.get("/r/ABCD-EFGH")
+assert room_link.status_code == 200, room_link.status_code
+assert room_link.text == home.text
+
 party_redirect = client.get("/party", follow_redirects=False)
 assert party_redirect.status_code == 308, party_redirect.status_code
 assert party_redirect.headers["location"] == "/"

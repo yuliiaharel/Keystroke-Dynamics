@@ -38,6 +38,8 @@ _ALLOWED_COLUMNS = {
     "limit_value",
     "pace",
     "outcome",
+    # docs/plans/active/ROOMS_PLAN.md Phase 1 section 5.
+    "same_keyboard",
 }
 
 
@@ -83,6 +85,18 @@ def test_a_full_row_round_trips(scores_db_session) -> None:
     assert stored.device_type == "keyboard"
     assert stored.place is None
     assert stored.total == 0.8
+
+
+@pytest.mark.parametrize("same_keyboard", [True, False, None])
+def test_same_keyboard_round_trips(scores_db_session, same_keyboard: bool | None) -> None:
+    row = _row(same_keyboard=same_keyboard)
+    scores_db_session.execute(insert(ScoreAttempt), [row])
+    scores_db_session.commit()
+
+    stored = scores_db_session.execute(
+        select(ScoreAttempt).where(ScoreAttempt.id == row["id"])
+    ).scalar_one()
+    assert stored.same_keyboard is same_keyboard
 
 
 def test_an_unusable_row_with_null_scores_round_trips(scores_db_session) -> None:

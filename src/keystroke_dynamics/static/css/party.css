@@ -68,6 +68,8 @@ nav.tabs button[aria-current="page"] { border-color: var(--ink); }
 .card .tag { font: 400 12px var(--mono); color: var(--muted); }
 .card .row button { flex: 1 1 auto; padding: 8px 10px; font-size: 15px; }
 .card.add { border: 2px dashed var(--line); background: transparent; justify-content: center; align-items: center; text-align: center; min-height: 240px; }
+.room-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 24px; flex-wrap: wrap; }
+.room-code { font: 600 22px/1.2 var(--mono); letter-spacing: .08em; }
 .roll-box { overflow-x: auto; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; padding: 6px; }
 .roll-box svg { display: block; width: 100%; min-width: 620px; height: auto; }
 .lane-label, .tick-label { font: 400 10px var(--mono); fill: var(--muted); }

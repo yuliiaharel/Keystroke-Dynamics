@@ -9,12 +9,19 @@
 # counter (memory.peak) -- the kernel's own historical high-water
 # mark, not a poll-and-hope-we-caught-the-spike sample.
 #
-# Usage: scripts/run_party_load_test.sh [parties] [players-per-party]
+# docs/plans/active/ROOMS_PLAN.md Phase 2 extends it: "The 512 MiB load
+# test, extended to 300 open streams across 50 rooms, stays within
+# memory." The first [stream-rooms] parties each get a second browser,
+# and both hold 3 live-update streams open (50 x 2 x 3 = 300) while
+# the peak is read.
+#
+# Usage: scripts/run_party_load_test.sh [parties] [players-per-party] [stream-rooms]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PARTIES="${1:-100}"
 PLAYERS_PER_PARTY="${2:-12}"
+STREAM_ROOMS="${3:-50}"
 IMAGE_TAG="keystroke-dynamics-load-test"
 CONTAINER_NAME="keystroke-dynamics-load-test"
 PORT=18000
@@ -39,8 +46,10 @@ docker run -d --name "$CONTAINER_NAME" \
   -e GAME_PLAYERS_PER_PARTY_LIMIT="$PLAYERS_PER_PARTY" \
   -e GAME_RATE_LIMIT_MAX_ATTEMPTS=100000 \
   -e GAME_RATE_LIMIT_WINDOW_SECONDS=60.0 \
+  -e GAME_JOIN_RATE_LIMIT_MAX_ATTEMPTS=100000 \
   "$IMAGE_TAG" >/dev/null
-# GAME_RATE_LIMIT_MAX_ATTEMPTS is raised for this load test's own
+# GAME_RATE_LIMIT_MAX_ATTEMPTS (and the join limit, for the second
+# browser each streaming room gets) is raised for this load test's own
 # traffic ONLY (it all comes from one client IP, unlike a real
 # party's load) -- the shipped default (20/60s, config.py) is
 # unaffected; same documented pattern as frontend/README.md's e2e
@@ -58,11 +67,12 @@ docker exec "$CONTAINER_NAME" cat /sys/fs/cgroup/memory.current 2>/dev/null \
   || echo "(cgroup v2 memory.current not readable -- see memory.peak check below)"
 
 echo
-echo "Running the load test: ${PARTIES} parties x ${PLAYERS_PER_PARTY} players..."
+echo "Running the load test: ${PARTIES} parties x ${PLAYERS_PER_PARTY} players, streams in ${STREAM_ROOMS} of them..."
 uv run python3 scripts/load_test_party.py \
   --base-url "http://127.0.0.1:${PORT}" \
   --parties "$PARTIES" \
-  --players-per-party "$PLAYERS_PER_PARTY"
+  --players-per-party "$PLAYERS_PER_PARTY" \
+  --stream-rooms "$STREAM_ROOMS"
 
 echo
 echo -n "Health check immediately after the load: "

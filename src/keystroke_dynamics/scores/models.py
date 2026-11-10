@@ -8,7 +8,8 @@ only INSERT and DELETE rows here, nothing else.
 
 The column set is exhaustive and intentionally not open to
 extension -- see tests/scores/test_models.py's test that fails if a
-column outside docs/plans/done/PARTY_LAUNCH_PLAN.md's own list is added. In
+column outside docs/plans/done/PARTY_LAUNCH_PLAN.md's own list (plus
+same_keyboard, from docs/plans/active/ROOMS_PLAN.md) is added. In
 particular, there is no name, IP address, user agent, key timing, key
 identity, or profile-statistics column, and party_id/typist_id/
 target_id are random ids created only for this table (game/store.py's
@@ -21,7 +22,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import CheckConstraint, Date, Float, Integer, String, Uuid
+from sqlalchemy import Boolean, CheckConstraint, Date, Float, Integer, String, Uuid
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -79,3 +80,9 @@ class ScoreAttempt(Base):
     #: game/judge.py:pace_ratio().
     pace: Mapped[float | None] = mapped_column(Float)
     outcome: Mapped[str] = mapped_column(String)
+    #: Whether the typist and the target were on the same keyboard
+    #: (the same room member) -- docs/plans/active/ROOMS_PLAN.md Phase 1
+    #: section 5, since a different keyboard can change timing. Null
+    #: for rows from before rooms, for bot and permanent targets, and
+    #: for replays.
+    same_keyboard: Mapped[bool | None] = mapped_column(Boolean)

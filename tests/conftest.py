@@ -35,7 +35,10 @@ from keystroke_dynamics.api.deps import (  # noqa: E402
     verify_rate_limiter,
 )
 from keystroke_dynamics.db.session import get_db  # noqa: E402
-from keystroke_dynamics.game.rate_limit import game_rate_limiter  # noqa: E402
+from keystroke_dynamics.game.rate_limit import (  # noqa: E402
+    game_join_rate_limiter,
+    game_rate_limiter,
+)
 from keystroke_dynamics.main import app  # noqa: E402
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -86,7 +89,13 @@ def _reset_rate_limiters():
     # and game/rate_limit.py) so one test's calls to a rate-limited
     # endpoint don't eat into another's budget -- this is test
     # isolation, not something the app itself ever does.
-    limiters = (login_rate_limiter, register_rate_limiter, verify_rate_limiter, game_rate_limiter)
+    limiters = (
+        login_rate_limiter,
+        register_rate_limiter,
+        verify_rate_limiter,
+        game_rate_limiter,
+        game_join_rate_limiter,
+    )
     for limiter in limiters:
         limiter.reset()
 

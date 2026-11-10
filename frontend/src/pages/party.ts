@@ -1,6 +1,8 @@
 /**
  * Typing Twin Party: the anonymous, no-database party game
- * (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1). Every score -- a real player's own
+ * (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1), played in a room that
+ * other browsers can join by its link
+ * (docs/plans/active/ROOMS_PLAN.md Phase 3). Every score -- a real player's own
  * limit, a sample bot's, the permanent target's -- comes from the
  * backend's /api/game/* endpoints (api/game.py); nothing here
  * duplicates core/scoring.py. The only thing computed in the browser
@@ -13,14 +15,21 @@
  * (design/typing-twin-party.html). What's different from that file:
  * every real score is a round trip to the server instead of a local
  * calculation, and a signed session cookie -- not anything typed in
- * a form -- is what the server trusts to know which party this
- * browser owns.
+ * a form -- is what the server trusts to know which room this
+ * browser is in, and which of its players are this browser's own.
+ *
+ * The page's URL is /r/<code> whenever a room is on screen, and the
+ * home path otherwise. It only ever replaces the current history
+ * entry: there's one screen here, not pages to go back through.
  */
 
 import { analyticsPrivacyNote, startAnalytics } from "../analytics";
 import * as gameApi from "../game-api";
 import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
+import { watchRoom } from "../live";
+import type { LiveRoom } from "../live";
+import { formatCode, joinFailure, roomCodeFromPath, roomLink, roomPath, sameCode } from "../room";
 import type { CapturedEvent } from "../capture";
 import { scoresMemoHTML } from "../scores-memo";
 import { traitsFromNotes } from "../traits";
@@ -76,6 +85,18 @@ interface LastResult {
   clue: string | null;
 }
 
+/** A full-page state for a room link that hasn't become a room on
+ * screen: still opening, waiting for an answer to "leave your current
+ * room?", or refused. (A link to a room that's gone uses partyGone,
+ * the same page a room shows when it ends under you.) */
+type Gate =
+  | { kind: "opening" }
+  | { kind: "switch"; code: string; current: PartyView }
+  | { kind: "locked" | "full" | "rate-limited" | "failed"; code: string };
+
+/** The one question the room view may be asking before it acts. */
+type Confirm = { kind: "leave" | "new" | "lock" | "unlock" | "end" } | { kind: "remove"; playerId: string };
+
 interface State {
   view: ViewName;
   level: Level | null;
@@ -89,38 +110,67 @@ interface State {
   last: LastResult | null;
   replaying: number;
   justAddedId: string | null;
-  confirmNew: boolean;
+  confirm: Confirm | null;
+  //: Set when the clipboard refused the room link, so it's shown to
+  //: copy by hand instead.
+  showLink: boolean;
+  gate: Gate | null;
   partyGone: boolean;
   renamingId: string | null;
   busy: boolean;
   error: string | null;
 }
 
-const S: State = {
-  view: "intro",
-  level: null,
-  party: null,
-  typingAs: null,
-  target: null,
-  mode: "attack",
-  enrollName: "",
-  enrollRuns: [],
-  run: null,
-  last: null,
-  replaying: 0,
-  justAddedId: null,
-  confirmNew: false,
-  partyGone: false,
-  renamingId: null,
-  busy: false,
-  error: null,
-};
+/** A function, not a constant: enrollRuns must be a fresh array each time. */
+function initialState(): State {
+  return {
+    view: "intro",
+    level: null,
+    party: null,
+    typingAs: null,
+    target: null,
+    mode: "attack",
+    enrollName: "",
+    enrollRuns: [],
+    run: null,
+    last: null,
+    replaying: 0,
+    justAddedId: null,
+    confirm: null,
+    showLink: false,
+    gate: null,
+    partyGone: false,
+    renamingId: null,
+    busy: false,
+    error: null,
+  };
+}
+
+const S: State = initialState();
 
 const phrase = (): string => S.party?.phrase ?? "";
 const lanes = (p: string): string[] => [...QWERTY].filter((c) => p.includes(c));
 const allEntities = (): PlayerView[] => (S.party ? [...S.party.players, ...S.party.targets] : []);
 const byId = (id: string): PlayerView | undefined => allEntities().find((p) => p.id === id);
 const humans = (): PlayerView[] => S.party?.players ?? [];
+/** Enrolled on this browser. Only these can be typed as, renamed, or
+ * deleted from here; the server enforces it, this just doesn't offer
+ * what would be refused. */
+const mine = (p: PlayerView): boolean => p.owner_member_id !== null && p.owner_member_id === S.party?.member_id;
+const myPlayers = (): PlayerView[] => humans().filter(mine);
+
+/** Phone keyboards don't report when each key goes down and up, so a
+ * phone can join a room and watch, but not type
+ * (docs/plans/active/MOBILE_PLAN.md is what changes that). */
+const onPhone = (): boolean => window.matchMedia?.("(pointer: coarse)").matches ?? false;
+
+/** Where the game lives when no room is on screen: "/" in public
+ * mode, "/party" beside the account pages (api/pages.py's PARTY_PATH). */
+const HOME_PATH = document.body.dataset.home ?? "/";
+
+function showUrl(path: string): void {
+  if (location.pathname !== path) history.replaceState(null, "", path);
+}
 
 function median(a: number[]): number {
   const s = [...a].sort((x, y) => x - y);
@@ -374,7 +424,7 @@ async function finishRun(): Promise<void> {
         await refreshParty();
       } catch (error) {
         S.busy = false;
-        if (gameApi.isPartyGone(error)) {
+        if (gameApi.isRoomGone(error)) {
           S.partyGone = true;
           render();
           return;
@@ -423,7 +473,7 @@ async function submitRunAsAttempt(run: Run): Promise<void> {
     };
     await refreshParty();
   } catch (error) {
-    if (gameApi.isPartyGone(error)) {
+    if (gameApi.isRoomGone(error)) {
       S.partyGone = true;
       return;
     }
@@ -460,6 +510,17 @@ function drawTyper(oops?: boolean): void {
 }
 
 function typerHTML(hint: string, between?: string, extra?: string): string {
+  if (onPhone()) {
+    // The line and the roll still show (a replay draws on both), but
+    // there's nothing to focus and nothing listens for keys.
+    return `<div class="typer" style="cursor:default">
+    <div class="phrase" id="phrase"></div>
+    <div class="typer-foot"><span class="blur-note">Join from a computer to play</span></div>
+  </div>
+  ${extra ? `<div class="row">${extra}</div>` : ""}
+  ${between ?? ""}
+  <div class="roll-box" id="live-roll"></div>`;
+  }
   return `<div class="typer" id="typer" tabindex="0" role="textbox" aria-label="Typing area. Type this line: ${phrase()}">
     <div class="phrase" id="phrase"></div>
     <div class="typer-foot"><span class="blur-note">Click here to type</span><span>${hint}</span><span id="typos"></span></div>
@@ -554,7 +615,7 @@ async function runReplay(): Promise<void> {
   } catch (error) {
     S.busy = false;
     S.mode = "attack";
-    if (gameApi.isPartyGone(error)) {
+    if (gameApi.isRoomGone(error)) {
       S.partyGone = true;
     } else {
       showError("Couldn't reach the server to run the replay.");
@@ -604,57 +665,200 @@ async function runReplay(): Promise<void> {
 
 async function refreshParty(): Promise<void> {
   try {
-    S.party = await gameApi.getParty();
+    S.party = await gameApi.getRoom();
   } catch (error) {
-    if (gameApi.isPartyGone(error)) {
+    if (gameApi.isRoomGone(error)) {
       S.partyGone = true;
     }
   }
 }
 
-async function startParty(level: Level): Promise<void> {
+/* ---------- Live updates (docs/plans/active/ROOMS_PLAN.md Phase 2) ---------- */
+
+let live: LiveRoom | null = null;
+
+function stopLive(): void {
+  live?.stop();
+  live = null;
+}
+
+/** Call whenever this browser has just got itself a room. */
+function startLive(): void {
+  stopLive();
+  live = watchRoom<PartyView>({
+    fetchRoom: gameApi.getRoom,
+    currentVersion: () => S.party?.version ?? null,
+    isGone: gameApi.isRoomGone,
+    onRoom: (party) => {
+      S.party = party;
+      // The host can remove a player from under the browser that was
+      // typing as them, or under the question about removing them.
+      if (S.typingAs !== null && !byId(S.typingAs)) S.typingAs = null;
+      if (S.confirm?.kind === "remove" && !byId(S.confirm.playerId)) S.confirm = null;
+      // Only the two views that are nothing but the shared room are
+      // redrawn under the person looking at them. Anywhere else
+      // (typing a line, a name, a rename) a redraw would interrupt
+      // them; those views read S.party the next time they draw.
+      const showsOnlyTheRoom = S.view === "room" || S.view === "scores";
+      if (showsOnlyTheRoom && S.renamingId === null && !S.busy) render();
+    },
+    onGone: () => {
+      live = null;
+      S.partyGone = true;
+      render();
+    },
+  });
+}
+
+function resetState(): void {
+  stopLive();
+  Object.assign(S, initialState());
+  enrollSamples.length = 0;
+}
+
+/** Puts a room this browser belongs to on screen, at its own URL. */
+function enterRoom(party: PartyView, view: ViewName): void {
+  S.party = party;
+  S.level = party.level;
+  S.partyGone = false;
+  S.gate = null;
+  S.view = view;
+  showUrl(roomPath(party.code));
+  startLive();
+}
+
+/** The first thing a browser new to a room sees: the name step, or
+ * the room itself where it can't type. */
+const firstView = (): ViewName => (onPhone() ? "room" : "name");
+
+async function startRoom(level: Level): Promise<void> {
   S.busy = true;
   S.error = null;
   render();
   try {
-    S.party = await gameApi.createParty(level);
-    S.level = level;
-    S.partyGone = false;
-    S.view = "name";
+    // The server takes this browser out of any room it was in, once
+    // the new one exists.
+    const party = await gameApi.createRoom(level);
+    resetState();
+    enterRoom(party, firstView());
   } catch {
-    S.error = "Couldn't start a party right now. Try again in a moment.";
+    S.confirm = null;
+    S.error = "Couldn't start a room right now. Try again in a moment.";
   }
   S.busy = false;
   render();
 }
 
-async function doResetParty(): Promise<void> {
-  try {
-    await gameApi.resetParty();
-  } catch {
-    /* Best-effort -- the party is going away either way. */
-  }
-  Object.assign(S, {
-    view: "intro",
-    level: null,
-    party: null,
-    typingAs: null,
-    target: null,
-    mode: "attack",
-    enrollName: "",
-    enrollRuns: [],
-    run: null,
-    last: null,
-    replaying: 0,
-    justAddedId: null,
-    confirmNew: false,
-    partyGone: false,
-    renamingId: null,
-    busy: false,
-    error: null,
-  });
-  enrollSamples.length = 0;
+/** Opening /r/<code>: straight into the room for a browser that's
+ * already in it, a question first for one that's in a different
+ * room, and a join for everyone else. */
+async function openRoomLink(code: string): Promise<void> {
+  S.gate = { kind: "opening" };
   render();
+  let current: PartyView | null = null;
+  try {
+    current = await gameApi.getRoom();
+  } catch (error) {
+    if (!gameApi.isRoomGone(error)) {
+      S.gate = { kind: "failed", code };
+      render();
+      return;
+    }
+  }
+  if (current && sameCode(current.code, code)) {
+    enterRoom(current, "room");
+    render();
+    return;
+  }
+  if (current) {
+    S.gate = { kind: "switch", code, current };
+    render();
+    return;
+  }
+  await joinByLink(code, false);
+}
+
+async function joinByLink(code: string, leaveCurrent: boolean): Promise<void> {
+  S.gate = { kind: "opening" };
+  render();
+  try {
+    const party = await gameApi.joinRoom(code, leaveCurrent);
+    resetState();
+    enterRoom(party, firstView());
+  } catch (error) {
+    const failure = joinFailure(gameApi.errorStatus(error));
+    if (failure === "gone") {
+      S.gate = null;
+      S.partyGone = true;
+    } else {
+      S.gate = { kind: failure, code };
+    }
+  }
+  render();
+}
+
+/** Leaving and ending both finish at the start page. `request` is
+ * whichever of the two the server should carry out. */
+async function closeRoom(request: () => Promise<void>, failure: string): Promise<void> {
+  try {
+    await request();
+  } catch (error) {
+    // Already gone is as good as done. Anything else, the room is
+    // still there and this browser is still in it.
+    if (!gameApi.isRoomGone(error)) {
+      S.confirm = null;
+      showError(failure);
+      return;
+    }
+  }
+  resetState();
+  showUrl(HOME_PATH);
+  render();
+}
+
+async function doLockRoom(locked: boolean): Promise<void> {
+  S.confirm = null;
+  try {
+    S.party = await gameApi.lockRoom(locked);
+  } catch (error) {
+    if (gameApi.isRoomGone(error)) S.partyGone = true;
+    else S.error = locked ? "Couldn't lock the room. Try again." : "Couldn't unlock the room. Try again.";
+  }
+  render();
+}
+
+async function copyRoomLink(button: HTMLButtonElement): Promise<void> {
+  if (!S.party) return;
+  try {
+    await navigator.clipboard.writeText(roomLink(location.origin, S.party.code));
+    button.textContent = "Link copied";
+    setTimeout(() => {
+      if (button.isConnected) button.textContent = "Copy link";
+    }, 2000);
+  } catch {
+    // No clipboard here (an older browser, or permission refused):
+    // show the link to copy by hand.
+    S.showLink = true;
+    render();
+    ($("room-link") as HTMLInputElement | null)?.select();
+  }
+}
+
+function answerConfirm(): void {
+  const c = S.confirm;
+  if (!c) return;
+  if (c.kind === "remove") {
+    S.confirm = null;
+    void doDeletePlayer(c.playerId);
+  } else if (c.kind === "lock" || c.kind === "unlock") {
+    void doLockRoom(c.kind === "lock");
+  } else if (c.kind === "leave") {
+    void closeRoom(gameApi.leaveRoom, "Couldn't leave the room. Try again.");
+  } else if (c.kind === "end") {
+    void closeRoom(gameApi.endRoom, "Couldn't end the room. Try again.");
+  } else if (S.level) {
+    void startRoom(S.level);
+  }
 }
 
 async function doDeletePlayer(id: string): Promise<void> {
@@ -663,7 +867,8 @@ async function doDeletePlayer(id: string): Promise<void> {
     if (S.typingAs === id) S.typingAs = null;
     await refreshParty();
   } catch (error) {
-    if (gameApi.isPartyGone(error)) S.partyGone = true;
+    if (gameApi.isRoomGone(error)) S.partyGone = true;
+    else S.error = "Couldn't remove that player. Try again.";
   }
   render();
 }
@@ -674,7 +879,7 @@ async function doRenamePlayer(id: string, name: string): Promise<void> {
     S.renamingId = null;
     await refreshParty();
   } catch (error) {
-    if (gameApi.isPartyGone(error)) {
+    if (gameApi.isRoomGone(error)) {
       S.partyGone = true;
     } else {
       S.error = "That name didn't work -- try a different one.";
@@ -689,11 +894,11 @@ function introView(): string {
   const rings = INTRO_SAMPLES.map(
     ([n, sp], i) => `<div class="ring">${ringSVG(decorativeNotes(INTRO_PHRASE, n, sp!, 6), i, null, n)}</div>`,
   ).join("");
-  const coarse = window.matchMedia?.("(pointer: coarse)").matches;
+  const coarse = onPhone();
   return `<section class="hero">
       <div class="stack">
         <h1>Everyone types in their own shape.</h1>
-        <p>Type a line a few times and see your rhythm drawn as a signature -- scored for real by this app's own backend. Then gather some friends around one keyboard and try to pass as each other.</p>
+        <p>Type a line a few times and see your rhythm drawn as a signature -- scored for real by this app's own backend. Then share your room's link, or gather some friends around one keyboard, and try to pass as each other.</p>
         ${coarse ? `<div class="notice">Best on a computer. Phone keyboards don't report when each key goes down and up -- you can still look around and watch a replay attack without typing.</div>` : ""}
         <div class="row">
           <button class="primary" data-level="sentence">Start a party</button>
@@ -709,6 +914,14 @@ function introView(): string {
 }
 
 function nameView(): string {
+  if (onPhone()) {
+    return `<section class="stack" style="max-width:560px">
+    <div class="eyebrow">New player</div>
+    <h2>Join from a computer to play</h2>
+    <p class="muted">Phone keyboards don't report when each key goes down and up, so a signature can't be made here. You can still watch the room and its scores, and run a replay attack.</p>
+    <div class="row"><button class="primary" id="to-room">See the room</button></div>
+  </section>`;
+  }
   return `<section class="stack" style="max-width:560px">
     <div class="eyebrow">New player</div>
     <h2>Who's typing?</h2>
@@ -784,7 +997,43 @@ function attackButtonLabel(p: PlayerView): string {
   return p.kind === "target" ? `Can you pass as ${esc(p.name)}?` : "Attack";
 }
 
+function confirmHTML(): string {
+  const c = S.confirm;
+  if (!c) return "";
+  const alone = S.party?.member_count === 1;
+  const mineLeave = myPlayers().length ? " Your players leave with you." : "";
+  const [question, yes, no]: [string, string, string] =
+    c.kind === "remove"
+      ? [`Remove ${esc(byId(c.playerId)?.name ?? "this player")} from the room?`, "Remove", "Cancel"]
+      : c.kind === "lock"
+        ? ["Lock the room? Nobody new can join with the link until you unlock it.", "Lock room", "Cancel"]
+        : c.kind === "unlock"
+          ? ["Unlock the room? Anyone with the link can join again.", "Unlock room", "Cancel"]
+          : c.kind === "end"
+            ? ["End the room for everyone? Every player, signature, and score in it is erased.", "End room", "Cancel"]
+            : c.kind === "leave"
+              ? [
+                  alone
+                    ? "Leave this room? You're the only one here, so the room ends."
+                    : `Leave this room?${mineLeave}`,
+                  "Leave room",
+                  "Stay",
+                ]
+              : [
+                  alone
+                    ? "Start a new room? You're the only one here, so this room ends."
+                    : `Leave this room and start a new one?${mineLeave}`,
+                  "Start a new room",
+                  "Stay",
+                ];
+  return `<div class="notice stack" id="confirm" role="group" aria-label="Confirm">
+      <p>${question}</p>
+      <div class="row"><button class="primary" id="confirm-yes">${yes}</button><button class="quiet" id="confirm-no">${no}</button></div>
+    </div>`;
+}
+
 function playerCardHTML(p: PlayerView): string {
+  const own = mine(p);
   const renameForm =
     S.renamingId === p.id
       ? `<form class="row" data-rename-form="${esc(p.id)}">
@@ -792,32 +1041,62 @@ function playerCardHTML(p: PlayerView): string {
            <button class="quiet" type="submit">Save</button>
          </form>`
       : "";
+  // Rename and delete are the owner's. The host can remove anyone's
+  // player, after being asked.
   const controls =
-    p.kind === "player"
-      ? `<button class="quiet" data-rename="${esc(p.id)}">Rename</button><button class="quiet" data-delete="${esc(p.id)}">Delete me</button>`
-      : "";
+    p.kind !== "player"
+      ? ""
+      : own
+        ? `<button class="quiet" data-rename="${esc(p.id)}">Rename</button><button class="quiet" data-delete="${esc(p.id)}">Delete me</button>`
+        : S.party?.is_host
+          ? `<button class="quiet" data-remove="${esc(p.id)}">Remove</button>`
+          : "";
+  const keyboard =
+    p.kind === "player" ? `<div class="tag" data-keyboard>${own ? "On this keyboard" : "On another keyboard"}</div>` : "";
+  const removing = S.confirm?.kind === "remove" && S.confirm.playerId === p.id;
   return `<article class="card">
       <h3>${esc(p.name)}</h3>
       <div class="ring">${ringSVG(p.notes, p.color, null, p.name)}</div>
       <div class="tag">${targetTag(p)}</div>
-      <div class="row"><button class="primary" data-attack="${esc(p.id)}">${attackButtonLabel(p)}</button>${p.kind === "player" ? `<button data-self="${esc(p.id)}">Test me</button>` : ""}</div>
+      ${keyboard}
+      <div class="row"><button class="primary" data-attack="${esc(p.id)}">${attackButtonLabel(p)}</button>${own ? `<button data-self="${esc(p.id)}">Test me</button>` : ""}</div>
       <div class="row">${controls}</div>
       ${renameForm}
+      ${removing ? confirmHTML() : ""}
     </article>`;
 }
 
-function roomView(): string {
-  const cards = [...humans(), ...(S.party?.targets ?? [])].map(playerCardHTML).join("");
-  const add = `<article class="card add"><h3>${humans().length ? "Someone else wants in?" : "Add yourself"}</h3><p class="small muted">Everyone types the same line, so attacks are fair.</p><button class="primary" id="add-player">Add a player</button></article>`;
-  const coarse = window.matchMedia?.("(pointer: coarse)").matches;
-  return `<section class="stack">
-      <div class="row" style="justify-content:space-between"><div class="stack" style="gap:4px"><h2>The room</h2><p class="muted">Line: <span style="font-family:var(--mono)">${phrase()}</span></p></div></div>
-      ${coarse ? `<div class="notice">Best on a computer -- you can still watch a replay attack without typing.</div>` : ""}
-      <div class="players">${add}${cards}</div>
-      <div class="row">
-        <button class="quiet" id="new-party">${S.confirmNew ? "Erase everyone and start over" : "New party"}</button>
-        ${S.confirmNew ? `<button class="quiet" id="cancel-new">Keep playing</button>` : ""}
+function roomHeaderHTML(party: PartyView): string {
+  return `<div class="room-head">
+        <div class="stack" style="gap:4px"><h2>The room</h2><p class="muted">Line: <span style="font-family:var(--mono)">${phrase()}</span></p></div>
+        <div class="stack" style="gap:4px">
+          <span class="eyebrow">Room code${party.locked ? " · locked" : ""}</span>
+          <div class="row"><b class="room-code" id="room-code">${esc(formatCode(party.code))}</b><button id="copy-link">Copy link</button></div>
+        </div>
       </div>
+      ${S.showLink ? `<label for="room-link">Copy this link<input id="room-link" readonly value="${esc(roomLink(location.origin, party.code))}"></label>` : ""}
+      <p class="small muted" id="room-note">Anyone with this link can join and see names and signatures.${party.locked ? " The room is locked, so nobody new can join right now." : ""}</p>`;
+}
+
+function roomView(): string {
+  const party = S.party;
+  if (!party) return "";
+  const cards = [...humans(), ...party.targets].map(playerCardHTML).join("");
+  const add = `<article class="card add"><h3>${myPlayers().length ? "Someone else wants in?" : "Add yourself"}</h3><p class="small muted">Everyone types the same line, so attacks are fair.</p><button class="primary" id="add-player">Add a player</button></article>`;
+  const hostControls = party.is_host
+    ? `<button class="quiet" id="lock-room">${party.locked ? "Unlock room" : "Lock room"}</button><button class="quiet" id="end-room">End room for everyone</button>`
+    : "";
+  return `<section class="stack">
+      ${roomHeaderHTML(party)}
+      ${onPhone() ? `<div class="notice">Join from a computer to play. Here you can watch the room and run a replay attack.</div>` : ""}
+      <div class="players">${add}${cards}</div>
+      ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+      <div class="row">
+        <button class="quiet" id="leave-room">Leave room</button>
+        <button class="quiet" id="new-room">New room</button>
+        ${hostControls}
+      </div>
+      ${S.confirm && S.confirm.kind !== "remove" ? confirmHTML() : ""}
     </section>`;
 }
 
@@ -845,9 +1124,14 @@ function resultHTML(): string {
       </div>
     </div>`
       : "";
+  const keyboardNote =
+    attempt.same_keyboard === false
+      ? `<p class="small muted" id="keyboard-note">Different keyboard: this wasn't typed on the keyboard ${esc(target.name)} enrolled on, which can change timing.</p>`
+      : "";
   return `<section class="result stack" id="result" aria-live="polite">
     <p class="verdict ${good ? "v-good" : "v-bad"}">${esc(attempt.word)}</p>
     <p>${esc(text)}</p>
+    ${keyboardNote}
     ${details}
   </section>`;
 }
@@ -859,7 +1143,8 @@ function attackView(): string {
   const same = typist && typist.id === target.id;
   const opts = (sel: string | null, list: PlayerView[]): string =>
     list.map((p) => `<option value="${esc(p.id)}"${sel === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("");
-  const whoOpts = `<option value="">Guest</option>${opts(S.typingAs, humans())}`;
+  // Only this browser's own players: the server refuses anyone else's.
+  const whoOpts = `<option value="">Guest</option>${opts(S.typingAs, myPlayers())}`;
   const modeBtns = same
     ? `<div class="row"><button id="m-self" class="${S.mode === "self" ? "primary" : ""}">Prove it's you</button><button id="m-disguise" class="${S.mode === "disguise" ? "primary" : ""}">Wear a disguise</button></div>`
     : "";
@@ -915,10 +1200,10 @@ function scoresView(): string {
     .slice(0, 12)
     .map(
       (a: AttemptView) =>
-        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
+        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}${a.same_keyboard === false ? ` <span class="small muted">· different keyboard</span>` : ""}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
     )
     .join("");
-  return `<section class="stack"><h2>Scores</h2><p class="muted">From this party only. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
+  return `<section class="stack"><h2>Scores</h2><p class="muted">From this room only, and shared by everyone in it. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
     ${board}
     <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Pace</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
@@ -941,11 +1226,12 @@ function howView(): string {
     <details>
       <summary>Privacy</summary>
       <div class="stack">
-        <p class="small">Key timing and key identity for this party's line are sent to the server for scoring. Raw timings are discarded right after scoring -- the server keeps a player's timing statistics in memory until they delete themselves, or the party expires or the app restarts. Everyone playing in this same party can see names and signatures. Anything typed outside the game line isn't accepted.</p>
+        <p class="small">A room's link is its only key. Anyone who has the link can join, and everyone in the room sees every player's name, signature, and scores. The host can lock the room to stop new people joining.</p>
+        <p class="small">Key timing and key identity for the room's line are sent to the server for scoring. Raw keystrokes are discarded right after scoring -- the server keeps a player's timing statistics in memory until they're deleted or removed. Everything in a room disappears when the room ends, expires, or the app restarts. Anything typed outside the game line isn't accepted.</p>
         ${
           S.party?.scores_enabled
-            ? `<p class="small">Scores are saved automatically, for every attempt. This site saves a few numbers about each result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or your IP address. Your attempts in this party are grouped under a random ID that isn't linked to your name. <b>Delete me</b> and <b>New party</b> remove those stored numbers while the party still exists; once a party ends, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
-            : `<p class="small">Nothing from this party is written to a database.</p>`
+            ? `<p class="small">Scores are saved automatically, for every attempt. This site saves a few numbers about each result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or your IP address. Your attempts in this room are grouped under a random ID that isn't linked to your name. <b>Delete me</b>, <b>Leave room</b>, and <b>New room</b> remove your stored numbers while the room still exists, and the host ending the room removes everyone's; once a room expires, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
+            : `<p class="small">Nothing from this room is written to a database.</p>`
         }
         ${analyticsPrivacyNote()}
       </div>
@@ -953,18 +1239,51 @@ function howView(): string {
   </section>`;
 }
 
+function startOwnHTML(primary: boolean): string {
+  return `<button${primary ? ' class="primary"' : ""} id="start-own" ${S.busy ? "disabled" : ""}>Start your own room</button>`;
+}
+
+/** One page for a room that ended, expired, or was lost to a restart,
+ * and for a link that never was a room: the server answers them all
+ * alike, so the page can't tell them apart and doesn't pretend to. */
 function partyGoneView(): string {
   return `<section class="stack">
-    <h2>This party is gone</h2>
-    <p class="muted">The server restarted or this party's idle time ran out. Nothing about it was kept beyond that, by design.</p>
-    <button class="primary" id="start-over">Start a new party</button>
+    <h2>This room has ended</h2>
+    <p class="muted">A room ends when its host ends it, when it sits idle too long, or when the app restarts. A link that was never a room looks the same. Its names, signatures, and scores went with it.</p>
+    <div class="row">${startOwnHTML(true)}</div>
+    ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+  </section>`;
+}
+
+function gateView(gate: Gate): string {
+  if (gate.kind === "opening") {
+    return `<section class="stack"><h2>Opening the room...</h2></section>`;
+  }
+  if (gate.kind === "switch") {
+    return `<section class="stack">
+    <h2>Leave your current room and join this one?</h2>
+    <p class="muted">You're in room <span style="font-family:var(--mono)">${esc(formatCode(gate.current.code))}</span>. A browser is in one room at a time, and the players you added there leave with you.</p>
+    <div class="row"><button class="primary" id="switch-join">Leave and join</button><button id="switch-stay">Stay in my room</button></div>
+  </section>`;
+  }
+  const [title, text] = {
+    locked: ["This room is locked", "Its host has stopped new people joining for now. Ask them to unlock it, then try again."],
+    full: ["This room is full", "It already has as many browsers in it as a room can hold."],
+    "rate-limited": ["Too many tries", "Wait a minute, then try again."],
+    failed: ["Couldn't open the room", "Check your connection, then try again."],
+  }[gate.kind];
+  return `<section class="stack">
+    <h2>${title}</h2>
+    <p class="muted">${text}</p>
+    <div class="row"><button class="primary" id="retry-join">Try again</button>${startOwnHTML(false)}</div>
+    ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
   </section>`;
 }
 
 function renderTabs(): void {
   const tabs = $("tabs");
   if (!tabs) return;
-  if (!S.level || S.partyGone || S.view === "enroll" || (S.view === "name" && !humans().length)) {
+  if (!S.level || S.gate || S.partyGone || S.view === "enroll" || (S.view === "name" && !humans().length)) {
     tabs.innerHTML = "";
     return;
   }
@@ -984,6 +1303,10 @@ function render(): void {
   renderTabs();
   const app = $("app");
   if (!app) return;
+  if (S.gate) {
+    app.innerHTML = gateView(S.gate);
+    return;
+  }
   if (S.partyGone) {
     app.innerHTML = partyGoneView();
     return;
@@ -999,7 +1322,7 @@ function render(): void {
     how: howView,
   };
   app.innerHTML = views[S.view]();
-  if ($("typer")) drawTyper();
+  if ($("phrase")) drawTyper();
   if (S.view === "name") ($("player-name") as HTMLInputElement | null)?.focus();
 }
 
@@ -1007,6 +1330,7 @@ function go(view: ViewName): void {
   S.replaying = 0;
   S.run = null;
   S.error = null;
+  S.confirm = null;
   S.view = view;
   render();
 }
@@ -1066,18 +1390,57 @@ document.addEventListener("click", (e) => {
     $("typer")?.focus({ preventScroll: true });
     return;
   }
-  if (eventTarget.id === "start-over") {
-    void doResetParty();
-    return;
-  }
   const b = eventTarget.closest("button") as HTMLButtonElement | null;
   if (!b) return;
+  if (b.id === "start-own") {
+    void startRoom("sentence");
+    return;
+  }
+  if (b.id === "retry-join" && S.gate && S.gate.kind !== "opening") {
+    void openRoomLink(S.gate.code);
+    return;
+  }
+  if (b.id === "switch-join" && S.gate?.kind === "switch") {
+    void joinByLink(S.gate.code, true);
+    return;
+  }
+  if (b.id === "switch-stay" && S.gate?.kind === "switch") {
+    enterRoom(S.gate.current, "room");
+    render();
+    return;
+  }
+  if (b.id === "copy-link") {
+    void copyRoomLink(b);
+    return;
+  }
+  if (b.id === "confirm-yes") {
+    answerConfirm();
+    return;
+  }
+  if (b.id === "confirm-no") {
+    S.confirm = null;
+    render();
+    return;
+  }
+  const asks: Record<string, Confirm> = {
+    "leave-room": { kind: "leave" },
+    "new-room": { kind: "new" },
+    "lock-room": { kind: S.party?.locked ? "unlock" : "lock" },
+    "end-room": { kind: "end" },
+  };
+  const ask = b.dataset.remove ? ({ kind: "remove", playerId: b.dataset.remove } as const) : asks[b.id];
+  if (ask) {
+    S.error = null;
+    S.confirm = ask;
+    render();
+    return;
+  }
   if (b.id === "home") {
     if (S.level) go("room");
     return;
   }
   if (b.dataset.level) {
-    void startParty(b.dataset.level as Level);
+    void startRoom(b.dataset.level as Level);
     return;
   }
   if (b.dataset.tab) {
@@ -1141,37 +1504,27 @@ document.addEventListener("click", (e) => {
     }
     return;
   }
-  if (b.id === "cancel-new") {
-    S.confirmNew = false;
-    render();
-    return;
-  }
-  if (b.id === "new-party") {
-    if (!S.confirmNew) {
-      S.confirmNew = true;
-      render();
-      return;
-    }
-    void doResetParty();
-  }
 });
 
-// Show the page right away (the intro view needs no network request),
-// then check in the background whether this session already owns a
-// party (e.g. a page reload) -- docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section
-// 8: "Show the page right away, even if a request is slow."
-render();
-void (async () => {
-  try {
-    const party = await gameApi.getParty();
-    S.party = party;
-    S.level = party.level;
-    S.view = "room";
-    render();
-  } catch {
-    /* No active party yet -- the intro view already showing is correct. */
-  }
-})();
+// A room link opens its room. Anywhere else, show the page right away
+// (the intro view needs no network request), then check in the
+// background whether this browser is already in a room (e.g. a page
+// reload) -- docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 8:
+// "Show the page right away, even if a request is slow."
+const linkCode = roomCodeFromPath(location.pathname);
+if (linkCode !== null) {
+  void openRoomLink(linkCode);
+} else {
+  render();
+  void (async () => {
+    try {
+      enterRoom(await gameApi.getRoom(), "room");
+      render();
+    } catch {
+      /* Not in a room -- the intro view already showing is correct. */
+    }
+  })();
+}
 
 // Visitor counting, only when the page was served with the GoatCounter
 // snippet (see ../analytics.ts). Last, so it can never hold up the game.
