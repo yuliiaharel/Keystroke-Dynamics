@@ -1,6 +1,6 @@
 # Typing Twin: Shareable Rooms Plan
 
-> **Status: Active, Phases 1 and 2 built.** As of 2026-11-09 Phase 1 (rooms in the backend) and Phase 2 (live updates) are on the `rooms` branch, not merged. The page already follows its room live, but it still uses the old party paths and has no join screen until Phase 3. On the live site the event stream needs DigitalOcean's edge caching turned off; until then the page falls back to polling. The stats bug this plan says to fix first was merged in pull request #11.
+> **Status: Active, Phases 1 to 3 built.** As of 2026-11-10 Phase 1 (rooms in the backend), Phase 2 (live updates), and Phase 3 (the room experience: links, joining, host controls) are on the `rooms` branch, not merged. Phase 4 (launch readiness) is next. On the live site the event stream needs DigitalOcean's edge caching turned off; until then the page falls back to polling. The stats bug this plan says to fix first was merged in pull request #11.
 
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
