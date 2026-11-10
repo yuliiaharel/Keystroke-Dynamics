@@ -7,8 +7,10 @@ back over the wire.
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
+from keystroke_dynamics.api import game as game_api
 from keystroke_dynamics.game.rate_limit import game_rate_limiter
 from keystroke_dynamics.main import app
 
@@ -130,6 +132,41 @@ def test_create_player_generates_a_name_when_none_given(client: TestClient) -> N
     player = _create_player(client, name=None)
     assert player["name"]  # non-empty, generated
     assert player["kind"] == "player"
+
+
+def test_name_suggestion_is_a_name_create_player_accepts(client: TestClient) -> None:
+    _create_party(client)
+    resp = client.get("/api/game/room/name-suggestion")
+    assert resp.status_code == 200, resp.text
+    name = resp.json()["name"]
+    assert name
+    assert _create_player(client, name)["name"] == name
+
+
+def test_name_suggestion_skips_a_name_already_taken_in_the_room(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _create_party(client)
+    _create_player(client, "quiet otter")
+    # Taken twice (the check ignores case), then free.
+    names = iter(["Quiet Otter", "Quiet Otter", "Sly Fox"])
+    monkeypatch.setattr(game_api, "generate_name", lambda: next(names))
+    resp = client.get("/api/game/room/name-suggestion")
+    assert resp.json() == {"name": "Sly Fox"}
+
+
+def test_name_suggestion_needs_a_room(client: TestClient) -> None:
+    assert client.get("/api/game/room/name-suggestion").status_code == 404
+
+
+def test_create_player_with_no_name_skips_a_name_already_taken(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _create_party(client)
+    _create_player(client, "Quiet Otter")
+    names = iter(["Quiet Otter", "Sly Fox"])
+    monkeypatch.setattr(game_api, "generate_name", lambda: next(names))
+    assert _create_player(client, name=None)["name"] == "Sly Fox"
 
 
 def test_create_player_rejects_a_blocked_word_name(client: TestClient) -> None:

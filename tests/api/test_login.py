@@ -114,6 +114,7 @@ def test_no_username_availability_endpoint_exists(client: TestClient) -> None:
         "/api/game/rooms/leave",
         "/api/game/room",
         "/api/game/room/lock",
+        "/api/game/room/name-suggestion",
         "/api/game/room/events",
         "/api/game/room/end",
         "/api/game/room/players/{player_id}",

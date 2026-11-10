@@ -159,6 +159,14 @@ export function endRoom(): Promise<void> {
   return request("POST", "/api/game/room/end");
 }
 
+/** A generated name no player in the room has yet. A suggestion
+ * only: the server reserves nothing, and still checks the name that
+ * createPlayer sends. */
+export async function suggestName(): Promise<string> {
+  const suggestion = await request<{ name: string }>("GET", "/api/game/room/name-suggestion");
+  return suggestion.name;
+}
+
 export function createPlayer(
   name: string | null,
   trainingLines: CapturedEvent[][],
