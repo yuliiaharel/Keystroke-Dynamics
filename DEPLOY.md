@@ -125,6 +125,10 @@ change any other app-level environment variable.
    done "Score database setup" yet -- score collection stays off
    until it's set, and the game works normally either way.
 
+   The wizard creates only the `web` service. The `scores-migration`
+   pre-deploy job in `.do/app.yaml` is **not** created here -- "Score
+   database setup" below adds it, and the app deploys fine without it.
+
 4. Click **Create App**. For a brand-new app, once it's live, copy
    its assigned `https://<something>.ondigitalocean.app` URL (control
    panel: the app's overview page, under its name) and update
@@ -153,7 +157,7 @@ up a separate instance of this app under a different account.
 
 Run these by hand after every deploy that could affect them (a new
 release, or after "Score database setup"/"Turning score collection
-off again" above).
+off again" below).
 
 ### Rate-limit identity can't be spoofed
 
@@ -188,7 +192,7 @@ Matches `docs/plans/done/PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
 1. On the live site, start a party, add yourself with **Share my
    scores** checked, and make one attack attempt.
 2. Confirm the row landed, using the **read-only** role (see "Running
-   the analysis" above):
+   the analysis" below):
    ```bash
    uv run python -m evaluation.analyze_scores "<read-only connection string>"
    ```
@@ -235,31 +239,104 @@ doctl apps update <app-id> --spec /tmp/live-spec.yaml
 
 Optional (`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
 to keep score collection off -- leave `SCORES_DATABASE_URL` unset on
-both the `web` service and the `scores-migration` job, and the game
-works exactly as it does today, with no opt-in shown.
+the `web` service (and on the `scores-migration` job, if it exists),
+and the game works exactly as it does today, with no opt-in shown.
 
-### Create the Neon project and three roles
+### Create the Neon project and its roles
 
 1. [Create a Neon project](https://neon.com/docs/manage/projects)
    (free tier). Note the database name Neon creates by default.
 
-2. Neon's default role already exists; you need two more. In the
-   Neon console (**Postgres database → Roles → Add role**) or via SQL
-   from the console's own SQL Editor, create:
-   - a **migration** role -- owns/creates the table, so needs to be
-     either the database owner or granted `CREATE` on the schema
+2. Three roles are involved. Neon's default role (the database
+   owner, e.g. `neondb_owner`) is the **migration** role -- it
+   creates and owns the table. Create the other two yourself:
    - an **app** role -- the one `SCORES_DATABASE_URL` on the `web`
      service actually uses
    - a **read-only** role -- for `evaluation/analyze_scores.py`, run
      by hand, never by the app
 
-   Neon generates each role's password; **Connect** in the console
-   gives you the full `postgresql://role:password@.../dbname`
-   connection string for a given role + database.
+   Create both **with SQL, from the Neon console's SQL Editor** --
+   not with **Roles → Add role**, the Neon CLI, or the API. Neon
+   makes every role created those ways a member of `neon_superuser`,
+   which can read and write all data, so the grants in step 6 would
+   restrict nothing. A role created with SQL starts with no access
+   to the table (see <https://neon.com/docs/manage/roles>):
 
-3. After the migration role has run the first deploy's pre-deploy
-   job at least once (so `score_attempts` exists), grant the app
-   role exactly what `docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10 specifies --
+   ```sql
+   CREATE ROLE <app_role> LOGIN PASSWORD '<password>';
+   CREATE ROLE <readonly_role> LOGIN PASSWORD '<password>';
+   ```
+
+   Neon rejects weak passwords (it requires 60 bits of entropy).
+   Generate each one, and never reuse one across roles:
+
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+   ```
+
+3. Build each role's connection string. **Connect** in the Neon
+   console shows the default role's string; for the two SQL-created
+   roles, take the same string and swap in that role's name and
+   password. Two changes to what Neon shows, for every role:
+   - Change the prefix from `postgresql://` to
+     `postgresql+psycopg://`. The app, the migration job, and
+     `evaluation/analyze_scores.py` all hand the string to
+     SQLAlchemy, which treats a plain `postgresql://` as psycopg2 --
+     not installed here (this project uses psycopg 3) -- and fails
+     with `ModuleNotFoundError: No module named 'psycopg2'`.
+   - For the **migration** role, use the direct connection string
+     (turn **Connection pooling** off in the Connect dialog). The
+     pooled string is fine for the app role.
+
+   The result looks like
+   `postgresql+psycopg://role:password@<host>/<dbname>?sslmode=require`.
+
+### Add the migration job and run it once
+
+4. Create the `scores-migration` job, if the app doesn't have one yet
+   (check the app's **Settings** tab for a component with that name).
+   This uses the control panel so no spec is resubmitted -- see "Why
+   the control panel, not `doctl`" above. The values match
+   `.do/app.yaml`'s own `jobs:` entry:
+
+   1. Open the app → **Add components** → **Create resources from
+      source code**.
+   2. Select this repo and the `master` branch → **Next**.
+   3. Under **Info**, click **Edit**, set **Resource type** to
+      **Job**, and name it `scores-migration`.
+   4. Under **Job trigger**, click **Edit** and choose **Before every
+      deploy**.
+   5. Under **Deployment settings**, click **Edit** next to the run
+      command and paste this as one line. Nothing is run on your own
+      machine -- DigitalOcean runs it before each deploy:
+
+      ```
+      sh -c 'if [ -z "$SCORES_DATABASE_URL" ]; then echo "SCORES_DATABASE_URL not set, skipping score migrations"; else alembic -c alembic_scores.ini upgrade head; fi'
+      ```
+
+   6. Set the instance size to `apps-s-1vcpu-0.5gb`.
+   7. Add the environment variable `SCORES_DATABASE_URL`, marked
+      **Encrypted**, set to the **migration** role's connection
+      string from step 3 -- never the app role's, which lacks the
+      privileges to create or alter a table at all.
+   8. Click **Add resources**. This triggers a deploy.
+
+   If the job already exists, set that variable on it instead
+   (Settings → the `scores-migration` component → Environment
+   Variables → **Encrypted**) and save.
+
+5. Confirm the job ran `alembic -c alembic_scores.ini upgrade head`
+   with no errors, in that job's own logs (`doctl apps logs <app-id>
+   scores-migration --type run`, or the control panel's Activity tab
+   for that deployment). `score_attempts` now exists. The `web`
+   service still has no `SCORES_DATABASE_URL`, so collection is
+   still off.
+
+### Grant the two roles their access
+
+6. In Neon's SQL Editor (which runs as the default role, the table's
+   owner), grant the app role exactly what
+   `docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10 specifies --
    insert and delete, nothing else, confirmed against a real Postgres
    role by `tests/scores/test_db_role.py` (including the one
    non-obvious wrinkle: a `DELETE ... WHERE` needs `SELECT` on the
@@ -284,27 +361,14 @@ works exactly as it does today, with no opt-in shown.
    GRANT SELECT ON score_attempts TO <readonly_role>;
    ```
 
-### Wire it into the app
+### Turn collection on
 
-4. On the `web` service, set `SCORES_DATABASE_URL` (Settings → the
+7. On the `web` service, set `SCORES_DATABASE_URL` (Settings → the
    `web` component → Environment Variables → **Encrypted**) to the
-   **app** role's connection string.
+   **app** role's connection string from step 3 -- a different value
+   from the job's. Saving triggers a deploy.
 
-5. On the `scores-migration` job (Settings → the `scores-migration`
-   component → Environment Variables → **Encrypted**), set its own
-   `SCORES_DATABASE_URL` to the **migration** role's connection
-   string -- a different value from the `web` service's, and never
-   the app role's, which lacks the privileges to create or alter a
-   table at all.
-
-6. Save either one (or push a commit) to trigger a deploy. The
-   pre-deploy job runs `alembic -c alembic_scores.ini upgrade head`
-   against the migration role's connection before the `web` service
-   redeploys; confirm it ran with no errors in that job's own logs
-   (`doctl apps logs <app-id> scores-migration --type run`, or the
-   control panel's Activity tab for that deployment).
-
-7. Confirm collection is actually on: open the live site and check
+8. Confirm collection is actually on: open the live site and check
    that the opt-in checkbox appears when adding a player (it's
    PartyView's own `scores_enabled` field driving this -- see
    `GET /api/game/party` in a browser's own network tab for the raw
@@ -320,6 +384,8 @@ anyway):
 ```bash
 uv run python -m evaluation.analyze_scores "<read-only connection string>"
 ```
+
+The string needs the `postgresql+psycopg://` prefix here too (step 3).
 
 See `evaluation/README.md` for what it prints and its own caveats.
 
