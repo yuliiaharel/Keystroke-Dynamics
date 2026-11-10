@@ -62,6 +62,15 @@ services:
       - key: PUBLIC_BASE_URL
         value: "https://typing-twin-party-t9ilf.ondigitalocean.app"
         scope: RUN_TIME
+      # GoatCounter site code for visitor counting
+      # (docs/plans/active/ANALYTICS_PLAN.md) -- not a secret, it's in
+      # the page source. Remove it or set it to "" to turn analytics
+      # off. Like every value here, it only takes effect once it's
+      # also set in the control panel -- see DEPLOY.md's "Visitor
+      # counting".
+      - key: GOATCOUNTER_SITE_CODE
+        value: "yuliia"
+        scope: RUN_TIME
       # No value here, ever -- see config.py's own startup check,
       # which refuses to start without a real one outside debug mode.
       # Set this in the control panel (Settings -> the web component

@@ -59,7 +59,7 @@ rings, rooms, scores ◀────────  game/   parties and profiles, 
 - **Game state lives in memory.** A party disappears when it's deleted, after 2 hours idle, or when the app restarts. The game needs no database.
 - **One worker process**, because that memory isn't shared.
 - **Scores are optional.** If the scores database is missing or down, the game plays on.
-- **No third-party requests.** Fonts are self-hosted, and a content security policy blocks inline scripts.
+- **One third-party service, for counting visits.** Fonts are self-hosted, and a content security policy blocks inline scripts. The only outside script is GoatCounter's, loaded when `GOATCOUNTER_SITE_CODE` is set, as it is on the live site. Without it, the page makes no third-party requests.
 
 Every push to `master` deploys. [`DEPLOY.md`](DEPLOY.md) has the setup.
 
@@ -119,6 +119,8 @@ npm run e2e    # Playwright, against a running app. See frontend/README.md
 - the scoring and consent wording versions, and how much data the score used
 
 It never stores names, keystrokes, timings, or IP addresses. **Delete me** and **New party** remove a player's rows, and rows are deleted after 12 months by default.
+
+**Visitor counting:** the live site counts page visits with [GoatCounter](https://www.goatcounter.com), which sets no cookies. GoatCounter sees which page was opened, any query string on the link, the site that linked to it, and the browser, screen size, and country. Every room link is reported as `/r/*`, so a room code never reaches it, and neither do names, signatures, or scores.
 
 **Security:**
 

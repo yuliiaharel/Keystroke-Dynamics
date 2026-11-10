@@ -332,6 +332,31 @@ job's own `SCORES_DATABASE_URL` can stay set either way -- it only
 ever runs `upgrade head`, which is a no-op once the table already
 exists, and skips cleanly if it's ever unset instead.
 
+## Visitor counting
+
+The game page loads GoatCounter's script only when
+`GOATCOUNTER_SITE_CODE` is set on the `web` component. It's a plain
+value, not a secret: the site code is the `example` in
+`example.goatcounter.com`, and it's visible in the page source.
+
+To turn it on, add `GOATCOUNTER_SITE_CODE` in the control panel (the
+app → Settings → the `web` component → Environment Variables), with
+the same value as `.do/app.yaml`. Saving redeploys. Merging the code
+alone doesn't start counting, because a push deploys the code but not
+this file's environment values.
+
+To turn it off, delete the variable or set it to an empty value. The
+script tag and the two extra Content-Security-Policy sources go with
+it.
+
+After turning it on:
+
+1. Open the site in a private window and check the visit appears in
+   the GoatCounter dashboard within a minute.
+2. Open any `/r/<code>` link and check the dashboard shows `/r/*`,
+   never a code.
+3. Check the browser console shows no Content-Security-Policy errors.
+
 ## Keeping CI in the loop
 
 `.do/app.yaml` sets `deploy_on_push: true`, per the plan -- DigitalOcean
