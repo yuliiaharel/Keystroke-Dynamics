@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from keystroke_dynamics.api.analytics import REFERRER_POLICY, csp_with_analytics
 from keystroke_dynamics.config import settings
 
 router = APIRouter()
@@ -56,9 +57,16 @@ def party_page(request: Request) -> HTMLResponse:
     response = templates.TemplateResponse(
         request,
         "party.html",
-        {"active_page": "party", "public_base_url": settings.public_base_url},
+        {
+            "active_page": "party",
+            "public_base_url": settings.public_base_url,
+            "goatcounter_site_code": settings.goatcounter_site_code,
+        },
     )
-    response.headers["Content-Security-Policy"] = _PARTY_CSP
+    response.headers["Content-Security-Policy"] = csp_with_analytics(
+        _PARTY_CSP, settings.goatcounter_site_code
+    )
+    response.headers["Referrer-Policy"] = REFERRER_POLICY
     return response
 
 

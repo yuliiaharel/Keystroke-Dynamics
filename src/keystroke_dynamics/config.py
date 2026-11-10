@@ -1,7 +1,7 @@
 """Application settings, loaded from the environment (and a .env file
 in local development)."""
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: The placeholders shipped in .env.example -- never real deployment
@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     #: local development, same as session_secret -- see the validator
     #: below.
     public_base_url: str | None = None
+
+    #: The GoatCounter site code for visitor counting
+    #: (docs/plans/active/ANALYTICS_PLAN.md): the "example" in
+    #: example.goatcounter.com. Empty, the default, turns analytics off
+    #: entirely -- no script tag and no extra Content-Security-Policy
+    #: sources -- so local development, tests, and Playwright never
+    #: count anything. Not a secret: it's in the page source wherever
+    #: it's set. Restricted to what a hostname label can hold, because
+    #: the value goes into a URL and a response header.
+    goatcounter_site_code: str = Field(default="", pattern=r"^[a-z0-9-]*$")
 
     #: Request body / event-count limits (core.events.validate takes
     #: max_events directly; max_body_bytes is enforced by middleware

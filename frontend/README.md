@@ -62,7 +62,23 @@ Then, in another terminal, from `frontend/`: `npm run e2e`. Override
 the target with `E2E_BASE_URL` if the app is running somewhere other
 than `http://127.0.0.1:8000`.
 
+### Visitor-counting tests
+
+`npm run e2e:analytics` is a separate suite (`e2e-analytics/`,
+`playwright.analytics.config.ts`). It starts its own server on port
+8137 in public mode, with no database and a made-up
+`GOATCOUNTER_SITE_CODE`, so it can run alongside the main suite. The
+main suite's server must never have a site code set. Nothing reaches
+GoatCounter: the script is served from a pinned copy
+(`e2e-analytics/fixtures/count.js`) and the count request is
+intercepted. Refresh that copy from `https://gc.zgo.at/count.js` if
+GoatCounter changes its script.
+
 ## Layout
+
+- `src/analytics.ts` -- decides what GoatCounter is told about a page
+  view (see `docs/plans/active/ANALYTICS_PLAN.md`). Does nothing unless
+  the page was served with the snippet.
 
 - `src/capture.ts` -- records key timing (`event.code`, action, and a
   timestamp relative to the first event in the sample). Never reads

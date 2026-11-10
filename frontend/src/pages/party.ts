@@ -17,6 +17,7 @@
  * browser owns.
  */
 
+import { analyticsPrivacyNote, startAnalytics } from "../analytics";
 import * as gameApi from "../game-api";
 import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
@@ -977,6 +978,7 @@ function howView(): string {
             ? `<p class="small">Sharing scores is optional, off by default, and never required to play. If you opt in, this stores a few numbers about a result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or your IP address. Your attempts in this party are grouped under a random ID that isn't linked to your name. <b>Delete me</b> and <b>New party</b> remove those stored numbers while the party still exists; once a party ends, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
             : `<p class="small">Nothing from this party is written to a database.</p>`
         }
+        ${analyticsPrivacyNote()}
       </div>
     </details>
   </section>`;
@@ -1207,3 +1209,7 @@ void (async () => {
     /* No active party yet -- the intro view already showing is correct. */
   }
 })();
+
+// Visitor counting, only when the page was served with the GoatCounter
+// snippet (see ../analytics.ts). Last, so it can never hold up the game.
+startAnalytics();
