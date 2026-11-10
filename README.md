@@ -51,7 +51,7 @@ TypeScript, built with Vite     DigitalOcean App Platform            Postgres
 key down/up timing  ──HTTPS──▶  api/    routes, origin check,
                                         rate limits
 rings, rooms, scores ◀────────  game/   parties and profiles,  ───▶  score_attempts
-                                        in memory                    opted-in scores only,
+                                        in memory                    a score row per attempt,
                                 core/   pure scoring logic           written in the background
 ```
 
@@ -111,12 +111,12 @@ npm run e2e    # Playwright, against a running app. See frontend/README.md
 
 **Never stored or logged:** raw keystrokes and their timings. They're discarded after each request.
 
-**Opt-in score sharing:** a player can tick "Share my scores to help test this". It's off by default and never needed to play. An opted-in result stores:
+**Saved scores:** when the site has a scores database, as the live site does, a few numbers about every result are saved automatically. Nobody is asked, and a short note under the game says so. Each result stores:
 
 - the date, the line, the kind of attempt and target, the device type, and whether it passed
 - pace, distance, and the limit
 - random IDs that group a party's attempts
-- the scoring and consent wording versions, and how much data the score used
+- the scoring version, the version of that note's wording, and how much data the score used
 
 It never stores names, keystrokes, timings, or IP addresses. **Delete me** and **New party** remove a player's rows, and rows are deleted after 12 months by default.
 

@@ -1,4 +1,4 @@
-"""Read-only analysis of the opt-in score_attempts table
+"""Read-only analysis of the score_attempts table, saved automatically
 (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10). Run with a read-only connection
 string -- never the app's own SCORES_DATABASE_URL, which is write-only
 by design (scores/db.py, the restricted app database role):
@@ -9,8 +9,9 @@ IMPORTANT, and printed again at the top of every run: `mode` and every
 identity in this table are self-reported by whichever client sent the
 request -- nothing here verifies a typist actually is who an attempt
 claims, and real play can't be reliably separated from scripted
-attempts. These are observed rates on a self-selected, opted-in
-sample, not a controlled benchmark -- NEVER call them this game's (or
+attempts. These are observed rates on uncontrolled play (and rows
+with consent_version "1", from the earlier opt-in checkbox, are
+self-selected too), not a controlled benchmark -- NEVER call them this game's (or
 this method's) accuracy. See evaluation/README.md for the actual
 benchmark that measures the scoring method itself.
 """

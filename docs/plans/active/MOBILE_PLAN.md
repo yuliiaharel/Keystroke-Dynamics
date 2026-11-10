@@ -21,7 +21,7 @@ This was checked against `master` at commit `5bb3ac1`, after the desktop launch.
 **Already live and reused here:**
 - The party game, with anonymous players, attacks, replay, scores, and a single "Start a party" flow on the sentence line
 - Pace and a one-line clue on every result
-- Opt-in score collection in `score_attempts`, which already has `device_type`, `rhythm`, and `place` columns
+- Automatic score collection in `score_attempts`, which already has `device_type`, `rhythm`, and `place` columns
 - `design/typing-twin-touch.html`, the approved phone design
 - `CLAUDE.md`, with the standing rules for Claude Code
 
@@ -357,7 +357,7 @@ Read docs/plans/active/MOBILE_PLAN.md. Here are the Phase 4 field test scores: [
 3. Check the live site with this list:
    - [ ] A full phone game works in Safari, Chrome, and LinkedIn's in-app browser
    - [ ] The desktop game still works
-   - [ ] Opted-in touch attempts are stored with `device_type = touch`, with no positions or timings
+   - [ ] Touch attempts are stored with `device_type = touch`, with no positions or timings
    - [ ] **Delete me** removes test rows
    - [ ] Logs contain no tap data
    - [ ] A phone and a computer can't attack each other's signatures
@@ -381,7 +381,7 @@ Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 5 steps 1 and 4. Push 
 
 ## After launch
 
-- Compare real touch and keyboard results from opted-in scores
+- Compare real touch and keyboard results from saved scores
 - Private rooms that keep phones with phones
 - A tap-a-rhythm bonus round
 - A native iOS version, only if the web version shows real limits
