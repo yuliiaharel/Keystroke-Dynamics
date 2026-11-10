@@ -6,6 +6,7 @@
     "build": "vite build",
     "test": "vitest run",
     "e2e": "playwright test",
+    "e2e:analytics": "playwright test --config playwright.analytics.config.ts",
     "typecheck": "tsc --noEmit",
     "og-image": "node scripts/generate-og-image.mjs"
   },
