@@ -17,6 +17,18 @@ _LOCAL_ALLOWED_ORIGIN = "http://127.0.0.1:8000"
 #: on its own.
 _UNSET_URL_PLACEHOLDER = "REPLACE_ME"
 
+_PSYCOPG3_SCHEME = "postgresql+psycopg://"
+#: postgres:// is the libpq alias some providers still hand out;
+#: SQLAlchemy 2 rejects it outright.
+_DRIVERLESS_POSTGRES_SCHEMES = ("postgresql://", "postgres://")
+
+
+def _with_psycopg3_driver(url: str) -> str:
+    for scheme in _DRIVERLESS_POSTGRES_SCHEMES:
+        if url.startswith(scheme):
+            return _PSYCOPG3_SCHEME + url[len(scheme) :]
+    return url
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -112,6 +124,19 @@ class Settings(BaseSettings):
         # this module treats "falsy" and "unset" as the same thing.
         if self.scores_database_url == "":
             self.scores_database_url = None
+        return self
+
+    @model_validator(mode="after")
+    def _use_psycopg3_for_driverless_postgres_urls(self) -> "Settings":
+        # Hosted Postgres (Neon's console and CLI, DigitalOcean) hands
+        # out plain postgresql:// URLs. SQLAlchemy reads those as
+        # psycopg2, which this project doesn't install -- it uses
+        # psycopg 3 -- so name the driver here instead of asking every
+        # pasted URL to be hand-edited. A URL that already names a
+        # driver is left exactly as given.
+        self.database_url = _with_psycopg3_driver(self.database_url)
+        if self.scores_database_url is not None:
+            self.scores_database_url = _with_psycopg3_driver(self.scores_database_url)
         return self
 
     @model_validator(mode="after")

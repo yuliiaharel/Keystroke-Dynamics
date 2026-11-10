@@ -16,5 +16,8 @@ frontend/test-results/
 frontend/playwright-report/
 src/keystroke_dynamics/static/js/*.js
 .env
+.env.local
+.neon
+node_modules/
 *.sqlite
 *.sqlite3

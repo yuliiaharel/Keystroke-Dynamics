@@ -14,6 +14,7 @@ htmlcov/
 
 # Environment
 .env
+.env.local
 
 # Node / frontend build output
 node_modules/
@@ -32,3 +33,4 @@ src/keystroke_dynamics/static/js/*.js
 
 # Benchmark data (downloaded, not committed -- see evaluation/README.md)
 evaluation/data/
+.neon
