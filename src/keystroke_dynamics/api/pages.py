@@ -59,6 +59,9 @@ def party_page(request: Request) -> HTMLResponse:
         "party.html",
         {
             "active_page": "party",
+            # Where the page goes back to when it has no room on
+            # screen, and the one address its link preview names.
+            "party_path": PARTY_PATH,
             "public_base_url": settings.public_base_url,
             "goatcounter_site_code": settings.goatcounter_site_code,
         },
@@ -77,8 +80,9 @@ def room_page(request: Request, code: str) -> HTMLResponse:
     page joins through POST /api/game/rooms/{code}/join, which is
     where the rate limit and the single "room not found" answer live.
     A plain GET therefore can't be used to test whether a code is
-    real, and the page's link preview never carries anything about a
-    room."""
+    real, and the response is the home page's, byte for byte, so the
+    link preview never carries anything about a room -- not even its
+    code."""
     return party_page(request)
 
 

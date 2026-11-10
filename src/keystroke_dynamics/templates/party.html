@@ -9,7 +9,8 @@
 <meta property="og:title" content="Typing Twin Party">
 <meta property="og:description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then gather some friends around one keyboard and try to pass as each other.">
 {% if public_base_url %}
-<meta property="og:url" content="{{ public_base_url }}{{ request.url.path }}">
+{# The game's own address even on a room link, so a preview never carries a room code. #}
+<meta property="og:url" content="{{ public_base_url }}{{ party_path }}">
 <meta property="og:image" content="{{ public_base_url }}/static/img/party-preview.png">
 {% endif %}
 <meta name="twitter:card" content="summary_large_image">
@@ -23,7 +24,7 @@
 <script data-goatcounter="https://{{ goatcounter_site_code }}.goatcounter.com/count" data-goatcounter-settings='{"no_onload": true}' async src="https://gc.zgo.at/count.js"></script>
 {% endif %}
 </head>
-<body>
+<body data-home="{{ party_path }}">
 <div class="wrap">
   <header>
     <button class="brand" id="home" aria-label="Typing Twin home">Typing Twin</button>
