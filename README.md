@@ -73,7 +73,7 @@ With [Docker Compose](https://docs.docker.com/compose/):
 docker compose up --build
 ```
 
-Then open <http://localhost:8000>. There's no database and nothing else to install.
+Then open <http://127.0.0.1:8000>, not `localhost`, which the origin check rejects. There's no database and nothing else to install.
 
 Without Docker, you need Python 3.12 or newer with [`uv`](https://docs.astral.sh/uv/), and Node.js 22 or newer:
 
@@ -113,7 +113,7 @@ npm run e2e    # Playwright, against a running app. See frontend/README.md
 
 **Opt-in score sharing:** a player can tick "Share my scores to help test this". It's off by default and never needed to play. An opted-in result stores:
 
-- the date, the line, the kind of attempt, and whether it passed
+- the date, the line, the kind of attempt and target, the device type, and whether it passed
 - pace, distance, and the limit
 - random IDs that group a party's attempts
 - the scoring and consent wording versions, and how much data the score used
