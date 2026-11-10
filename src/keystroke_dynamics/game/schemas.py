@@ -146,6 +146,10 @@ class PartyView(BaseModel):
     scores_enabled: bool
 
 
+class NameSuggestionView(BaseModel):
+    name: str
+
+
 class CreatePlayerRequest(BaseModel):
     #: None -> the server generates one (game/names.py).
     name: str | None = None

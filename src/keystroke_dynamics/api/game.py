@@ -6,8 +6,9 @@ POST /room/lock, POST /room/end, DELETE /room/players/{id},
 DELETE /room/members/{id}.
 Live updates (Phase 2): GET /room/events, a server-sent event stream
 that says only "the room is at version N" or "this is over for you".
-Play, inside the session's room: POST /players,
-PATCH/DELETE /players/{id}, POST /attempts, POST /replay.
+Play, inside the session's room: GET /room/name-suggestion,
+POST /players, PATCH/DELETE /players/{id}, POST /attempts,
+POST /replay.
 The paths the game used before rooms still answer, for a page that
 was loaded before the deploy that moved the frontend to the room
 paths (Phase 3):
@@ -75,6 +76,7 @@ from keystroke_dynamics.game.schemas import (
     CreatePlayerRequest,
     JoinRoomRequest,
     LockRoomRequest,
+    NameSuggestionView,
     NoteView,
     PartyView,
     PlayerView,
@@ -120,7 +122,7 @@ router = APIRouter(prefix="/api/game")
 
 #: Every state-changing route gets both: the Origin check and this
 #: game's own rate limiter (api/pages.py's GETs, and this router's own
-#: GET /party, need neither -- see the module docstring).
+#: read-only GETs, need neither -- see the module docstring).
 _STATE_CHANGING = [Depends(require_matching_origin), Depends(rate_limited(game_rate_limiter))]
 
 # One process, one worker (see main.py) -- this in-memory store is
@@ -538,6 +540,25 @@ def remove_member(
     _delete_scores_after_removal(room.party, removal)
 
 
+def _unused_generated_name(existing_names: set[str]) -> str:
+    """A generated name that isn't in `existing_names` (lowercased).
+    Terminates because a room holds far fewer players than
+    generate_name has combinations."""
+    name = generate_name()
+    while name.lower() in existing_names:
+        name = generate_name()
+    return name
+
+
+@router.get("/room/name-suggestion")
+def suggest_name(room: RoomSession = Depends(_room_for_session)) -> NameSuggestionView:
+    """A generated name no player in the room has, for the name step
+    to offer. Only a suggestion: nothing is reserved, so POST /players
+    still checks whatever name comes back."""
+    existing_names = {p.name.lower() for p in room.party.players.values()}
+    return NameSuggestionView(name=_unused_generated_name(existing_names))
+
+
 @router.post("/players", dependencies=_STATE_CHANGING)
 def create_player(
     body: CreatePlayerRequest,
@@ -555,9 +576,7 @@ def create_player(
         except InvalidNameError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.reason) from exc
     else:
-        name = generate_name()
-        while name.lower() in existing_names:
-            name = generate_name()
+        name = _unused_generated_name(existing_names)
 
     profile, threshold = build_profile_and_threshold(phrase, runs)
     notes = median_notes(phrase, runs)
