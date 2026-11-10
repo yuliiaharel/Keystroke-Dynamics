@@ -185,6 +185,33 @@ describes for "any host other than DigitalOcean App Platform"). A
 FAIL against the live site, not just locally, means something is
 wrong -- not a routine difference.
 
+### Live updates reach the browser
+
+Rooms update live through a server-sent event stream,
+`GET /api/game/room/events` (`docs/plans/active/ROOMS_PLAN.md` Phase 2).
+DigitalOcean's documentation says its edge cache must be off for a
+stream like this to work over `GET`
+([How to Configure Edge Settings](https://docs.digitalocean.com/products/app-platform/how-to/configure-edge-settings/),
+checked 2026-11-09). That is a setting on the app, not something this
+repository's code can change: in the control panel, **Networking** >
+**Advanced networking and security** > **Edge caching** > **Off**. The
+app already sends the two headers that page asks for
+(`Content-Type: text/event-stream` and `Cache-Control: no-cache`).
+
+```bash
+scripts/check_live_events.sh https://typingtwin.com
+```
+
+It creates one room, changes it every 30 seconds for 5 minutes, and
+expects **PASS** on all three lines: every change arrived on the
+stream within 2 seconds, the one connection stayed open, and ending
+the room closed it. It prints the stream's response headers either
+way.
+
+A FAIL doesn't break the game. A browser whose stream is silent or
+refused falls back to asking for the room every 5 seconds
+(`frontend/src/live.ts`), so rooms still update, just more slowly.
+
 ### If score collection is on: an attempt is stored, and Delete me removes it
 
 Matches `docs/plans/done/PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
