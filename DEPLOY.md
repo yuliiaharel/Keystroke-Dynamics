@@ -185,12 +185,13 @@ describes for "any host other than DigitalOcean App Platform"). A
 FAIL against the live site, not just locally, means something is
 wrong -- not a routine difference.
 
-### If score collection is on: an opt-in attempt is stored, and Delete me removes it
+### If score collection is on: an attempt is stored, and Delete me removes it
 
 Matches `docs/plans/done/PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
 
-1. On the live site, start a party, add yourself with **Share my
-   scores** checked, and make one attack attempt.
+1. On the live site, start a party, add yourself, and make one
+   attack attempt. Scores are saved automatically, so there is
+   nothing to tick.
 2. Confirm the row landed, using the **read-only** role (see "Running
    the analysis" below):
    ```bash
@@ -240,7 +241,8 @@ doctl apps update <app-id> --spec /tmp/live-spec.yaml
 Optional (`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
 to keep score collection off -- leave `SCORES_DATABASE_URL` unset on
 the `web` service (and on the `scores-migration` job, if it exists),
-and the game works exactly as it does today, with no opt-in shown.
+and the game works exactly as it does today, saving no scores and
+showing no score-saving note.
 
 ### Create the Neon project and its roles
 
@@ -369,7 +371,8 @@ and the game works exactly as it does today, with no opt-in shown.
    from the job's. Saving triggers a deploy.
 
 8. Confirm collection is actually on: open the live site and check
-   that the opt-in checkbox appears when adding a player (it's
+   that the score-saving note ("This site saves a few numbers about
+   each result...") appears under the name form when adding a player (it's
    PartyView's own `scores_enabled` field driving this -- see
    `GET /api/game/party` in a browser's own network tab for the raw
    response if you want to check it directly instead).
@@ -392,8 +395,8 @@ See `evaluation/README.md` for what it prints and its own caveats.
 ### Turning score collection off again
 
 Clear `SCORES_DATABASE_URL` on the `web` service (control panel,
-same place you set it) and save. The game goes back to working with
-no opt-in shown, same as before this section. The `scores-migration`
+same place you set it) and save. The game goes back to saving no
+scores and showing no score-saving note, same as before this section. The `scores-migration`
 job's own `SCORES_DATABASE_URL` can stay set either way -- it only
 ever runs `upgrade head`, which is a no-op once the table already
 exists, and skips cleanly if it's ever unset instead.

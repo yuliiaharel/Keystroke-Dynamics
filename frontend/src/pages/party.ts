@@ -22,6 +22,7 @@ import * as gameApi from "../game-api";
 import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
 import type { CapturedEvent } from "../capture";
+import { scoresMemoHTML } from "../scores-memo";
 import { traitsFromNotes } from "../traits";
 import type { PairTiming } from "../traits";
 
@@ -83,14 +84,6 @@ interface State {
   target: string | null;
   mode: ApiMode;
   enrollName: string;
-  //: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's opt-in, captured once at the
-  //: name-form submit (before enrollment typing starts) and sent with
-  //: createPlayer -- never pre-checked, never required.
-  enrollShareScores: boolean;
-  //: The same opt-in for a Guest attacker (no enrolled Player to
-  //: have opted in at creation time), shown in attackView() and sent
-  //: with every attempt while typingAs stays null.
-  guestSharesScores: boolean;
   enrollRuns: Run[];
   run: Run | null;
   last: LastResult | null;
@@ -111,8 +104,6 @@ const S: State = {
   target: null,
   mode: "attack",
   enrollName: "",
-  enrollShareScores: false,
-  guestSharesScores: false,
   enrollRuns: [],
   run: null,
   last: null,
@@ -373,11 +364,7 @@ async function finishRun(): Promise<void> {
       S.busy = true;
       render();
       try {
-        const player = await gameApi.createPlayer(
-          S.enrollName || null,
-          enrollSamples,
-          S.enrollShareScores,
-        );
+        const player = await gameApi.createPlayer(S.enrollName || null, enrollSamples);
         S.enrollRuns = [];
         enrollSamples.length = 0;
         S.typingAs = player.id;
@@ -426,7 +413,6 @@ async function submitRunAsAttempt(run: Run): Promise<void> {
       mode,
       events: capture.sample(),
       clientAttemptId: crypto.randomUUID(),
-      guestSharesScores: S.guestSharesScores,
     });
     S.last = {
       run,
@@ -656,8 +642,6 @@ async function doResetParty(): Promise<void> {
     target: null,
     mode: "attack",
     enrollName: "",
-    enrollShareScores: false,
-    guestSharesScores: false,
     enrollRuns: [],
     run: null,
     last: null,
@@ -724,17 +708,6 @@ function introView(): string {
     </section>`;
 }
 
-function shareScoresCheckboxHTML(id: string, checked: boolean): string {
-  // Not shown at all unless the server says collection is actually
-  // on (PartyView.scores_enabled) -- never inferred any other way,
-  // and never pre-checked (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10).
-  if (!S.party?.scores_enabled) return "";
-  return `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;max-width:48ch">
-    <input type="checkbox" id="${id}" ${checked ? "checked" : ""} style="margin-top:3px">
-    <span><b>${esc(S.party.consent_label)}</b><br><span class="small muted">${esc(S.party.consent_explanation)}</span></span>
-  </label>`;
-}
-
 function nameView(): string {
   return `<section class="stack" style="max-width:560px">
     <div class="eyebrow">New player</div>
@@ -745,8 +718,8 @@ function nameView(): string {
         <label for="player-name">Your name (optional)<input id="player-name" maxlength="24" autocomplete="off"></label>
         <button class="primary" type="submit">Start typing</button>
       </div>
-      ${shareScoresCheckboxHTML("enroll-share-scores", S.enrollShareScores)}
     </form>
+    ${scoresMemoHTML(S.party?.scores_enabled ?? false)}
     ${humans().length ? `<button class="quiet" id="to-room" style="align-self:flex-start">Skip and see the room</button>` : ""}
   </section>`;
 }
@@ -893,10 +866,6 @@ function attackView(): string {
   const title = same ? (S.mode === "disguise" ? "Fool your own signature" : "Prove it's you") : `Pass as ${esc(target.name)}`;
   const hint = same ? "Type the line" : "Match the pink bars on the roll";
   const replay = !same ? `<button class="quiet" id="replay" ${S.busy ? "disabled" : ""}>Watch a replay attack</button>` : "";
-  // "for a Guest before their first attack" (docs/plans/done/PARTY_LAUNCH_PLAN.md
-  // section 10) -- not shown once a real enrolled player is typing;
-  // their own choice from enrollment is what's authoritative then.
-  const guestConsent = !S.typingAs ? shareScoresCheckboxHTML("guest-share-scores", S.guestSharesScores) : "";
   return `<section class="stack">
       <h2>${title}</h2>
       <div class="row end">
@@ -904,9 +873,9 @@ function attackView(): string {
         <label for="tgt">Target<select id="tgt">${opts(S.target, [...humans(), ...(S.party?.targets ?? [])])}</select></label>
         ${modeBtns}
       </div>
-      ${guestConsent}
       ${typerHTML(hint, resultHTML(), replay)}
       ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+      ${scoresMemoHTML(S.party?.scores_enabled ?? false)}
     </section>`;
 }
 
@@ -975,7 +944,7 @@ function howView(): string {
         <p class="small">Key timing and key identity for this party's line are sent to the server for scoring. Raw timings are discarded right after scoring -- the server keeps a player's timing statistics in memory until they delete themselves, or the party expires or the app restarts. Everyone playing in this same party can see names and signatures. Anything typed outside the game line isn't accepted.</p>
         ${
           S.party?.scores_enabled
-            ? `<p class="small">Sharing scores is optional, off by default, and never required to play. If you opt in, this stores a few numbers about a result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or your IP address. Your attempts in this party are grouped under a random ID that isn't linked to your name. <b>Delete me</b> and <b>New party</b> remove those stored numbers while the party still exists; once a party ends, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
+            ? `<p class="small">Scores are saved automatically, for every attempt. This site saves a few numbers about each result -- pace, how close it came to the limit, and whether it passed -- never your name, your keystrokes, or your IP address. Your attempts in this party are grouped under a random ID that isn't linked to your name. <b>Delete me</b> and <b>New party</b> remove those stored numbers while the party still exists; once a party ends, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
             : `<p class="small">Nothing from this party is written to a database.</p>`
         }
         ${analyticsPrivacyNote()}
@@ -1059,8 +1028,6 @@ document.addEventListener("submit", (e) => {
     e.preventDefault();
     const input = $("player-name") as HTMLInputElement | null;
     S.enrollName = input?.value.trim() ?? "";
-    const shareScores = $("enroll-share-scores") as HTMLInputElement | null;
-    S.enrollShareScores = shareScores?.checked ?? false;
     S.enrollRuns = [];
     enrollSamples.length = 0;
     S.error = null;
@@ -1090,10 +1057,6 @@ document.addEventListener("change", (e) => {
     S.replaying = 0;
     render();
     startRun();
-  } else if (target.id === "guest-share-scores") {
-    // No render()/startRun() -- unlike who/tgt, this doesn't change
-    // what's being typed, just the opt-in sent with the next attempt.
-    S.guestSharesScores = (target as HTMLInputElement).checked;
   }
 });
 

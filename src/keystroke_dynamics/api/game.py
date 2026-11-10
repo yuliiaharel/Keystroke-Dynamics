@@ -64,11 +64,9 @@ from keystroke_dynamics.game.targets import (
     sample_targets,
     save_permanent_target,
 )
-from keystroke_dynamics.scores.consent import CONSENT_EXPLANATION, CONSENT_LABEL, CONSENT_VERSION
 from keystroke_dynamics.scores.recording import (
     ScoreTargetKind,
     build_score_row,
-    should_record_score,
 )
 from keystroke_dynamics.scores.writer import (
     DeleteByPartyId,
@@ -168,8 +166,6 @@ def _party_view(party: Party) -> PartyView:
         targets=targets,
         attempts=[AttemptView.from_core(a) for a in party.attempts],
         scores_enabled=bool(settings.scores_database_url),
-        consent_label=CONSENT_LABEL,
-        consent_explanation=CONSENT_EXPLANATION,
     )
 
 
@@ -236,11 +232,6 @@ def create_player(
 
     profile, threshold = build_profile_and_threshold(phrase, runs)
     notes = median_notes(phrase, runs)
-    # Consent is captured once, here, at enrollment -- never
-    # re-askable later, and ignored outright when score collection is
-    # off (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10), same as the checkbox not
-    # being shown at all in that case.
-    shares_scores = bool(settings.scores_database_url) and body.share_scores
     player = Player(
         id=str(uuid.uuid4()),
         name=name,
@@ -249,8 +240,6 @@ def create_player(
         threshold=threshold,
         notes=notes,
         training_line_count=len(runs),
-        shares_scores=shares_scores,
-        consent_version=CONSENT_VERSION if shares_scores else None,
     )
     try:
         store.add_player(party.id, player)
@@ -360,39 +349,25 @@ def create_attempt(
 
     if settings.scores_database_url:
         typist_player = party.players[body.typist_id] if body.typist_id else None
-        typist_consents = typist_player.shares_scores if typist_player else body.guest_shares_scores
-        target_kind = _score_target_kind(party, target)
-        target_consents = target.shares_scores if target_kind == "player" else True
-        if should_record_score(
-            typist_consents=typist_consents,
-            target_kind=target_kind,
-            target_consents=target_consents,
-        ):
-            consent_version = (
-                typist_player.consent_version
-                if typist_player and typist_player.consent_version
-                else CONSENT_VERSION
-            )
-            row = build_score_row(
-                verdict=verdict,
-                pace=pace_ratio(run_duration_ms, target),
-                mode=body.mode,
-                target_kind=target_kind,
-                line_id=party.level,
-                party_id=party.score_id,
-                # A Guest has no Player object to carry a stable
-                # score_id -- each Guest attempt gets its own fresh,
-                # disposable random id instead, never reused, so
-                # Guest attempts can't even be correlated with each
-                # other through this column (there's no "Delete me"
-                # for a Guest either, consistent with that).
-                typist_id=typist_player.score_id if typist_player else str(uuid.uuid4()),
-                target_id=target.score_id,
-                training_lines=target.training_line_count,
-                limit_value=target.threshold,
-                consent_version=consent_version,
-            )
-            score_writer.enqueue(InsertRow(row))
+        row = build_score_row(
+            verdict=verdict,
+            pace=pace_ratio(run_duration_ms, target),
+            mode=body.mode,
+            target_kind=_score_target_kind(party, target),
+            line_id=party.level,
+            party_id=party.score_id,
+            # A Guest has no Player object to carry a stable
+            # score_id -- each Guest attempt gets its own fresh,
+            # disposable random id instead, never reused, so
+            # Guest attempts can't even be correlated with each
+            # other through this column (there's no "Delete me"
+            # for a Guest either, consistent with that).
+            typist_id=typist_player.score_id if typist_player else str(uuid.uuid4()),
+            target_id=target.score_id,
+            training_lines=target.training_line_count,
+            limit_value=target.threshold,
+        )
+        score_writer.enqueue(InsertRow(row))
 
     return AttemptResponse(
         attempt=AttemptView.from_core(attempt), verdict_text=verdict.text, clue=verdict.clue
@@ -439,34 +414,21 @@ def create_replay(
     store.add_attempt(party.id, attempt)
 
     if settings.scores_database_url:
-        # The replay bot isn't a real person -- there's no typist
-        # consent to require (should_record_score's own doc on why).
-        target_kind = _score_target_kind(party, target)
-        target_consents = target.shares_scores if target_kind == "player" else True
-        if should_record_score(
-            typist_consents=True, target_kind=target_kind, target_consents=target_consents
-        ):
-            consent_version = (
-                target.consent_version
-                if target_kind == "player" and target.consent_version
-                else CONSENT_VERSION
-            )
-            row = build_score_row(
-                verdict=verdict,
-                pace=pace_ratio(run_duration_ms, target),
-                mode="replay",
-                target_kind=target_kind,
-                line_id=party.level,
-                party_id=party.score_id,
-                # No real typist -- a fresh, disposable random id,
-                # same reasoning as a Guest attacker's typist_id above.
-                typist_id=str(uuid.uuid4()),
-                target_id=target.score_id,
-                training_lines=target.training_line_count,
-                limit_value=target.threshold,
-                consent_version=consent_version,
-            )
-            score_writer.enqueue(InsertRow(row))
+        row = build_score_row(
+            verdict=verdict,
+            pace=pace_ratio(run_duration_ms, target),
+            mode="replay",
+            target_kind=_score_target_kind(party, target),
+            line_id=party.level,
+            party_id=party.score_id,
+            # No real typist -- a fresh, disposable random id,
+            # same reasoning as a Guest attacker's typist_id above.
+            typist_id=str(uuid.uuid4()),
+            target_id=target.score_id,
+            training_lines=target.training_line_count,
+            limit_value=target.threshold,
+        )
+        score_writer.enqueue(InsertRow(row))
 
     return ReplayResponse(
         attempt=AttemptView.from_core(attempt),

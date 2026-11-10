@@ -81,8 +81,9 @@ services:
         type: SECRET
         scope: RUN_TIME
       # docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: optional -- empty/absent
-      # means score collection is off and the game works normally
-      # with no opt-in shown at all. When set, this is the app
+      # means score collection is off and the game works normally,
+      # saving nothing. When set, every attempt's score is saved
+      # automatically, and this is the app
       # database role's own connection string (INSERT/DELETE on
       # score_attempts only, plus column-level SELECT on the four
       # columns its own deletes filter by -- see DEPLOY.md's "Score

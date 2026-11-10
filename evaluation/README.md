@@ -47,10 +47,10 @@ actually separate genuine typists from impostors, on real timing data -- not
 how the deployed app performs, since the app accepts arbitrary free text, not
 one fixed password.
 
-## Analyzing opted-in party scores
+## Analyzing saved party scores
 
 `analyze_scores.py` is a separate, unrelated script: a read-only look at
-`score_attempts`, the party game's own opt-in score table
+`score_attempts`, the party game's own table of automatically saved scores
 (`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10) -- not the CMU benchmark above, and
 not something that runs against benchmark data at all.
 
@@ -72,6 +72,8 @@ is hidden from its table entirely, never shown with a caveat.
 
 **This is not a benchmark.** `mode` and every identity in the table are
 self-reported by whichever client sent the request, and real play can't be
-reliably separated from scripted attempts. Treat every number here as an
-observed rate on a self-selected, opted-in sample -- never as this game's
-(or this scoring method's) accuracy. For that, see the CMU benchmark above.
+reliably separated from scripted attempts. Rows with `consent_version`
+"1" come from the earlier opt-in checkbox, so they are self-selected; later
+rows are every attempt played. Treat every number here as an observed rate
+on uncontrolled play -- never as this game's (or this scoring method's)
+accuracy. For that, see the CMU benchmark above.

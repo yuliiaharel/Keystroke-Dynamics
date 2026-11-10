@@ -119,7 +119,7 @@ Keep the existing player, attempt, and replay endpoints, now scoped to the sessi
 ### 5. Scores
 
 - Add a migration in `migrations_scores/` with a nullable `same_keyboard` boolean column. Never edit the existing migration.
-- Fill it for new rows. Keep the consent rules unchanged.
+- Fill it for new rows. Scores are saved automatically for every attempt, with no opt-in. Keep that unchanged.
 - Update `evaluation/analyze_scores.py` to split attacks by `same_keyboard`.
 - Increase `SCORING_VERSION` only if scoring itself changes. It shouldn't here.
 
@@ -242,7 +242,7 @@ Read docs/plans/active/ROOMS_PLAN.md and carry out Phase 3 only. Keep the existi
    - [ ] Updates appear within a few seconds for everyone
    - [ ] A room link opens correctly inside LinkedIn's in-app browser on a phone
    - [ ] The LinkedIn Post Inspector shows the generic preview for a room link
-   - [ ] Opted-in attempts store `same_keyboard` correctly
+   - [ ] Attempts store `same_keyboard` correctly
    - [ ] The app stays well under its memory limit during the test, in DigitalOcean's metrics
 3. **On announcement day:** avoid deploying for at least a day after posting, because every deploy ends all live rooms.
 
