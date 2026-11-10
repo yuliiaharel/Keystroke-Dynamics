@@ -45,6 +45,9 @@ export interface AttemptView {
 
 export interface PartyView {
   id: string;
+  /** Goes up on every change anyone in the room could see -- how
+   * live.ts tells "the room changed" from a number alone. */
+  version: number;
   level: Level;
   phrase: string;
   players: PlayerView[];

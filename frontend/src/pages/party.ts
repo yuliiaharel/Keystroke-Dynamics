@@ -21,6 +21,8 @@ import { analyticsPrivacyNote, startAnalytics } from "../analytics";
 import * as gameApi from "../game-api";
 import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
+import { watchRoom } from "../live";
+import type { LiveRoom } from "../live";
 import type { CapturedEvent } from "../capture";
 import { scoresMemoHTML } from "../scores-memo";
 import { traitsFromNotes } from "../traits";
@@ -612,6 +614,39 @@ async function refreshParty(): Promise<void> {
   }
 }
 
+/* ---------- Live updates (docs/plans/active/ROOMS_PLAN.md Phase 2) ---------- */
+
+let live: LiveRoom | null = null;
+
+function stopLive(): void {
+  live?.stop();
+  live = null;
+}
+
+/** Call whenever this browser has just got itself a room. */
+function startLive(): void {
+  stopLive();
+  live = watchRoom<PartyView>({
+    fetchRoom: gameApi.getParty,
+    currentVersion: () => S.party?.version ?? null,
+    isGone: gameApi.isPartyGone,
+    onRoom: (party) => {
+      S.party = party;
+      // Only the two views that are nothing but the shared room are
+      // redrawn under the person looking at them. Anywhere else
+      // (typing a line, a name, a rename) a redraw would interrupt
+      // them; those views read S.party the next time they draw.
+      const showsOnlyTheRoom = S.view === "room" || S.view === "scores";
+      if (showsOnlyTheRoom && S.renamingId === null && !S.busy) render();
+    },
+    onGone: () => {
+      live = null;
+      S.partyGone = true;
+      render();
+    },
+  });
+}
+
 async function startParty(level: Level): Promise<void> {
   S.busy = true;
   S.error = null;
@@ -621,6 +656,7 @@ async function startParty(level: Level): Promise<void> {
     S.level = level;
     S.partyGone = false;
     S.view = "name";
+    startLive();
   } catch {
     S.error = "Couldn't start a party right now. Try again in a moment.";
   }
@@ -629,6 +665,7 @@ async function startParty(level: Level): Promise<void> {
 }
 
 async function doResetParty(): Promise<void> {
+  stopLive();
   try {
     await gameApi.resetParty();
   } catch {
@@ -1167,6 +1204,7 @@ void (async () => {
     S.party = party;
     S.level = party.level;
     S.view = "room";
+    startLive();
     render();
   } catch {
     /* No active party yet -- the intro view already showing is correct. */
