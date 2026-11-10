@@ -99,8 +99,9 @@ class Settings(BaseSettings):
     game_rate_limit_window_seconds: float = 60.0
 
     #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
-    #: for opted-in score collection -- empty/None means collection is
-    #: off and the game works normally with no opt-in shown at all.
+    #: for score collection -- empty/None means collection is off and
+    #: the game works normally, saving nothing. When set, every
+    #: attempt's score is saved automatically.
     #: Deliberately independent of database_url/enable_accounts: the
     #: account system and score collection are two unrelated optional
     #: databases, either, both, or neither of which may be configured.

@@ -140,7 +140,7 @@ def save_permanent_target(path: Path, *, name: str, lines: dict[str, list[list[K
                 {"ch": n.ch, "start_ms": n.start_ms, "dur_ms": n.dur_ms} for n in player.notes
             ],
             # score_attempts.training_lines (docs/plans/done/PARTY_LAUNCH_PLAN.md
-            # section 10) when this target is opted-in-attacked -- the
+            # section 10) when this target is attacked -- the
             # raw lines themselves are never kept, same as a real
             # player, but the count is cheap to persist.
             "training_line_count": player.training_line_count,

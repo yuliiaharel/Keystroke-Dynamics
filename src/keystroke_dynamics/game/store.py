@@ -65,16 +65,6 @@ class Player:
     #: permanent target -- not party-scoped, so there's no Player
     #: object lifetime to ride -- see scores/target_ids.py instead.
     score_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    #: Opted in to docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's score sharing at
-    #: enrollment time. Never pre-checked, never a condition of
-    #: playing, and never changeable later in this launch's scope.
-    shares_scores: bool = False
-    #: The consent wording version this player agreed to, captured
-    #: once at the moment they opted in -- not whatever the current
-    #: code constant is when a later attempt gets recorded, which
-    #: could be a different wording if it changed in between. None
-    #: when shares_scores is False.
-    consent_version: str | None = None
     #: How many training lines went into this player's profile --
     #: score_attempts.training_lines. Captured once at enrollment,
     #: since the raw lines themselves are never kept past it.
@@ -245,11 +235,9 @@ class InMemoryGameStore:
                 threshold=existing.threshold,
                 notes=existing.notes,
                 created_at=existing.created_at,
-                # A rename must never mint a new score_id or touch
-                # consent -- both are set once, at enrollment.
+                # A rename must never mint a new score_id -- it's
+                # set once, at enrollment.
                 score_id=existing.score_id,
-                shares_scores=existing.shares_scores,
-                consent_version=existing.consent_version,
                 training_line_count=existing.training_line_count,
             )
             party.last_activity = time.monotonic()

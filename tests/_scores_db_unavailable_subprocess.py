@@ -15,8 +15,8 @@ stay fast and deterministic) -- giving the background writer and
 retention task a database that is genuinely unavailable for the
 script's entire run, on every attempt.
 
-Drives a full game over real HTTP -- party, enrollment (opted in),
-attack (opted in), replay, deletion, reset -- timing every request,
+Drives a full game over real HTTP -- party, enrollment, attack,
+replay, deletion, reset -- timing every request,
 and asserts each one stays fast despite the background writer
 failing, in the background, on every single batch it tries to flush.
 
@@ -91,7 +91,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     def create_player() -> None:
         resp = client.post(
             "/api/game/players",
-            json={"name": "Alice", "training_lines": [SENTENCE_LINE] * 5, "share_scores": True},
+            json={"name": "Alice", "training_lines": [SENTENCE_LINE] * 5},
         )
         assert resp.status_code == 200, resp.text
         player.update(resp.json())
@@ -107,7 +107,6 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
                 "mode": "attack",
                 "events": SENTENCE_LINE,
                 "client_attempt_id": "attack-1",
-                "guest_shares_scores": True,
             },
         )
         assert resp.status_code == 200, resp.text
@@ -116,7 +115,7 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     # this attempt's own enqueue lands while it's actively mid-retry,
     # not just once before anything has had a chance to break.
     time.sleep(0.2)
-    timed("an opted-in attack with the database down", attack)
+    timed("an attack with the database down", attack)
 
     def replay() -> None:
         resp = client.post("/api/game/replay", json={"target_id": player["id"]})

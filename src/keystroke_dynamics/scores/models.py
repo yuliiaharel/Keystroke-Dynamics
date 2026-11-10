@@ -51,10 +51,10 @@ class ScoreAttempt(Base):
     #: Set in code (SCORING_VERSION below) and changed whenever
     #: scoring or game settings change.
     scoring_version: Mapped[str] = mapped_column(String)
-    #: The consent wording version the typist agreed to -- captured
-    #: once, at the moment they opted in (game/store.py's
-    #: Player.consent_version), not whatever's current when this row
-    #: happens to get written.
+    #: Which wording of the score-saving notice was current when this
+    #: row was written (scores/recording.py's NOTICE_VERSION). The
+    #: name dates from the opt-in checkbox: "1" rows are from players
+    #: who ticked it, later versions are saved automatically.
     consent_version: Mapped[str] = mapped_column(String)
     device_type: Mapped[str] = mapped_column(String)
     line_id: Mapped[str] = mapped_column(String)
