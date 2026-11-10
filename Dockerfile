@@ -55,5 +55,14 @@ EXPOSE 8000
 # (main.py's https_only=not settings.debug) was never affected by
 # this either way -- it's driven by settings.debug directly, not by
 # any detected request scheme.
+#
+# --timeout-graceful-shutdown 5: a live-update stream
+# (GET /api/game/room/events) stays open for as long as its browser
+# does, and without a limit uvicorn waits for every connection to
+# close before it runs the app's shutdown. One open tab would hold a
+# deploy's old container until it was killed, skipping the score
+# writer's final flush (main.py's lifespan). Ordinary requests finish
+# in well under 5 seconds; browsers reconnect to the new container on
+# their own.
 CMD ["uvicorn", "keystroke_dynamics.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--workers", "1"]
+     "--workers", "1", "--timeout-graceful-shutdown", "5"]
