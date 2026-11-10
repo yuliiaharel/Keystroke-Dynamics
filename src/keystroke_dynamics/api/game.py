@@ -8,8 +8,9 @@ Live updates (Phase 2): GET /room/events, a server-sent event stream
 that says only "the room is at version N" or "this is over for you".
 Play, inside the session's room: POST /players,
 PATCH/DELETE /players/{id}, POST /attempts, POST /replay.
-The paths the game used before rooms still answer, so the current
-frontend keeps working until it moves over in Phase 3:
+The paths the game used before rooms still answer, for a page that
+was loaded before the deploy that moved the frontend to the room
+paths (Phase 3):
 POST /party = POST /rooms, GET /party = GET /room,
 POST /party/reset = POST /rooms/leave.
 
