@@ -4,6 +4,8 @@ Rooms (docs/plans/active/ROOMS_PLAN.md Phase 1):
 POST /rooms, POST /rooms/{code}/join, POST /rooms/leave, GET /room,
 POST /room/lock, POST /room/end, DELETE /room/players/{id},
 DELETE /room/members/{id}.
+Live updates (Phase 2): GET /room/events, a server-sent event stream
+that says only "the room is at version N" or "this is over for you".
 Play, inside the session's room: POST /players,
 PATCH/DELETE /players/{id}, POST /attempts, POST /replay.
 The paths the game used before rooms still answer, so the current
@@ -36,10 +38,15 @@ note on why GETs skip the Origin check.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import uuid
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
+from starlette.types import Receive, Scope, Send
 
 from keystroke_dynamics.api.schemas import KeyEventSchema
 from keystroke_dynamics.api.security import rate_limited, require_matching_origin
@@ -48,6 +55,12 @@ from keystroke_dynamics.core.events import InvalidSampleError, KeyEvent, pair_pr
 from keystroke_dynamics.core.features import extract_features
 from keystroke_dynamics.game.codes import normalize_code
 from keystroke_dynamics.game.enroll import build_profile_and_threshold, median_notes
+from keystroke_dynamics.game.events import (
+    MemberStreamLimitError,
+    RoomEvents,
+    Subscription,
+    TotalStreamLimitError,
+)
 from keystroke_dynamics.game.judge import judge, pace_ratio
 from keystroke_dynamics.game.levels import LEVELS
 from keystroke_dynamics.game.names import InvalidNameError, generate_name, validate_custom_name
@@ -116,17 +129,27 @@ _STATE_CHANGING = [Depends(require_matching_origin), Depends(rate_limited(game_r
 # "online rooms" is explicitly out of scope for this launch (see
 # docs/plans/done/PARTY_LAUNCH_PLAN.md) and would need a shared backend instead of
 # this Protocol's in-memory implementation.
+_events = RoomEvents(
+    streams_per_member_limit=settings.game_streams_per_member_limit,
+    streams_total_limit=settings.game_streams_total_limit,
+)
+
 _store: GameStore = InMemoryGameStore(
     party_limit=settings.game_party_limit,
     players_per_party_limit=settings.game_players_per_party_limit,
     attempts_per_party_limit=settings.game_attempts_per_party_limit,
     idle_expiry_seconds=settings.game_idle_expiry_seconds,
     members_per_party_limit=settings.game_members_per_party_limit,
+    listener=_events,
 )
 
 
 def get_game_store() -> GameStore:
     return _store
+
+
+def get_room_events() -> RoomEvents:
+    return _events
 
 
 @dataclass(frozen=True)
@@ -349,6 +372,101 @@ def get_room(room: RoomSession = Depends(_room_for_session)) -> PartyView:
     return _party_view(room)
 
 
+_STREAM_ENDED = 'data: {"ended":true}\n\n'
+_STREAM_HEARTBEAT = ": keep-alive\n\n"
+
+
+def _stream_version(version: int) -> str:
+    return f"data: {json.dumps({'version': version}, separators=(',', ':'))}\n\n"
+
+
+async def _event_stream(
+    subscription: Subscription, store: GameStore, heartbeat_seconds: float
+) -> AsyncIterator[str]:
+    """Everything a stream ever sends: version numbers, heartbeat
+    comments, and one final "ended". Never anything from the room
+    itself -- the browser reads that through GET /room, behind the
+    usual checks."""
+
+    def live_version() -> int | None:
+        # get_party is also what notices an expired room, which is why
+        # a stream nobody else is touching still ends on time.
+        party = store.get_party(subscription.party_id)
+        if party is None or subscription.member_id not in party.members:
+            return None
+        return party.version
+
+    # Read after subscribing, so a change between the two is sent
+    # twice rather than missed. Sending it at all is what lets a
+    # browser that reconnects find out what it missed.
+    version = live_version()
+    while version is not None:
+        yield _stream_version(version)
+        while True:
+            try:
+                version = await asyncio.wait_for(subscription.next(), heartbeat_seconds)
+                break
+            except TimeoutError:
+                if live_version() is None:
+                    version = None
+                    break
+                yield _STREAM_HEARTBEAT
+    # The same line whether the room ended or expired, or this member
+    # left or was removed: for this browser they all mean "stop".
+    yield _STREAM_ENDED
+
+
+class _EventStreamResponse(StreamingResponse):
+    """Runs on_close however the response ends -- a finished stream,
+    a disconnect, or a client that went away before the first byte --
+    so a stream's slot under the caps is always given back. A
+    `finally` in the generator wouldn't do: it never runs if the
+    generator was never started."""
+
+    def __init__(self, content: AsyncIterator[str], on_close: Callable[[], None]) -> None:
+        super().__init__(
+            content,
+            media_type="text/event-stream",
+            headers={
+                # DigitalOcean's own SSE guidance (configure-edge-settings):
+                # this content type plus no-cache.
+                "Cache-Control": "no-cache",
+                # Asks nginx-style proxies not to buffer the stream.
+                "X-Accel-Buffering": "no",
+            },
+        )
+        self._on_close = on_close
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._on_close()
+
+
+@router.get("/room/events")
+async def room_events(
+    room: RoomSession = Depends(_room_for_session),
+    store: GameStore = Depends(get_game_store),
+    events: RoomEvents = Depends(get_room_events),
+) -> StreamingResponse:
+    """Async, unlike the rest of this router: a stream lives for
+    minutes, and a sync route would hold a threadpool thread for all
+    of it. No Origin check or rate limit (a GET that changes nothing;
+    an EventSource can't send an Origin anyway) -- the two caps are
+    what bound it."""
+    try:
+        subscription = events.subscribe(room.party.id, room.member.id)
+    except MemberStreamLimitError as exc:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    except TotalStreamLimitError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    return _EventStreamResponse(
+        _event_stream(subscription, store, settings.game_stream_heartbeat_seconds),
+        on_close=lambda: events.unsubscribe(subscription),
+    )
+
+
 @router.post(
     "/rooms/leave",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -387,8 +505,9 @@ def end_room(
     room: RoomSession = Depends(_host_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> None:
-    """Ends the room for everyone. Other members find out on their
-    next request, when _current_room drops their session's link."""
+    """Ends the room for everyone. Other members' streams are told
+    at once; their sessions drop the link on their next request, in
+    _current_room."""
     store.delete_party(room.party.id)
     _forget_room(request)
     if settings.scores_database_url:

@@ -511,3 +511,104 @@ def test_mark_member_seen_updates_last_seen_but_not_the_idle_clock() -> None:
     time.sleep(0.06)
     # Being seen is not activity: the room still expires on schedule.
     assert store.get_party(party.id) is None
+
+
+# ---------- telling a listener (live updates, Phase 2) ----------
+
+
+class RecordingListener:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def room_changed(self, party_id: str, version: int) -> None:
+        self.calls.append(("changed", party_id, version))
+
+    def room_ended(self, party_id: str) -> None:
+        self.calls.append(("ended", party_id))
+
+    def member_removed(self, party_id: str, member_id: str) -> None:
+        self.calls.append(("removed", party_id, member_id))
+
+
+def test_every_version_bump_is_reported_with_the_new_version() -> None:
+    listener = RecordingListener()
+    store = make_store(listener=listener)
+    party = store.create_party("sentence")
+    _, friend = store.join_party(party.code)
+    store.set_locked(party.id, True)
+    store.add_player(party.id, make_player("p1"))
+    store.rename_player(party.id, "p1", "Loud Otter")
+    store.add_attempt(party.id, make_attempt(target_id="p1"))
+    store.delete_player(party.id, "p1")
+    store.remove_member(party.id, friend.id)
+
+    changes = [c for c in listener.calls if c[0] == "changed"]
+    assert changes == [("changed", party.id, v) for v in range(1, 8)]
+    assert party.version == 7
+
+
+def test_what_is_not_a_change_is_not_reported() -> None:
+    listener = RecordingListener()
+    store = make_store(listener=listener)
+    party = store.create_party("sentence")
+    host_id = party.host_member_id
+
+    store.get_party(party.id)
+    store.touch(party.id)
+    store.mark_member_seen(party.id, host_id)
+    store.set_locked(party.id, False)  # already unlocked
+    store.rename_player(party.id, "nobody", "Name")
+    store.delete_player(party.id, "nobody")
+
+    assert listener.calls == []
+
+
+def test_a_removed_member_is_reported_before_the_room_carries_on() -> None:
+    listener = RecordingListener()
+    store = make_store(listener=listener)
+    party = store.create_party("sentence")
+    _, friend = store.join_party(party.code)
+    listener.calls.clear()
+
+    store.remove_member(party.id, friend.id)
+
+    assert listener.calls == [("removed", party.id, friend.id), ("changed", party.id, 2)]
+
+
+def test_the_last_member_leaving_reports_the_room_ended() -> None:
+    listener = RecordingListener()
+    store = make_store(listener=listener)
+    party = store.create_party("sentence")
+
+    store.remove_member(party.id, party.host_member_id)
+
+    assert listener.calls == [("removed", party.id, party.host_member_id), ("ended", party.id)]
+
+
+def test_deleting_a_room_reports_it_ended_once() -> None:
+    listener = RecordingListener()
+    store = make_store(listener=listener)
+    party = store.create_party("sentence")
+
+    store.delete_party(party.id)
+    store.delete_party(party.id)
+
+    assert listener.calls == [("ended", party.id)]
+
+
+@pytest.mark.parametrize("noticed_by", ["get_party", "join_party", "sweep_expired"])
+def test_an_expired_room_is_reported_ended_however_it_is_noticed(noticed_by: str) -> None:
+    listener = RecordingListener()
+    store = make_store(idle_expiry_seconds=0.01, listener=listener)
+    party = store.create_party("sentence")
+    time.sleep(0.03)
+
+    if noticed_by == "get_party":
+        assert store.get_party(party.id) is None
+    elif noticed_by == "join_party":
+        with pytest.raises(RoomNotFoundError):
+            store.join_party(party.code)
+    else:
+        assert store.sweep_expired() == 1
+
+    assert listener.calls == [("ended", party.id)]

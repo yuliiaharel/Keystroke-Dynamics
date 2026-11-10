@@ -106,6 +106,16 @@ class Settings(BaseSettings):
     #: friends joining from behind one shared address.
     game_join_rate_limit_max_attempts: int = 20
     game_join_rate_limit_window_seconds: float = 60.0
+    #: Live-update streams (GET /api/game/room/events,
+    #: docs/plans/active/ROOMS_PLAN.md Phase 2). Each open stream is a
+    #: held connection, so both counts are capped: per browser (a few
+    #: tabs), and across the whole single instance.
+    game_streams_per_member_limit: int = 3
+    game_streams_total_limit: int = 300
+    #: How often a quiet stream sends a comment line, so proxies keep
+    #: the connection open. Also how often it checks that its room
+    #: hasn't expired.
+    game_stream_heartbeat_seconds: float = 20.0
 
     #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
     #: for score collection -- empty/None means collection is off and

@@ -206,6 +206,17 @@ class MemberRemoval:
     room_ended: bool
 
 
+class RoomListener(Protocol):
+    """Told about every room change as it happens, so live updates
+    (game/events.py) can't miss one. Called with the store's lock
+    held, from whichever thread made the change: implementations must
+    return quickly and must never call back into the store."""
+
+    def room_changed(self, party_id: str, version: int) -> None: ...
+    def room_ended(self, party_id: str) -> None: ...
+    def member_removed(self, party_id: str, member_id: str) -> None: ...
+
+
 class GameStore(Protocol):
     def create_party(self, level: Level) -> Party: ...
     def get_party(self, party_id: str) -> Party | None: ...
@@ -231,7 +242,9 @@ class InMemoryGameStore:
         attempts_per_party_limit: int,
         idle_expiry_seconds: float,
         members_per_party_limit: int = 12,
+        listener: RoomListener | None = None,
     ) -> None:
+        self._listener = listener
         self._members_per_party_limit = members_per_party_limit
         self._party_limit = party_limit
         self._players_per_party_limit = players_per_party_limit
@@ -243,6 +256,19 @@ class InMemoryGameStore:
     def _is_expired(self, party: Party, now: float) -> bool:
         return now - party.last_activity > self._idle_expiry_seconds
 
+    def _changed(self, party: Party) -> None:
+        """The one place a room's version moves, so the listener hears
+        about every change. Caller holds the lock."""
+        party.version += 1
+        if self._listener is not None:
+            self._listener.room_changed(party.id, party.version)
+
+    def _drop(self, party_id: str) -> None:
+        """The one place a room leaves the store -- ended, emptied, or
+        expired. Caller holds the lock."""
+        if self._parties.pop(party_id, None) is not None and self._listener is not None:
+            self._listener.room_ended(party_id)
+
     def sweep_expired(self) -> int:
         """Removes every expired party. Returns how many were removed
         -- callers (create_party, and the periodic sweep a load test
@@ -251,7 +277,7 @@ class InMemoryGameStore:
         with self._lock:
             expired = [pid for pid, party in self._parties.items() if self._is_expired(party, now)]
             for pid in expired:
-                del self._parties[pid]
+                self._drop(pid)
             return len(expired)
 
     def create_party(self, level: Level) -> Party:
@@ -293,7 +319,7 @@ class InMemoryGameStore:
         with self._lock:
             party = next((p for p in self._parties.values() if p.code == code), None)
             if party is not None and self._is_expired(party, now):
-                del self._parties[party.id]
+                self._drop(party.id)
                 party = None
             if party is None:
                 raise RoomNotFoundError
@@ -305,7 +331,7 @@ class InMemoryGameStore:
                 )
             member = Member(id=str(uuid.uuid4()))
             party.members[member.id] = member
-            party.version += 1
+            self._changed(party)
             party.last_activity = now
             return party, member
 
@@ -329,12 +355,14 @@ class InMemoryGameStore:
                 for a in party.attempts
                 if a.typist_id not in removed_ids and a.target_id not in removed_ids
             ]
+            if self._listener is not None:
+                self._listener.member_removed(party_id, member_id)
             if not party.members:
-                del self._parties[party_id]
+                self._drop(party_id)
                 return MemberRemoval(players=removed, room_ended=True)
             if party.host_member_id == member_id:
                 party.host_member_id = min(party.members.values(), key=lambda m: m.created_at).id
-            party.version += 1
+            self._changed(party)
             party.last_activity = time.monotonic()
             return MemberRemoval(players=removed, room_ended=False)
 
@@ -355,7 +383,7 @@ class InMemoryGameStore:
                 return False
             if party.locked != locked:
                 party.locked = locked
-                party.version += 1
+                self._changed(party)
             party.last_activity = time.monotonic()
             return True
 
@@ -365,7 +393,7 @@ class InMemoryGameStore:
             if party is None:
                 return None
             if self._is_expired(party, time.monotonic()):
-                del self._parties[party_id]
+                self._drop(party_id)
                 return None
             return party
 
@@ -377,7 +405,7 @@ class InMemoryGameStore:
 
     def delete_party(self, party_id: str) -> None:
         with self._lock:
-            self._parties.pop(party_id, None)
+            self._drop(party_id)
 
     def add_player(self, party_id: str, player: Player) -> None:
         with self._lock:
@@ -389,7 +417,7 @@ class InMemoryGameStore:
                     f"This party already has {self._players_per_party_limit} players."
                 )
             party.players[player.id] = player
-            party.version += 1
+            self._changed(party)
             party.last_activity = time.monotonic()
 
     def rename_player(self, party_id: str, player_id: str, new_name: str) -> bool:
@@ -412,7 +440,7 @@ class InMemoryGameStore:
                 training_line_count=existing.training_line_count,
                 owner_member_id=existing.owner_member_id,
             )
-            party.version += 1
+            self._changed(party)
             party.last_activity = time.monotonic()
             return True
 
@@ -427,7 +455,7 @@ class InMemoryGameStore:
             party.attempts = [
                 a for a in party.attempts if a.typist_id != player_id and a.target_id != player_id
             ]
-            party.version += 1
+            self._changed(party)
             party.last_activity = time.monotonic()
             return True
 
@@ -439,7 +467,7 @@ class InMemoryGameStore:
             party.attempts.append(attempt)
             if len(party.attempts) > self._attempts_per_party_limit:
                 party.attempts = party.attempts[-self._attempts_per_party_limit :]
-            party.version += 1
+            self._changed(party)
             party.last_activity = time.monotonic()
             return True
 
