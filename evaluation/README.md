@@ -47,6 +47,21 @@ actually separate genuine typists from impostors, on real timing data -- not
 how the deployed app performs, since the app accepts arbitrary free text, not
 one fixed password.
 
+## Limit rules at the game's size
+
+`game_size_benchmark.py` replays the same dataset the way the party game
+enrolls a player -- 1 warm-up repetition skipped, 4 repetitions of training,
+`game/scoring.py`'s own functions and constants -- and compares rules for the
+per-player limit:
+
+```bash
+uv run python -m evaluation.game_size_benchmark
+```
+
+Writes `evaluation/game_size_results.md`. It ranks limit rules against each
+other on one password typed by people who were not imitating each other; it
+is **not** the game's accuracy, and that file says why at the top.
+
 ## Analyzing saved party scores
 
 `analyze_scores.py` is a separate, unrelated script: a read-only look at
@@ -64,11 +79,15 @@ app's own database role can only insert and delete).
 
 Prints, for each `scoring_version` present (never mixed across versions,
 since a scoring or game-settings change makes old rows incomparable to
-new ones): false-reject/false-accept rates across a range of candidate
-limits, those same rates by `device_type` and by pace bucket, rhythm
-compared with place, attempts per player and per party, and flags for
+new ones): the distribution of limits actually given (each attempt's own
+`limit_value`, counted once per target), the real pass rate at each
+attempt's own limit, false-reject/false-accept rates across a range of
+hypothetical limits, those same rates by `device_type` and by pace bucket,
+rhythm compared with place, attempts per player and per party, and flags for
 unusually bursty activity on one day. Any group with fewer than 5 attempts
-is hidden from its table entirely, never shown with a caveat.
+has its numbers hidden, never shown with a caveat; the table is followed by
+a `hidden:` line naming the group and its size, so a missing row is not
+mistaken for no data.
 
 **This is not a benchmark.** `mode` and every identity in the table are
 self-reported by whichever client sent the request, and real play can't be

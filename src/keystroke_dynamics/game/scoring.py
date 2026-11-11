@@ -23,7 +23,12 @@ GAME_MIN_STD_RATIO = 0.12
 GAME_MAX_COMPARED_FEATURES = 20
 GAME_MIN_COMPARED_FRACTION = 0.7
 GAME_MIN_THRESHOLD = 1.3
-GAME_MAX_THRESHOLD = 3.5
+#: 3.5 until scoring version 2. A limit well above 2 comes from one
+#: training line scoring badly against the other three -- more often
+#: a stumble than a typist who really varies that much -- and real
+#: attacks mostly passed at limits that high. The comparison behind
+#: 2.0 is evaluation/game_size_results.md.
+GAME_MAX_THRESHOLD = 2.0
 GAME_THRESHOLD_MULTIPLIER = 1.2
 
 #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's score_attempts.scoring_version:
@@ -32,7 +37,11 @@ GAME_THRESHOLD_MULTIPLIER = 1.2
 #: core/scoring.py's own defaults (not currently used by the game,
 #: but would be if that ever changed), or game/levels.py's phrases --
 #: anything that would make an old row not comparable to a new one.
-SCORING_VERSION = "1"
+#:
+#: "2": GAME_MAX_THRESHOLD lowered from 3.5 to 2.0. Scores are
+#: computed exactly as in "1"; only limits above 2.0, and so the
+#: outcomes of attempts against those players, differ.
+SCORING_VERSION = "2"
 
 
 def line_feature_count(phrase: str) -> int:
