@@ -22,7 +22,7 @@ that move every rate below:
   counterpart in a game played in one sitting.
 - **The line is different.** 21 features here, each seen once per repetition. A
   game line has more features, and repeated letters give some of them several
-  values per line. The scores, and so the limits the current rule hands out, are
+  values per line. The scores, and so the limits a rule hands out, are
   on a different footing: do not read the distribution of limits below as the
   game's. `evaluation/analyze_scores.py` prints the real one.
 - **One keyboard, one device type.** No phones, no second keyboard.
@@ -48,7 +48,7 @@ For each of the 51 subjects, using `game/scoring.py`'s own `build_profile`,
 Rates are the mean over targets of each target's own rate. Where a table shows
 `±`, it is the standard error of that mean across targets, in percentage points.
 
-## The current rule, all subjects
+## The version 1 rule, all subjects
 
 Limit = highest held-out score x 1.2, clamped to 1.3-3.5. 51 targets, 250
 impostor attempts each.
@@ -99,26 +99,26 @@ from the report half only (125 attempts per target).
 
 The rules:
 
-- **current**: highest held-out score x 1.2, clamped to 1.3-3.5.
+- **version 1**: highest held-out score x 1.2, clamped to 1.3-3.5. The game's rule when this comparison was run.
 - **median x m**: median held-out score (of 4, so the mean of the middle two) times
   m, inside the same 1.3-3.5 clamps.
-- **current, cap c**: the current rule with the upper clamp lowered to c. Nothing
-  tuned.
+- **cap c**: the version 1 rule with the upper clamp lowered to c. Nothing tuned.
+  The 2.0 row is the rule the game uses now, computed by `calibrate_threshold` itself.
 - **fixed v**: the same limit v for every target; no calibration.
-- **current, spreads blended w**: before scoring, each feature's standard deviation
+- **version 1, spreads blended w**: before scoring, each feature's standard deviation
   is replaced by (1 - w) x the typist's own + w x the average of that feature's
   standard deviation across the tuning half's typists (each measured over their own
   4 training lines). The same blend is applied inside calibration. The game's
   spread floors still apply on top. The weight w is tuned.
-- **current, worst line dropped**: the training line with the highest held-out
-  score is removed, and the current rule calibrates on the remaining 3. The profile
+- **version 1, worst line dropped**: the training line with the highest held-out
+  score is removed, and the version 1 rule calibrates on the remaining 3. The profile
   attempts are scored against still uses all 4 lines. Nothing tuned.
 
 Tuned values are chosen two ways, because one alone would mislead:
 
 - **matched**: the lowest false acceptance among values whose same-session false
-  rejection on the tuning half is no higher than the current rule's there
-  (7.1%). This asks whether a rule is *better* than the current one at
+  rejection on the tuning half is no higher than the version 1 rule's there
+  (7.1%). This asks whether a rule is *better* than version 1 at
   the false rejection players already get.
 - **balanced**: the lowest false acceptance plus same-session false rejection.
   This shows how strict a rule gets when both errors count equally.
@@ -129,20 +129,20 @@ A rule has one row, marked *matched and balanced*, where both pick the same valu
 
 | Rule | False acceptance | False rejection, same session | False rejection, all later | Median limit | At 1.3 | At 3.5 |
 |---|---|---|---|---|---|---|
-| current | 39.8% ± 5.6 | 8.9% ± 3.6 | 16.5% ± 5.1 | 1.94 | 7.7% | 3.8% |
+| version 1 (cap 3.5) | 39.8% ± 5.6 | 8.9% ± 3.6 | 16.5% ± 5.1 | 1.94 | 7.7% | 3.8% |
 | median x 1.6 (matched) | 27.0% ± 4.9 | 12.4% ± 3.5 | 23.7% ± 5.4 | 1.70 | 3.8% | 0.0% |
 | median x 1.3 (balanced) | 14.9% ± 4.2 | 22.1% ± 3.9 | 41.3% ± 5.7 | 1.38 | 30.8% | 0.0% |
-| current, cap 3.0 | 39.3% ± 5.5 | 8.9% ± 3.6 | 16.5% ± 5.1 | 1.94 | 7.7% | 0.0% |
-| current, cap 2.5 | 38.3% ± 5.3 | 9.1% ± 3.5 | 16.6% ± 5.1 | 1.94 | 7.7% | 0.0% |
-| current, cap 2.0 | 31.8% ± 4.3 | 9.8% ± 3.5 | 18.2% ± 4.9 | 1.94 | 7.7% | 0.0% |
+| cap 3.0 | 39.3% ± 5.5 | 8.9% ± 3.6 | 16.5% ± 5.1 | 1.94 | 7.7% | 0.0% |
+| cap 2.5 | 38.3% ± 5.3 | 9.1% ± 3.5 | 16.6% ± 5.1 | 1.94 | 7.7% | 0.0% |
+| cap 2.0 (the game's rule now) | 31.8% ± 4.3 | 9.8% ± 3.5 | 18.2% ± 4.9 | 1.94 | 7.7% | 0.0% |
 | fixed 1.9 (matched) | 35.0% ± 3.6 | 4.5% ± 0.8 | 9.7% ± 2.0 | 1.90 | 0.0% | 0.0% |
 | fixed 1.4 (balanced) | 11.0% ± 2.4 | 21.4% ± 3.1 | 43.5% ± 4.8 | 1.40 | 0.0% | 0.0% |
-| current, spreads blended 0.5 (matched and balanced) | 33.6% ± 5.0 | 6.4% ± 2.9 | 18.9% ± 4.8 | 1.42 | 46.2% | 0.0% |
-| current, worst line dropped | 33.2% ± 5.8 | 10.9% ± 3.1 | 21.9% ± 5.7 | 1.67 | 11.5% | 0.0% |
+| version 1, spreads blended 0.5 (matched and balanced) | 33.6% ± 5.0 | 6.4% ± 2.9 | 18.9% ± 4.8 | 1.42 | 46.2% | 0.0% |
+| version 1, worst line dropped | 33.2% ± 5.8 | 10.9% ± 3.1 | 21.9% ± 5.7 | 1.67 | 11.5% | 0.0% |
 
-### Change from the current rule, target by target (report half)
+### Change from the version 1 rule, target by target (report half)
 
-Each rule's rate minus the current rule's on the same target, averaged, in
+Each rule's rate minus the version 1 rule's on the same target, averaged, in
 percentage points. A change smaller than about twice its `±` is not
 distinguishable from no change on this many targets.
 
@@ -150,13 +150,13 @@ distinguishable from no change on this many targets.
 |---|---|---|
 | median x 1.6 (matched) | -12.8 ± 4.1 | +3.5 ± 1.9 |
 | median x 1.3 (balanced) | -24.9 ± 4.0 | +13.2 ± 2.6 |
-| current, cap 3.0 | -0.5 ± 0.5 | +0.0 ± 0.0 |
-| current, cap 2.5 | -1.4 ± 0.9 | +0.2 ± 0.2 |
-| current, cap 2.0 | -8.0 ± 2.4 | +0.9 ± 0.3 |
+| cap 3.0 | -0.5 ± 0.5 | +0.0 ± 0.0 |
+| cap 2.5 | -1.4 ± 0.9 | +0.2 ± 0.2 |
+| cap 2.0 (the game's rule now) | -8.0 ± 2.4 | +0.9 ± 0.3 |
 | fixed 1.9 (matched) | -4.8 ± 4.1 | -4.4 ± 3.2 |
 | fixed 1.4 (balanced) | -28.7 ± 4.4 | +12.5 ± 2.2 |
-| current, spreads blended 0.5 (matched and balanced) | -6.2 ± 2.8 | -2.5 ± 1.8 |
-| current, worst line dropped | -6.6 ± 5.7 | +2.0 ± 1.9 |
+| version 1, spreads blended 0.5 (matched and balanced) | -6.2 ± 2.8 | -2.5 ± 1.8 |
+| version 1, worst line dropped | -6.6 ± 5.7 | +2.0 ± 1.9 |
 
 ### Tuning half (25 targets), where the tuned values were chosen
 
@@ -164,21 +164,24 @@ For reference only: tuned rules look better here than they are.
 
 | Rule | False acceptance | False rejection, same session | False rejection, all later | Median limit | At 1.3 | At 3.5 |
 |---|---|---|---|---|---|---|
-| current | 42.8% ± 5.7 | 7.1% ± 2.2 | 12.6% ± 3.8 | 2.11 | 0.0% | 0.0% |
+| version 1 (cap 3.5) | 42.8% ± 5.7 | 7.1% ± 2.2 | 12.6% ± 3.8 | 2.11 | 0.0% | 0.0% |
 | median x 1.6 (matched) | 35.6% ± 4.1 | 6.3% ± 1.3 | 19.1% ± 4.6 | 1.72 | 0.0% | 0.0% |
 | median x 1.3 (balanced) | 20.4% ± 3.9 | 16.4% ± 3.4 | 35.3% ± 6.3 | 1.40 | 28.0% | 0.0% |
-| current, cap 3.0 | 42.0% ± 5.5 | 7.4% ± 2.2 | 13.0% ± 3.8 | 2.11 | 0.0% | 0.0% |
-| current, cap 2.5 | 40.2% ± 5.1 | 8.0% ± 2.4 | 14.0% ± 3.9 | 2.11 | 0.0% | 0.0% |
-| current, cap 2.0 | 33.5% ± 4.1 | 9.9% ± 2.9 | 17.5% ± 4.3 | 2.00 | 0.0% | 0.0% |
+| cap 3.0 | 42.0% ± 5.5 | 7.4% ± 2.2 | 13.0% ± 3.8 | 2.11 | 0.0% | 0.0% |
+| cap 2.5 | 40.2% ± 5.1 | 8.0% ± 2.4 | 14.0% ± 3.9 | 2.11 | 0.0% | 0.0% |
+| cap 2.0 (the game's rule now) | 33.5% ± 4.1 | 9.9% ± 2.9 | 17.5% ± 4.3 | 2.00 | 0.0% | 0.0% |
 | fixed 1.9 (matched) | 38.8% ± 3.4 | 7.0% ± 2.7 | 11.4% ± 3.2 | 1.90 | 0.0% | 0.0% |
 | fixed 1.4 (balanced) | 15.6% ± 2.7 | 19.0% ± 3.9 | 43.0% ± 5.5 | 1.40 | 0.0% | 0.0% |
-| current, spreads blended 0.5 (matched and balanced) | 35.8% ± 4.6 | 6.2% ± 2.2 | 16.3% ± 3.5 | 1.47 | 36.0% | 0.0% |
-| current, worst line dropped | 37.3% ± 5.2 | 9.5% ± 2.9 | 20.5% ± 5.0 | 1.90 | 8.0% | 4.0% |
+| version 1, spreads blended 0.5 (matched and balanced) | 35.8% ± 4.6 | 6.2% ± 2.2 | 16.3% ± 3.5 | 1.47 | 36.0% | 0.0% |
+| version 1, worst line dropped | 37.3% ± 5.2 | 9.5% ± 2.9 | 20.5% ± 5.0 | 1.90 | 8.0% | 4.0% |
 
 ## Recommendation
 
-**Keep the current rule and lower its upper clamp from 3.5 to 2.0** -- once the
-check on real scores described at the end of this section has been made.
+**Keep the version 1 rule and lower its upper clamp from 3.5 to 2.0.**
+
+**Adopted.** `GAME_MAX_THRESHOLD` in `game/scoring.py` is now 2.0 and
+`SCORING_VERSION` is "2". The cap 2.0 row above is that rule, computed by the
+game's own `calibrate_threshold`.
 
 On the report half that takes false acceptance from 39.8% to 31.8% (-8.0 ± 2.4
 points, target by target) and same-session false rejection from 8.9% to 9.8%
@@ -225,22 +228,20 @@ nobody is given a limit that most attackers pass. It does nothing about the larg
 problem in the score table above -- genuine and impostor scores overlap at 4
 training lines -- which no limit rule fixes.
 
-What this replay cannot settle, and what to check before approving 2.0:
+What this replay could not settle, and what to watch in real scores now:
 
 - Only 1 of 51 limits reaches 3.5 here, so the replay barely exercises what the
   real scores show (attacks passing at limits of 3.0 and above). How much a cap
   helps the game depends on how many real players are given a limit above it.
   `evaluation/analyze_scores.py` now prints that distribution, and the real pass
   rate at each attempt's own limit.
-- The real cost is in the real self attempts. In `analyze_scores.py`'s table of
-  hypothetical limits, the false rejection at limit 2.0 is a lower bound on what a
-  2.0 cap would do (a capped limit is never above 2.0), and the false acceptance at
-  2.0 is an upper bound. If real false rejection at 2.0 is higher than the game
-  should accept, 2.5 is the fallback: nearly free here, and worth as much as the
-  number of real limits above 2.5.
-
-Changing the cap changes `GAME_MAX_THRESHOLD`, so `SCORING_VERSION` must be bumped
-with it. This branch changes nothing in `game/scoring.py`.
+- The real cost is in the real self attempts. For `scoring_version` 1 rows, the
+  false rejection at limit 2.0 in `analyze_scores.py`'s table of hypothetical
+  limits is a lower bound on what the cap does (a capped limit is never above
+  2.0), and the false acceptance at 2.0 is an upper bound. For `scoring_version` 2
+  rows, the real pass rate table shows it directly. If real players fail as
+  themselves more than the game should accept, 2.5 is the fallback: nearly free
+  here, and worth as much as the number of real limits above 2.5.
 
 ## Reproduce
 

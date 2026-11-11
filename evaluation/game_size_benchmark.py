@@ -5,9 +5,16 @@ per-player limit (game/scoring.py's calibrate_threshold).
 Where evaluation/run_benchmark.py trains on 200 repetitions with
 core/scoring.py's defaults, this trains the way the game enrolls: one
 warm-up repetition is thrown away, the next 4 build the profile, and
-the limit is calibrated from those same 4 lines. Profiles, scores and
-the current limit all come from game/scoring.py's own functions and
-constants -- nothing here is a second copy of the game's scoring.
+the limit is calibrated from those same 4 lines. Profiles and scores
+come from game/scoring.py's own functions and constants -- nothing
+here is a second copy of the game's scoring -- and so does the limit
+of the rule the game uses now (game_limit).
+
+The comparison starts from the game's rule under scoring version 1
+(upper clamp 3.5, V1_MAX_THRESHOLD), which is what was live when it
+was run. Its outcome was lowering that clamp to 2.0, scoring version
+2. The version 1 rule stays the baseline here so the results keep
+showing what the change was chosen against.
 
 For each target subject:
   - Train: repetitions 2-5 (repetition 1 is the warm-up).
@@ -77,7 +84,15 @@ FIRST_SESSION_REPS = 50
 CMU_PHRASE = ".tie5Roanl\n"
 assert line_feature_count(CMU_PHRASE) == 21
 
-LOWER_CAPS = [3.0, 2.5, 2.0]
+#: The game's upper clamp under scoring version 1, the baseline every
+#: rule here is compared with. game/scoring.py's GAME_MAX_THRESHOLD
+#: has since been lowered (see the module docstring).
+V1_MAX_THRESHOLD = 3.5
+assert GAME_MAX_THRESHOLD < V1_MAX_THRESHOLD
+
+#: Lower caps tried besides the one the game now uses
+#: (GAME_MAX_THRESHOLD, which gets its own row from game_limit).
+LOWER_CAPS = [3.0, 2.5]
 MEDIAN_MULTIPLIER_GRID = [round(1.0 + 0.1 * i, 1) for i in range(31)]  # 1.0 .. 4.0
 FIXED_LIMIT_GRID = [round(1.0 + 0.1 * i, 1) for i in range(31)]  # 1.0 .. 4.0
 BLEND_WEIGHT_GRID = [0.25, 0.5, 0.75, 1.0]
@@ -86,7 +101,7 @@ Profile = dict[FeatureKey, RunningStats]
 Line = list[Feature]
 
 
-def clamp_limit(raw: float, upper: float = GAME_MAX_THRESHOLD) -> float:
+def clamp_limit(raw: float, upper: float = V1_MAX_THRESHOLD) -> float:
     return max(GAME_MIN_THRESHOLD, min(upper, raw))
 
 
@@ -209,21 +224,30 @@ def score_target(
 # ---------- limit rules ----------
 
 
-def current_limit(t: TargetScores) -> float:
-    """The game's rule, from the game's function."""
+def version_1_limit(t: TargetScores) -> float:
+    """The rule under scoring version 1: highest held-out score times
+    GAME_THRESHOLD_MULTIPLIER, clamped to [GAME_MIN_THRESHOLD,
+    V1_MAX_THRESHOLD]. The game's formula, written out because
+    calibrate_threshold now clamps lower -- and because blended
+    held-out scores are something calibrate_threshold can't produce."""
+    return clamp_limit(max(t.held_out) * GAME_THRESHOLD_MULTIPLIER)
+
+
+def game_limit(t: TargetScores) -> float:
+    """The rule the game uses now, from the game's own function: the
+    version 1 rule with the upper clamp at GAME_MAX_THRESHOLD."""
     return calibrate_threshold(t.training, phrase=CMU_PHRASE)
 
 
 def capped_limit(cap: float) -> Callable[[TargetScores], float]:
-    """The current rule with a lower upper clamp. cap is below
-    GAME_MAX_THRESHOLD, so capping calibrate_threshold's result is
-    the same as clamping to [GAME_MIN_THRESHOLD, cap]."""
-    return lambda t: min(cap, current_limit(t))
+    """The version 1 rule with a lower upper clamp. Capping its result
+    is the same as clamping to [GAME_MIN_THRESHOLD, cap]."""
+    return lambda t: min(cap, version_1_limit(t))
 
 
 def median_limit(multiplier: float) -> Callable[[TargetScores], float]:
     """Median held-out score (of 4, so the mean of the middle two)
-    times a multiplier, inside the current clamps."""
+    times a multiplier, inside the version 1 clamps."""
     return lambda t: clamp_limit(statistics.median(t.held_out) * multiplier)
 
 
@@ -231,21 +255,14 @@ def fixed_limit(limit: float) -> Callable[[TargetScores], float]:
     return lambda t: limit
 
 
-def max_held_out_limit(t: TargetScores) -> float:
-    """The current formula applied to t.held_out. Identical to
-    current_limit for unblended scores (tested); needed for blended
-    ones, whose held-out scores calibrate_threshold can't produce."""
-    return clamp_limit(max(t.held_out) * GAME_THRESHOLD_MULTIPLIER)
-
-
 def drop_worst_limit(t: TargetScores) -> float:
     """Removes the training line with the highest held-out score,
-    then runs the game's calibration on the 3 that remain. Only the
+    then applies the version 1 rule to the 3 that remain. Only the
     limit changes: the profile attempts are scored against still has
     all 4 lines."""
     worst = max(range(len(t.held_out)), key=t.held_out.__getitem__)
     kept = [line for i, line in enumerate(t.training) if i != worst]
-    return calibrate_threshold(kept, phrase=CMU_PHRASE)
+    return clamp_limit(max(held_out_scores(kept)) * GAME_THRESHOLD_MULTIPLIER)
 
 
 # ---------- evaluation ----------
@@ -290,7 +307,7 @@ class RuleResult:
 
     @property
     def share_at_upper_clamp(self) -> float:
-        return _mean([v >= GAME_MAX_THRESHOLD for v in self.limits])
+        return _mean([v >= V1_MAX_THRESHOLD for v in self.limits])
 
 
 def evaluate(
@@ -319,7 +336,7 @@ def tune_matched[T](
 ) -> T:
     """The grid value with the lowest false acceptance among those
     whose first-session false rejection is no higher than
-    frr_ceiling (the current rule's, on the same tuning subjects) --
+    frr_ceiling (the version 1 rule's, on the same tuning subjects) --
     so the tuned rule answers "at the false rejection players get
     today, does this rule let fewer impostors through?". If no value
     meets the ceiling, the one with the lowest false rejection. Ties
@@ -363,14 +380,15 @@ class Results:
     report_half: list[str]
     #: The game's profiles and scores, every subject.
     base: dict[str, TargetScores]
-    #: The current rule on all subjects, impostors from all others.
-    current_all: RuleResult
+    #: The version 1 rule on all subjects, impostors from all others.
+    baseline_all: RuleResult
     rules: list[Rule]
     on_tuning_half: dict[str, RuleResult]
     on_report_half: dict[str, RuleResult]
 
 
-CURRENT = "current"
+BASELINE = f"version 1 (cap {V1_MAX_THRESHOLD})"
+ADOPTED = f"cap {GAME_MAX_THRESHOLD} (the game's rule now)"
 
 
 def run(lines_by_subject: dict[str, list[Line]]) -> Results:
@@ -384,7 +402,7 @@ def run(lines_by_subject: dict[str, list[Line]]) -> Results:
     ) -> RuleResult:
         return evaluate(scores, tuning_half, tuning_half, limit_rule)
 
-    frr_ceiling = on_tuning(current_limit).frr_first_session
+    frr_ceiling = on_tuning(version_1_limit).frr_first_session
 
     # Average spreads come from the tuning half only, so the report
     # half's own typists never shape the profiles they are scored on.
@@ -404,30 +422,29 @@ def run(lines_by_subject: dict[str, list[Line]]) -> Results:
         return [(matched, "matched"), (balanced, "balanced")]
 
     rules = [
-        Rule(CURRENT, base, current_limit),
+        Rule(BASELINE, base, version_1_limit),
         *(
             Rule(f"median x {m} ({how})", base, median_limit(m))
             for m, how in tuned(MEDIAN_MULTIPLIER_GRID, lambda m: on_tuning(median_limit(m)))
         ),
-        *(Rule(f"current, cap {cap}", base, capped_limit(cap)) for cap in LOWER_CAPS),
+        *(Rule(f"cap {cap}", base, capped_limit(cap)) for cap in LOWER_CAPS),
+        Rule(ADOPTED, base, game_limit),
         *(
             Rule(f"fixed {v} ({how})", base, fixed_limit(v))
             for v, how in tuned(FIXED_LIMIT_GRID, lambda v: on_tuning(fixed_limit(v)))
         ),
         *(
-            Rule(f"current, spreads blended {w} ({how})", blended[w], max_held_out_limit)
-            for w, how in tuned(
-                BLEND_WEIGHT_GRID, lambda w: on_tuning(max_held_out_limit, blended[w])
-            )
+            Rule(f"version 1, spreads blended {w} ({how})", blended[w], version_1_limit)
+            for w, how in tuned(BLEND_WEIGHT_GRID, lambda w: on_tuning(version_1_limit, blended[w]))
         ),
-        Rule("current, worst line dropped", base, drop_worst_limit),
+        Rule("version 1, worst line dropped", base, drop_worst_limit),
     ]
     return Results(
         subjects=subjects,
         tuning_half=tuning_half,
         report_half=report_half,
         base=base,
-        current_all=evaluate(base, subjects, subjects, current_limit),
+        baseline_all=evaluate(base, subjects, subjects, version_1_limit),
         rules=rules,
         on_tuning_half={r.name: on_tuning(r.limit_rule, r.scores) for r in rules},
         on_report_half={
@@ -462,7 +479,8 @@ def _points(values: Sequence[float]) -> str:
 def _rule_rows(results: dict[str, RuleResult]) -> list[str]:
     rows = [
         "| Rule | False acceptance | False rejection, same session "
-        "| False rejection, all later | Median limit | At 1.3 | At 3.5 |",
+        "| False rejection, all later | Median limit "
+        f"| At {GAME_MIN_THRESHOLD} | At {V1_MAX_THRESHOLD} |",
         "|---|---|---|---|---|---|---|",
     ]
     for name, r in results.items():
@@ -475,17 +493,17 @@ def _rule_rows(results: dict[str, RuleResult]) -> list[str]:
 
 
 def _difference_rows(results: dict[str, RuleResult]) -> list[str]:
-    current = results[CURRENT]
+    baseline = results[BASELINE]
     rows = [
         "| Rule | False acceptance, change | False rejection (same session), change |",
         "|---|---|---|",
     ]
     for name, r in results.items():
-        if name == CURRENT:
+        if name == BASELINE:
             continue
-        far_diffs = [a - b for a, b in zip(r.fars, current.fars, strict=True)]
+        far_diffs = [a - b for a, b in zip(r.fars, baseline.fars, strict=True)]
         frr_diffs = [
-            a - b for a, b in zip(r.frrs_first_session, current.frrs_first_session, strict=True)
+            a - b for a, b in zip(r.frrs_first_session, baseline.frrs_first_session, strict=True)
         ]
         rows.append(f"| {name} | {_points(far_diffs)} | {_points(frr_diffs)} |")
     return rows
@@ -500,8 +518,11 @@ def _difference_rows(results: dict[str, RuleResult]) -> list[str]:
 RECOMMENDATION = """\
 ## Recommendation
 
-**Keep the current rule and lower its upper clamp from 3.5 to 2.0** -- once the
-check on real scores described at the end of this section has been made.
+**Keep the version 1 rule and lower its upper clamp from 3.5 to 2.0.**
+
+**Adopted.** `GAME_MAX_THRESHOLD` in `game/scoring.py` is now 2.0 and
+`SCORING_VERSION` is "2". The cap 2.0 row above is that rule, computed by the
+game's own `calibrate_threshold`.
 
 On the report half that takes false acceptance from 39.8% to 31.8% (-8.0 ± 2.4
 points, target by target) and same-session false rejection from 8.9% to 9.8%
@@ -548,33 +569,31 @@ nobody is given a limit that most attackers pass. It does nothing about the larg
 problem in the score table above -- genuine and impostor scores overlap at 4
 training lines -- which no limit rule fixes.
 
-What this replay cannot settle, and what to check before approving 2.0:
+What this replay could not settle, and what to watch in real scores now:
 
 - Only 1 of 51 limits reaches 3.5 here, so the replay barely exercises what the
   real scores show (attacks passing at limits of 3.0 and above). How much a cap
   helps the game depends on how many real players are given a limit above it.
   `evaluation/analyze_scores.py` now prints that distribution, and the real pass
   rate at each attempt's own limit.
-- The real cost is in the real self attempts. In `analyze_scores.py`'s table of
-  hypothetical limits, the false rejection at limit 2.0 is a lower bound on what a
-  2.0 cap would do (a capped limit is never above 2.0), and the false acceptance at
-  2.0 is an upper bound. If real false rejection at 2.0 is higher than the game
-  should accept, 2.5 is the fallback: nearly free here, and worth as much as the
-  number of real limits above 2.5.
-
-Changing the cap changes `GAME_MAX_THRESHOLD`, so `SCORING_VERSION` must be bumped
-with it. This branch changes nothing in `game/scoring.py`.
+- The real cost is in the real self attempts. For `scoring_version` 1 rows, the
+  false rejection at limit 2.0 in `analyze_scores.py`'s table of hypothetical
+  limits is a lower bound on what the cap does (a capped limit is never above
+  2.0), and the false acceptance at 2.0 is an upper bound. For `scoring_version` 2
+  rows, the real pass rate table shows it directly. If real players fail as
+  themselves more than the game should accept, 2.5 is the fallback: nearly free
+  here, and worth as much as the number of real limits above 2.5.
 """
 
 
 def write_results_md(results: Results) -> None:
     n = len(results.subjects)
     n_tune, n_report = len(results.tuning_half), len(results.report_half)
-    current_all = results.current_all
+    baseline_all = results.baseline_all
     report = results.on_report_half
     raw = [max(results.base[s].held_out) * GAME_THRESHOLD_MULTIPLIER for s in results.subjects]
     below = sum(v <= GAME_MIN_THRESHOLD for v in raw)
-    above = sum(v >= GAME_MAX_THRESHOLD for v in raw)
+    above = sum(v >= V1_MAX_THRESHOLD for v in raw)
     over_30, over_25, over_20 = (sum(v > cap for v in raw) for cap in (3.0, 2.5, 2.0))
 
     same_session_label = (
@@ -619,7 +638,7 @@ def write_results_md(results: Results) -> None:
         "  counterpart in a game played in one sitting.",
         "- **The line is different.** 21 features here, each seen once per repetition. A",
         "  game line has more features, and repeated letters give some of them several",
-        "  values per line. The scores, and so the limits the current rule hands out, are",
+        "  values per line. The scores, and so the limits a rule hands out, are",
         "  on a different footing: do not read the distribution of limits below as the",
         "  game's. `evaluation/analyze_scores.py` prints the real one.",
         "- **One keyboard, one device type.** No phones, no second keyboard.",
@@ -648,18 +667,18 @@ def write_results_md(results: Results) -> None:
         "Rates are the mean over targets of each target's own rate. Where a table shows",
         "`±`, it is the standard error of that mean across targets, in percentage points.",
         "",
-        "## The current rule, all subjects",
+        "## The version 1 rule, all subjects",
         "",
         "Limit = highest held-out score x "
-        f"{GAME_THRESHOLD_MULTIPLIER}, clamped to {GAME_MIN_THRESHOLD}-{GAME_MAX_THRESHOLD}."
+        f"{GAME_THRESHOLD_MULTIPLIER}, clamped to {GAME_MIN_THRESHOLD}-{V1_MAX_THRESHOLD}."
         f" {n} targets, {(n - 1) * IMPOSTOR_REPS_PER_SUBJECT}",
         "impostor attempts each.",
         "",
         "| | Rate |",
         "|---|---|",
-        f"| False acceptance | {_pct_se(current_all.fars)} |",
-        f"| False rejection, same session | {_pct_se(current_all.frrs_first_session)} |",
-        f"| False rejection, all later | {_pct_se(current_all.frrs_all_later)} |",
+        f"| False acceptance | {_pct_se(baseline_all.fars)} |",
+        f"| False rejection, same session | {_pct_se(baseline_all.frrs_first_session)} |",
+        f"| False rejection, all later | {_pct_se(baseline_all.frrs_all_later)} |",
         "",
         "### Calibrated limits",
         "",
@@ -669,9 +688,9 @@ def write_results_md(results: Results) -> None:
         + " | ".join(
             f"{v:.2f}"
             for v in [
-                min(current_all.limits),
-                *_percentiles(current_all.limits),
-                max(current_all.limits),
+                min(baseline_all.limits),
+                *_percentiles(baseline_all.limits),
+                max(baseline_all.limits),
             ]
         )
         + " |",
@@ -684,7 +703,7 @@ def write_results_md(results: Results) -> None:
         "| Clamp | Targets | Share |",
         "|---|---|---|",
         f"| Lower, {GAME_MIN_THRESHOLD} (raised to it) | {below} of {n} | {_pct(below / n)} |",
-        f"| Upper, {GAME_MAX_THRESHOLD} (cut down to it) | {above} of {n} | {_pct(above / n)} |",
+        f"| Upper, {V1_MAX_THRESHOLD} (cut down to it) | {above} of {n} | {_pct(above / n)} |",
         "",
         f"Before clamping, {over_30} of {n} limits are above 3.0, {over_25} above 2.5 and"
         f" {over_20} above 2.0 --",
@@ -719,28 +738,29 @@ def write_results_md(results: Results) -> None:
         "",
         "The rules:",
         "",
-        f"- **current**: highest held-out score x {GAME_THRESHOLD_MULTIPLIER}, clamped to"
-        f" {GAME_MIN_THRESHOLD}-{GAME_MAX_THRESHOLD}.",
+        f"- **version 1**: highest held-out score x {GAME_THRESHOLD_MULTIPLIER}, clamped to"
+        f" {GAME_MIN_THRESHOLD}-{V1_MAX_THRESHOLD}. The game's rule when this comparison was run.",
         "- **median x m**: median held-out score (of 4, so the mean of the middle two) times",
-        f"  m, inside the same {GAME_MIN_THRESHOLD}-{GAME_MAX_THRESHOLD} clamps.",
-        "- **current, cap c**: the current rule with the upper clamp lowered to c. Nothing",
-        "  tuned.",
+        f"  m, inside the same {GAME_MIN_THRESHOLD}-{V1_MAX_THRESHOLD} clamps.",
+        "- **cap c**: the version 1 rule with the upper clamp lowered to c. Nothing tuned.",
+        f"  The {GAME_MAX_THRESHOLD} row is the rule the game uses now, computed by"
+        " `calibrate_threshold` itself.",
         "- **fixed v**: the same limit v for every target; no calibration.",
-        "- **current, spreads blended w**: before scoring, each feature's standard deviation",
+        "- **version 1, spreads blended w**: before scoring, each feature's standard deviation",
         "  is replaced by (1 - w) x the typist's own + w x the average of that feature's",
         "  standard deviation across the tuning half's typists (each measured over their own",
         f"  {TRAIN_REPS} training lines). The same blend is applied inside calibration. The game's",
         "  spread floors still apply on top. The weight w is tuned.",
-        "- **current, worst line dropped**: the training line with the highest held-out",
-        "  score is removed, and the current rule calibrates on the remaining 3. The profile",
+        "- **version 1, worst line dropped**: the training line with the highest held-out",
+        "  score is removed, and the version 1 rule calibrates on the remaining 3. The profile",
         f"  attempts are scored against still uses all {TRAIN_REPS} lines. Nothing tuned.",
         "",
         "Tuned values are chosen two ways, because one alone would mislead:",
         "",
         "- **matched**: the lowest false acceptance among values whose same-session false",
-        "  rejection on the tuning half is no higher than the current rule's there",
-        f"  ({_pct(results.on_tuning_half[CURRENT].frr_first_session)}). This asks whether a"
-        " rule is *better* than the current one at",
+        "  rejection on the tuning half is no higher than the version 1 rule's there",
+        f"  ({_pct(results.on_tuning_half[BASELINE].frr_first_session)}). This asks whether a"
+        " rule is *better* than version 1 at",
         "  the false rejection players already get.",
         "- **balanced**: the lowest false acceptance plus same-session false rejection.",
         "  This shows how strict a rule gets when both errors count equally.",
@@ -751,9 +771,9 @@ def write_results_md(results: Results) -> None:
         "",
         *_rule_rows(report),
         "",
-        "### Change from the current rule, target by target (report half)",
+        "### Change from the version 1 rule, target by target (report half)",
         "",
-        "Each rule's rate minus the current rule's on the same target, averaged, in",
+        "Each rule's rate minus the version 1 rule's on the same target, averaged, in",
         "percentage points. A change smaller than about twice its `±` is not",
         "distinguishable from no change on this many targets.",
         "",

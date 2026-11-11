@@ -1,7 +1,7 @@
 """evaluation/game_size_benchmark.py against small synthetic data --
 the CMU dataset itself isn't committed (evaluation/README.md), so
 nothing here needs it. What matters most is checked first: that the
-benchmark's "current" rule is the game's own calibrate_threshold, and
+benchmark's rules are built on the game's own calibrate_threshold, and
 that its accept/reject decision is the game's own.
 """
 
@@ -16,17 +16,17 @@ from evaluation import game_size_benchmark as bench
 from evaluation.game_size_benchmark import (
     CMU_PHRASE,
     FIRST_SESSION_REPS,
+    V1_MAX_THRESHOLD,
     RuleResult,
     TargetScores,
     average_spreads,
     blend_profile,
     capped_limit,
-    current_limit,
     drop_worst_limit,
     evaluate,
     fixed_limit,
+    game_limit,
     held_out_scores,
-    max_held_out_limit,
     median_limit,
     score,
     score_target,
@@ -34,6 +34,7 @@ from evaluation.game_size_benchmark import (
     training_lines,
     tune_balanced,
     tune_matched,
+    version_1_limit,
 )
 from evaluation.run_benchmark import KEYS, flight_key, hold_key
 from keystroke_dynamics.core.features import Feature
@@ -90,16 +91,31 @@ def _target(
 
 
 @pytest.mark.parametrize("seed", range(8))
-def test_current_rule_is_the_games_calibrate_threshold(seed: int) -> None:
+def test_limits_are_the_games_calibrate_threshold(seed: int) -> None:
     lines = _subjects(8, 6, seed)
     for subject in lines:
         t = score_target(subject, lines)
         expected = calibrate_threshold(training_lines(lines[subject]), phrase=CMU_PHRASE)
-        assert current_limit(t) == expected
-        # The loop repeated in held_out_scores gives the same limit as
-        # the game's, so rules built on t.held_out start from the
-        # game's own numbers.
-        assert max_held_out_limit(t) == pytest.approx(expected, abs=1e-12)
+        assert game_limit(t) == expected
+        # The version 1 rule is the same formula with the old clamp:
+        # it differs from the game's only where the game now caps.
+        # So rules built on t.held_out start from the game's numbers.
+        v1 = version_1_limit(t)
+        assert min(GAME_MAX_THRESHOLD, v1) == pytest.approx(expected, abs=1e-12)
+        assert v1 <= V1_MAX_THRESHOLD
+
+
+def test_a_stumbled_line_separates_the_version_1_rule_from_the_games() -> None:
+    # The seeds above never calibrate past the game's cap, so this is
+    # the case where the two rules differ: one training line typed 3x
+    # slower sends the version 1 limit above 2.0, and the game's own
+    # function holds it there.
+    lines = _subjects(1, 6)
+    lines["s000"][2] = [Feature(f.key, f.value_ms * 3) for f in lines["s000"][2]]
+    t = score_target("s000", lines)
+    assert GAME_MAX_THRESHOLD < version_1_limit(t) <= V1_MAX_THRESHOLD
+    assert game_limit(t) == GAME_MAX_THRESHOLD
+    assert capped_limit(2.5)(t) == 2.5
 
 
 def test_accepting_at_or_under_the_limit_is_the_games_decision() -> None:
@@ -164,7 +180,7 @@ def test_split_is_seeded_disjoint_and_complete() -> None:
     [
         ([1.0, 1.2, 1.4, 9.0], 1.5, 1.3 * 1.5),  # median 1.3; the 9.0 is ignored
         ([0.2, 0.2, 0.2, 0.2], 1.5, GAME_MIN_THRESHOLD),  # clamped up
-        ([5.0, 5.0, 5.0, 5.0], 1.5, GAME_MAX_THRESHOLD),  # clamped down
+        ([5.0, 5.0, 5.0, 5.0], 1.5, V1_MAX_THRESHOLD),  # clamped down
     ],
 )
 def test_median_limit(held_out: list[float], multiplier: float, expected: float) -> None:
@@ -175,15 +191,15 @@ def test_fixed_limit_ignores_the_target() -> None:
     assert fixed_limit(1.9)(_target([0.1, 9.0])) == 1.9
 
 
-@pytest.mark.parametrize("cap", [2.0, 2.5, 3.0])
+@pytest.mark.parametrize("cap", [2.5, 3.0])
 def test_capped_limit_only_lowers_limits_above_the_cap(cap: float) -> None:
     lines = _subjects(8, 6)
     for subject in lines:
         t = score_target(subject, lines)
-        assert capped_limit(cap)(t) == min(cap, current_limit(t))
+        assert capped_limit(cap)(t) == min(cap, version_1_limit(t))
 
 
-def test_drop_worst_calibrates_on_the_three_best_lines() -> None:
+def test_drop_worst_applies_the_version_1_rule_to_the_three_best_lines() -> None:
     lines = _subjects(1, 6)["s000"]
     training = training_lines(lines)
     # Make the third training line a stumble: everything 3x slower.
@@ -193,8 +209,11 @@ def test_drop_worst_calibrates_on_the_three_best_lines() -> None:
 
     t = TargetScores(training, held_out, [], [], {})
     kept = [training[0], training[1], training[3]]
-    assert drop_worst_limit(t) == calibrate_threshold(kept, phrase=CMU_PHRASE)
-    assert drop_worst_limit(t) < current_limit(t)
+    assert drop_worst_limit(t) == version_1_limit(_target(held_out_scores(kept)))
+    # Where the game's own function doesn't cap, the two agree.
+    assert drop_worst_limit(t) < GAME_MAX_THRESHOLD
+    assert drop_worst_limit(t) == pytest.approx(calibrate_threshold(kept, phrase=CMU_PHRASE))
+    assert drop_worst_limit(t) < version_1_limit(t)
 
 
 # ---------- blended spreads ----------
@@ -278,9 +297,7 @@ def test_evaluate_uses_only_the_impostors_it_is_given() -> None:
 
 
 def test_clamp_shares() -> None:
-    result = RuleResult(
-        [GAME_MIN_THRESHOLD, 2.0, GAME_MAX_THRESHOLD, GAME_MAX_THRESHOLD], [], [], []
-    )
+    result = RuleResult([GAME_MIN_THRESHOLD, 2.0, V1_MAX_THRESHOLD, V1_MAX_THRESHOLD], [], [], [])
     assert result.share_at_lower_clamp == 0.25
     assert result.share_at_upper_clamp == 0.5
 
@@ -330,14 +347,23 @@ def test_run_reports_every_rule_and_the_results_say_what_they_are_not(
 
     assert sorted(results.tuning_half + results.report_half) == sorted(lines)
     names = [rule.name for rule in results.rules]
-    assert names[0] == "current"
-    for expected in ("median x", "cap 3.0", "cap 2.5", "cap 2.0", "fixed", "blended", "dropped"):
+    assert names[0] == bench.BASELINE == "version 1 (cap 3.5)"
+    assert bench.ADOPTED == "cap 2.0 (the game's rule now)"
+    for expected in (
+        "median x",
+        "cap 3.0",
+        "cap 2.5",
+        bench.ADOPTED,
+        "fixed",
+        "blended",
+        "dropped",
+    ):
         assert any(expected in name for name in names), expected
     assert list(results.on_report_half) == names
     assert all(len(r.limits) == len(results.report_half) for r in results.on_report_half.values())
     # A lower cap can only tighten: never more impostors accepted.
     report = results.on_report_half
-    assert report["current, cap 2.0"].far <= report["current, cap 2.5"].far <= report["current"].far
+    assert report[bench.ADOPTED].far <= report["cap 2.5"].far <= report[bench.BASELINE].far
 
     out = tmp_path / "game_size_results.md"
     monkeypatch.setattr(bench, "RESULTS_MD_PATH", out)

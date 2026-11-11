@@ -41,7 +41,8 @@ from keystroke_dynamics.scores.models import ScoreAttempt
 MIN_GROUP_SIZE = 5
 
 #: Candidate limits swept for the false-reject/false-accept table --
-#: game/scoring.py's own calibration range, not an arbitrary one.
+#: the widest range game/scoring.py has calibrated limits in (its
+#: clamps under scoring version 1), not an arbitrary one.
 CANDIDATE_LIMITS = [round(1.3 + 0.1 * i, 2) for i in range(23)]  # 1.3 .. 3.5
 
 #: Same band game/judge.py's disguise gate and clue use -- "attacks
@@ -239,33 +240,44 @@ def rates_by_group(
 #: Buckets for the distribution of limits actually given out. The two
 #: clamps get their own bucket each: a limit sitting exactly on a
 #: clamp was decided by the clamp, not by the player's own typing.
-#: The bounds are the current game/scoring.py constants, so a
-#: scoring_version with different clamps would need its own buckets.
 _CLAMP_TOLERANCE = 1e-9
 LIMIT_BUCKET_EDGES = [2.0, 2.5, 3.0]
 
+#: The upper clamp limits were calibrated under, for each
+#: scoring_version that didn't use today's GAME_MAX_THRESHOLD. The
+#: lower clamp has never changed.
+UPPER_CLAMP_BY_VERSION = {"1": 3.5}
 
-def limit_bucket(limit_value: float) -> str:
+
+def upper_clamp_for(scoring_version: str) -> float:
+    return UPPER_CLAMP_BY_VERSION.get(scoring_version, GAME_MAX_THRESHOLD)
+
+
+def _bucket_bounds(upper_clamp: float) -> list[float]:
+    inner = [e for e in LIMIT_BUCKET_EDGES if GAME_MIN_THRESHOLD < e < upper_clamp]
+    return [GAME_MIN_THRESHOLD, *inner, upper_clamp]
+
+
+def limit_bucket(limit_value: float, upper_clamp: float) -> str:
     if limit_value <= GAME_MIN_THRESHOLD + _CLAMP_TOLERANCE:
         return f"at {GAME_MIN_THRESHOLD} (lower clamp)"
-    if limit_value >= GAME_MAX_THRESHOLD - _CLAMP_TOLERANCE:
-        return f"at {GAME_MAX_THRESHOLD} (upper clamp)"
-    lower = GAME_MIN_THRESHOLD
-    for edge in LIMIT_BUCKET_EDGES:
-        if limit_value < edge:
-            return f"{lower} to under {edge}"
-        lower = edge
-    return f"{lower} to under {GAME_MAX_THRESHOLD}"
+    if limit_value >= upper_clamp - _CLAMP_TOLERANCE:
+        return f"at {upper_clamp} (upper clamp)"
+    bounds = _bucket_bounds(upper_clamp)
+    for lower, upper in zip(bounds, bounds[1:], strict=False):
+        if limit_value < upper:
+            return f"{lower} to under {upper}"
+    raise AssertionError("unreachable: limit_value is under upper_clamp")
 
 
-def limit_bucket_labels() -> list[str]:
+def limit_bucket_labels(upper_clamp: float) -> list[str]:
     """Every bucket limit_bucket can return, lowest first."""
-    bounds = [GAME_MIN_THRESHOLD, *LIMIT_BUCKET_EDGES, GAME_MAX_THRESHOLD]
+    bounds = _bucket_bounds(upper_clamp)
     middle = [f"{a} to under {b}" for a, b in zip(bounds, bounds[1:], strict=False)]
     return [
         f"at {GAME_MIN_THRESHOLD} (lower clamp)",
         *middle,
-        f"at {GAME_MAX_THRESHOLD} (upper clamp)",
+        f"at {upper_clamp} (upper clamp)",
     ]
 
 
@@ -286,14 +298,18 @@ class LimitDistribution:
 
 
 def limit_distributions(
-    rows: list[Row], hidden: list[HiddenGroup] | None = None
+    rows: list[Row],
+    hidden: list[HiddenGroup] | None = None,
+    *,
+    upper_clamp: float = GAME_MAX_THRESHOLD,
 ) -> list[LimitDistribution]:
     """The limits actually in effect (each row's own limit_value),
     one distribution per target_kind: real players' limits come from
     their own enrollment, bots' and the permanent target's from fixed
     data, so they aren't one population. A target_kind with fewer than
     MIN_GROUP_SIZE attempts is hidden (and reported through `hidden`,
-    if given)."""
+    if given). rows should share one scoring_version, and upper_clamp
+    be that version's (upper_clamp_for)."""
     by_kind: dict[str, list[Row]] = defaultdict(list)
     for r in rows:
         by_kind[r.target_kind].append(r)
@@ -305,7 +321,7 @@ def limit_distributions(
                 hidden.append(HiddenGroup(f"target_kind={kind}", len(group)))
             continue
         limits = [limit for _, limit in sorted({(r.target_id, r.limit_value) for r in group})]
-        counts = Counter(limit_bucket(v) for v in limits)
+        counts = Counter(limit_bucket(v, upper_clamp) for v in limits)
         out.append(
             LimitDistribution(
                 target_kind=kind,
@@ -314,7 +330,7 @@ def limit_distributions(
                 minimum=min(limits),
                 median=statistics.median(limits),
                 maximum=max(limits),
-                buckets={label: counts[label] for label in limit_bucket_labels()},
+                buckets={label: counts[label] for label in limit_bucket_labels(upper_clamp)},
             )
         )
     return out
@@ -451,7 +467,9 @@ def analyze(rows: list[Row]) -> None:
         print(f"\n{'=' * 60}\n{header}\n{'=' * 60}")
 
         hidden: list[HiddenGroup] = []
-        distributions = limit_distributions(version_rows, hidden)
+        distributions = limit_distributions(
+            version_rows, hidden, upper_clamp=upper_clamp_for(version)
+        )
         _print_table(
             "Limits actually given (each attempt's own limit_value, counted once per target)",
             ["target_kind", "targets", "attempts", "min", "median", "max"],

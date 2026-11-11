@@ -29,6 +29,7 @@ from evaluation.analyze_scores import (
     pass_rates_at_own_limit,
     rates_by_group,
     rhythm_vs_place,
+    upper_clamp_for,
 )
 from keystroke_dynamics.game.scoring import GAME_MAX_THRESHOLD, GAME_MIN_THRESHOLD
 
@@ -250,21 +251,36 @@ def test_keyboard_split_hides_a_group_below_the_minimum_size() -> None:
 
 
 @pytest.mark.parametrize(
-    ("limit_value", "expected"),
+    ("limit_value", "upper_clamp", "expected"),
     [
-        (GAME_MIN_THRESHOLD, "at 1.3 (lower clamp)"),
-        (1.31, "1.3 to under 2.0"),
-        (1.99, "1.3 to under 2.0"),
-        (2.0, "2.0 to under 2.5"),
-        (2.5, "2.5 to under 3.0"),
-        (3.0, "3.0 to under 3.5"),
-        (3.49, "3.0 to under 3.5"),
-        (GAME_MAX_THRESHOLD, "at 3.5 (upper clamp)"),
+        # scoring_version 1: limits clamped to 1.3-3.5.
+        (GAME_MIN_THRESHOLD, 3.5, "at 1.3 (lower clamp)"),
+        (1.31, 3.5, "1.3 to under 2.0"),
+        (1.99, 3.5, "1.3 to under 2.0"),
+        (2.0, 3.5, "2.0 to under 2.5"),
+        (2.5, 3.5, "2.5 to under 3.0"),
+        (3.0, 3.5, "3.0 to under 3.5"),
+        (3.49, 3.5, "3.0 to under 3.5"),
+        (3.5, 3.5, "at 3.5 (upper clamp)"),
+        # scoring_version 2: 1.3-2.0, so 2.0 is now the clamp itself.
+        (GAME_MIN_THRESHOLD, 2.0, "at 1.3 (lower clamp)"),
+        (1.99, 2.0, "1.3 to under 2.0"),
+        (2.0, 2.0, "at 2.0 (upper clamp)"),
     ],
 )
-def test_limit_bucket_boundaries(limit_value: float, expected: str) -> None:
-    assert limit_bucket(limit_value) == expected
-    assert expected in limit_bucket_labels()
+def test_limit_bucket_boundaries(limit_value: float, upper_clamp: float, expected: str) -> None:
+    assert limit_bucket(limit_value, upper_clamp) == expected
+    assert expected in limit_bucket_labels(upper_clamp)
+
+
+def test_each_scoring_version_is_bucketed_by_its_own_upper_clamp() -> None:
+    assert upper_clamp_for("1") == 3.5
+    assert upper_clamp_for("2") == GAME_MAX_THRESHOLD == 2.0
+    assert limit_bucket_labels(upper_clamp_for("2")) == [
+        "at 1.3 (lower clamp)",
+        "1.3 to under 2.0",
+        "at 2.0 (upper clamp)",
+    ]
 
 
 def test_limit_distribution_counts_each_target_once() -> None:
@@ -275,7 +291,7 @@ def test_limit_distribution_counts_each_target_once() -> None:
         + [_row(target_id="b", limit_value=2.2)]
         + [_row(target_id="c", limit_value=3.5)]
     )
-    (dist,) = limit_distributions(rows)
+    (dist,) = limit_distributions(rows, upper_clamp=3.5)
     assert dist.target_kind == "player"
     assert dist.targets == 3
     assert dist.attempts == 6
@@ -418,3 +434,16 @@ def test_analyze_prints_the_limit_distribution_and_the_real_pass_rate(
     assert "Real pass rate" in out
     # 2.0 is under the three 3.5 limits and over the two 1.3 ones.
     assert "attack | 5 | 3                     | 0.600" in out
+
+
+def test_analyze_buckets_version_2_limits_against_the_2_0_clamp(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [
+        _row(scoring_version="2", target_id=f"t{i}", limit_value=limit)
+        for i, limit in enumerate([1.3, 1.6, 2.0, 2.0, 2.0])
+    ]
+    analyze(rows)
+    out = capsys.readouterr().out
+    assert "player      | at 2.0 (upper clamp) | 3       | 0.600" in out
+    assert "3.5" not in out.split("### Real pass rate")[0]

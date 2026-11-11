@@ -16,6 +16,7 @@ from keystroke_dynamics.core.scoring import Decision
 from keystroke_dynamics.game.scoring import (
     GAME_MAX_THRESHOLD,
     GAME_MIN_THRESHOLD,
+    SCORING_VERSION,
     build_profile,
     calibrate_threshold,
     line_feature_count,
@@ -90,6 +91,24 @@ def test_calibrate_threshold_is_within_the_configured_clamp() -> None:
         lines = _synthetic_lines(phrase, count=5, seed=1)
         threshold = calibrate_threshold(lines, phrase=phrase)
         assert GAME_MIN_THRESHOLD <= threshold <= GAME_MAX_THRESHOLD
+
+
+def test_the_upper_clamp_is_2_and_the_scoring_version_moved_with_it() -> None:
+    # Pinned on purpose: changing either without the other makes saved
+    # scores look comparable when they aren't.
+    assert GAME_MAX_THRESHOLD == 2.0
+    assert SCORING_VERSION == "2"
+
+
+@pytest.mark.parametrize("phrase", LEVEL_PHRASES.values())
+def test_one_stumbled_training_line_cannot_push_the_limit_past_the_cap(phrase: str) -> None:
+    lines = _synthetic_lines(phrase, count=4, seed=3)
+    without_stumble = calibrate_threshold(lines, phrase=phrase)
+    # One line typed four times slower than the rest: its held-out
+    # score alone would set a limit far above the cap.
+    lines[2] = [Feature(f.key, f.value_ms * 4) for f in lines[2]]
+    assert calibrate_threshold(lines, phrase=phrase) == GAME_MAX_THRESHOLD
+    assert without_stumble <= GAME_MAX_THRESHOLD
 
 
 def test_calibrate_threshold_falls_back_to_the_minimum_with_too_few_lines() -> None:
