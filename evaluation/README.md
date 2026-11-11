@@ -47,6 +47,21 @@ actually separate genuine typists from impostors, on real timing data -- not
 how the deployed app performs, since the app accepts arbitrary free text, not
 one fixed password.
 
+## Limit rules at the game's size
+
+`game_size_benchmark.py` replays the same dataset the way the party game
+enrolls a player -- 1 warm-up repetition skipped, 4 repetitions of training,
+`game/scoring.py`'s own functions and constants -- and compares rules for the
+per-player limit:
+
+```bash
+uv run python -m evaluation.game_size_benchmark
+```
+
+Writes `evaluation/game_size_results.md`. It ranks limit rules against each
+other on one password typed by people who were not imitating each other; it
+is **not** the game's accuracy, and that file says why at the top.
+
 ## Analyzing saved party scores
 
 `analyze_scores.py` is a separate, unrelated script: a read-only look at
