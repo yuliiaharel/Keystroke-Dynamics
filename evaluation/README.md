@@ -64,11 +64,15 @@ app's own database role can only insert and delete).
 
 Prints, for each `scoring_version` present (never mixed across versions,
 since a scoring or game-settings change makes old rows incomparable to
-new ones): false-reject/false-accept rates across a range of candidate
-limits, those same rates by `device_type` and by pace bucket, rhythm
-compared with place, attempts per player and per party, and flags for
+new ones): the distribution of limits actually given (each attempt's own
+`limit_value`, counted once per target), the real pass rate at each
+attempt's own limit, false-reject/false-accept rates across a range of
+hypothetical limits, those same rates by `device_type` and by pace bucket,
+rhythm compared with place, attempts per player and per party, and flags for
 unusually bursty activity on one day. Any group with fewer than 5 attempts
-is hidden from its table entirely, never shown with a caveat.
+has its numbers hidden, never shown with a caveat; the table is followed by
+a `hidden:` line naming the group and its size, so a missing row is not
+mistaken for no data.
 
 **This is not a benchmark.** `mode` and every identity in the table are
 self-reported by whichever client sent the request, and real play can't be
