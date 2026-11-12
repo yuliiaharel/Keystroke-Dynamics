@@ -77,23 +77,26 @@ Use the **read-only** role's connection string (see `DEPLOY.md`), never the
 app's own `SCORES_DATABASE_URL` -- that one is write-only by design (the
 app's own database role can only insert and delete).
 
-Prints, for each `scoring_version` present (never mixed across versions,
-since a scoring or game-settings change makes old rows incomparable to
-new ones): the distribution of limits actually given (each attempt's own
-`limit_value`, counted once per target), the real pass rate at each
-attempt's own limit, false-reject/false-accept rates across a range of
-hypothetical limits, those same rates by `device_type` and by pace bucket,
-rhythm compared with place, Rhythm and Place split by `device_type` and then
-by mode and same or different keyboard (or phone), attempts per player and
-per party, and flags for unusually bursty activity on one day.
+Prints one section for each `device_type` and `scoring_version` present.
+Keyboard and touch rows are never mixed, and neither are versions, since a
+scoring or game-settings change makes old rows incomparable to new ones. The
+one exception is listed explicitly in the script
+(`EQUIVALENT_KEYBOARD_VERSIONS`): keyboard rows at versions "2" and "3" are
+reported together, because version 3 only added touch rooms and scores a
+keyboard row exactly as version 2 did.
 
-A touch row is judged on its `total` (rhythm and place together), a keyboard
-row on its `rhythm`, which for a keyboard row is the same number. Versions
-"2" and "3" score keyboard rows identically (`"3"` only added touch rooms),
-so keyboard rows can be compared across the two, but the script still prints
-each version under its own heading. The limit tables don't yet know that
-touch limits start at 1.65 rather than 1.3: a touch limit at its lower clamp
-is counted in the lowest range, not labeled as a clamp. Any group with fewer than 5 attempts
+Each section has: the distribution of limits actually given (each attempt's
+own `limit_value`, counted once per target, with the clamps of that device
+type: 1.3 at the bottom for keyboard, 1.65 for touch), the real pass rate at
+each attempt's own limit, false-reject/false-accept rates across a range of
+hypothetical limits, those same rates by pace bucket and by same or
+different keyboard (or phone), rhythm compared with place, Rhythm and Place
+split by mode and same or different keyboard (or phone), attempts per player
+and per party, and flags for unusually bursty activity on one day.
+
+A touch row is judged on its `total` (the average of its rhythm and place
+scores), a keyboard row on its `rhythm`, which for a keyboard row is the same
+number. `screen_size` is stored for touch rows but not yet used here. Any group with fewer than 5 attempts
 has its numbers hidden, never shown with a caveat; the table is followed by
 a `hidden:` line naming the group and its size, so a missing row is not
 mistaken for no data.

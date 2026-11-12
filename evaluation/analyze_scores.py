@@ -30,6 +30,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from keystroke_dynamics.game.scoring import GAME_MAX_THRESHOLD, GAME_MIN_THRESHOLD
+from keystroke_dynamics.game.touch_scoring import TOUCH_MIN_THRESHOLD
 from keystroke_dynamics.scores.models import ScoreAttempt
 
 #: Any group (a limit's FAR/FRR, a device_type slice, a pace bucket,
@@ -133,6 +134,67 @@ def fetch_rows(connection_string: str) -> list[Row]:
 
 def distinct_scoring_versions(rows: list[Row]) -> list[str]:
     return sorted({r.scoring_version for r in rows})
+
+
+#: Sets of scoring versions under which a keyboard row is scored and
+#: given its limit in exactly the same way, so their keyboard rows are
+#: reported together. Explicit on purpose: a version joins a set only
+#: when someone has checked that nothing about keyboard scoring
+#: changed with it.
+#:
+#: ("2", "3"): version 3 added touch rooms and left keyboard scoring
+#: untouched (game/scoring.py's SCORING_VERSION note;
+#: tests/game/test_keyboard_golden.py holds it to that).
+#:
+#: Touch rows have no equivalent versions: they start at "3".
+EQUIVALENT_KEYBOARD_VERSIONS: list[tuple[str, ...]] = [("2", "3")]
+
+
+@dataclass(frozen=True)
+class ReportGroup:
+    """Rows that are reported as one population: one device type, and
+    one scoring version or one set of equivalent versions."""
+
+    device_type: str
+    #: The versions actually present among `rows`, sorted.
+    versions: tuple[str, ...]
+    rows: list[Row]
+
+    @property
+    def label(self) -> str:
+        noun = "scoring_version" if len(self.versions) == 1 else "scoring_versions"
+        return f"device_type {self.device_type}, {noun} {' + '.join(self.versions)}"
+
+
+def _version_set(device_type: str, scoring_version: str) -> tuple[str, ...]:
+    if device_type == "keyboard":
+        for versions in EQUIVALENT_KEYBOARD_VERSIONS:
+            if scoring_version in versions:
+                return versions
+    return (scoring_version,)
+
+
+def report_groups(rows: list[Row]) -> list[ReportGroup]:
+    """Splits rows by device_type, then by scoring version -- with
+    keyboard rows at equivalent versions (EQUIVALENT_KEYBOARD_VERSIONS)
+    kept together. Touch and keyboard rows are never in one group:
+    their scores and limits aren't comparable."""
+    grouped: dict[tuple[str, tuple[str, ...]], list[Row]] = defaultdict(list)
+    for r in rows:
+        grouped[(r.device_type, _version_set(r.device_type, r.scoring_version))].append(r)
+    return [
+        ReportGroup(
+            device_type=device_type,
+            versions=tuple(sorted({r.scoring_version for r in group})),
+            rows=group,
+        )
+        for (device_type, _), group in sorted(grouped.items())
+    ]
+
+
+def lower_clamp_for(device_type: str) -> float:
+    """The lowest limit a player of this device type can be given."""
+    return TOUCH_MIN_THRESHOLD if device_type == "touch" else GAME_MIN_THRESHOLD
 
 
 def pace_bucket(pace: float | None) -> str:
@@ -265,7 +327,8 @@ LIMIT_BUCKET_EDGES = [2.0, 2.5, 3.0]
 
 #: The upper clamp limits were calibrated under, for each
 #: scoring_version that didn't use today's GAME_MAX_THRESHOLD. The
-#: lower clamp has never changed.
+#: lower clamp has never changed for a device type, but differs
+#: between them (lower_clamp_for).
 UPPER_CLAMP_BY_VERSION = {"1": 3.5}
 
 
@@ -273,29 +336,33 @@ def upper_clamp_for(scoring_version: str) -> float:
     return UPPER_CLAMP_BY_VERSION.get(scoring_version, GAME_MAX_THRESHOLD)
 
 
-def _bucket_bounds(upper_clamp: float) -> list[float]:
-    inner = [e for e in LIMIT_BUCKET_EDGES if GAME_MIN_THRESHOLD < e < upper_clamp]
-    return [GAME_MIN_THRESHOLD, *inner, upper_clamp]
+def _bucket_bounds(upper_clamp: float, lower_clamp: float) -> list[float]:
+    inner = [e for e in LIMIT_BUCKET_EDGES if lower_clamp < e < upper_clamp]
+    return [lower_clamp, *inner, upper_clamp]
 
 
-def limit_bucket(limit_value: float, upper_clamp: float) -> str:
-    if limit_value <= GAME_MIN_THRESHOLD + _CLAMP_TOLERANCE:
-        return f"at {GAME_MIN_THRESHOLD} (lower clamp)"
+def limit_bucket(
+    limit_value: float, upper_clamp: float, lower_clamp: float = GAME_MIN_THRESHOLD
+) -> str:
+    """lower_clamp defaults to the keyboard game's; pass
+    lower_clamp_for("touch") for touch limits."""
+    if limit_value <= lower_clamp + _CLAMP_TOLERANCE:
+        return f"at {lower_clamp} (lower clamp)"
     if limit_value >= upper_clamp - _CLAMP_TOLERANCE:
         return f"at {upper_clamp} (upper clamp)"
-    bounds = _bucket_bounds(upper_clamp)
+    bounds = _bucket_bounds(upper_clamp, lower_clamp)
     for lower, upper in zip(bounds, bounds[1:], strict=False):
         if limit_value < upper:
             return f"{lower} to under {upper}"
     raise AssertionError("unreachable: limit_value is under upper_clamp")
 
 
-def limit_bucket_labels(upper_clamp: float) -> list[str]:
+def limit_bucket_labels(upper_clamp: float, lower_clamp: float = GAME_MIN_THRESHOLD) -> list[str]:
     """Every bucket limit_bucket can return, lowest first."""
-    bounds = _bucket_bounds(upper_clamp)
+    bounds = _bucket_bounds(upper_clamp, lower_clamp)
     middle = [f"{a} to under {b}" for a, b in zip(bounds, bounds[1:], strict=False)]
     return [
-        f"at {GAME_MIN_THRESHOLD} (lower clamp)",
+        f"at {lower_clamp} (lower clamp)",
         *middle,
         f"at {upper_clamp} (upper clamp)",
     ]
@@ -322,14 +389,16 @@ def limit_distributions(
     hidden: list[HiddenGroup] | None = None,
     *,
     upper_clamp: float = GAME_MAX_THRESHOLD,
+    lower_clamp: float = GAME_MIN_THRESHOLD,
 ) -> list[LimitDistribution]:
     """The limits actually in effect (each row's own limit_value),
     one distribution per target_kind: real players' limits come from
     their own enrollment, bots' and the permanent target's from fixed
     data, so they aren't one population. A target_kind with fewer than
     MIN_GROUP_SIZE attempts is hidden (and reported through `hidden`,
-    if given). rows should share one scoring_version, and upper_clamp
-    be that version's (upper_clamp_for)."""
+    if given). rows should be one ReportGroup's: one device type,
+    whose lower clamp is lower_clamp (lower_clamp_for), and versions
+    that share upper_clamp (upper_clamp_for)."""
     by_kind: dict[str, list[Row]] = defaultdict(list)
     for r in rows:
         by_kind[r.target_kind].append(r)
@@ -341,7 +410,7 @@ def limit_distributions(
                 hidden.append(HiddenGroup(f"target_kind={kind}", len(group)))
             continue
         limits = [limit for _, limit in sorted({(r.target_id, r.limit_value) for r in group})]
-        counts = Counter(limit_bucket(v, upper_clamp) for v in limits)
+        counts = Counter(limit_bucket(v, upper_clamp, lower_clamp) for v in limits)
         out.append(
             LimitDistribution(
                 target_kind=kind,
@@ -350,7 +419,9 @@ def limit_distributions(
                 minimum=min(limits),
                 median=statistics.median(limits),
                 maximum=max(limits),
-                buckets={label: counts[label] for label in limit_bucket_labels(upper_clamp)},
+                buckets={
+                    label: counts[label] for label in limit_bucket_labels(upper_clamp, lower_clamp)
+                },
             )
         )
     return out
@@ -545,14 +616,22 @@ def _print_table(
 
 
 def analyze(rows: list[Row]) -> None:
-    for version in distinct_scoring_versions(rows):
-        version_rows = [r for r in rows if r.scoring_version == version]
-        header = f"scoring_version {version} -- {len(version_rows)} attempt(s)"
+    for group in report_groups(rows):
+        version_rows = group.rows
+        header = f"{group.label} -- {len(version_rows)} attempt(s)"
         print(f"\n{'=' * 60}\n{header}\n{'=' * 60}")
+
+        # Equivalent versions were calibrated under the same clamps,
+        # or they wouldn't be equivalent.
+        upper_clamps = {upper_clamp_for(v) for v in group.versions}
+        assert len(upper_clamps) == 1, f"{group.label} mixes upper clamps {upper_clamps}"
 
         hidden: list[HiddenGroup] = []
         distributions = limit_distributions(
-            version_rows, hidden, upper_clamp=upper_clamp_for(version)
+            version_rows,
+            hidden,
+            upper_clamp=upper_clamps.pop(),
+            lower_clamp=lower_clamp_for(group.device_type),
         )
         _print_table(
             "Limits actually given (each attempt's own limit_value, counted once per target)",
@@ -606,20 +685,6 @@ def analyze(rows: list[Row]) -> None:
         )
 
         hidden = []
-        device_table: list[list[str]] = []
-        for limit in CANDIDATE_LIMITS:
-            for rr in rates_by_group(
-                version_rows, limit, lambda r: r.device_type, "device_type", hidden
-            ):
-                device_table.append([rr.label, rr.kind, str(rr.n), f"{rr.rate:.3f}"])
-        _print_table(
-            "False rejection / false acceptance by device_type",
-            ["group, limit", "kind", "n", "rate"],
-            device_table,
-            hidden,
-        )
-
-        hidden = []
         pace_table: list[list[str]] = []
         for limit in CANDIDATE_LIMITS:
             for rr in rates_by_group(
@@ -669,7 +734,7 @@ def analyze(rows: list[Row]) -> None:
 
         hidden = []
         _print_table(
-            "Rhythm and Place by device_type, then mode and same keyboard (or phone) vs different",
+            "Rhythm and Place by mode, and same keyboard (or phone) vs different",
             ["device_type", "mode", "keyboard", "dimension", "n", "mean", "median"],
             [
                 [

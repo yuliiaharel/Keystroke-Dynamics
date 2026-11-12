@@ -11,6 +11,7 @@ import datetime
 import pytest
 
 from evaluation.analyze_scores import (
+    EQUIVALENT_KEYBOARD_VERSIONS,
     MIN_GROUP_SIZE,
     HiddenGroup,
     Row,
@@ -25,9 +26,11 @@ from evaluation.analyze_scores import (
     limit_bucket,
     limit_bucket_labels,
     limit_distributions,
+    lower_clamp_for,
     pace_bucket,
     pass_rates_at_own_limit,
     rates_by_group,
+    report_groups,
     rhythm_and_place_by_group,
     rhythm_vs_place,
     upper_clamp_for,
@@ -574,7 +577,7 @@ def test_analyze_prints_rhythm_and_place_for_touch_rows(
     ]
     analyze(rows)
     out = capsys.readouterr().out
-    assert "Rhythm and Place by device_type" in out
+    assert "Rhythm and Place by mode" in out
     assert "touch       | attack | different | place     | 5 | 3.000 | 3.000" in out
     assert "touch       | attack | same      | rhythm    | 5 | 1.000 | 1.000" in out
     # Judged on the total: at a limit of 1.3, the five 0.8s pass and
@@ -591,3 +594,151 @@ def test_keyboard_rates_are_unchanged_by_a_total_column() -> None:
             with_total, limit
         )
     assert pass_rates_at_own_limit(without) == pass_rates_at_own_limit(with_total)
+
+
+# ---------- equivalent scoring versions ----------
+
+
+def test_versions_2_and_3_are_the_only_equivalent_keyboard_versions() -> None:
+    # Pinned: a version must be added here deliberately, never by a
+    # rule like "everything after 2".
+    assert EQUIVALENT_KEYBOARD_VERSIONS == [("2", "3")]
+
+
+def test_keyboard_rows_at_versions_2_and_3_are_one_group() -> None:
+    rows = (
+        [_row(scoring_version="2", typist_id="a") for _ in range(3)]
+        + [_row(scoring_version="3", typist_id="b") for _ in range(2)]
+        + [_row(scoring_version="1", typist_id="c")]
+    )
+    groups = report_groups(rows)
+    assert [(g.device_type, g.versions, len(g.rows)) for g in groups] == [
+        ("keyboard", ("1",), 1),
+        ("keyboard", ("2", "3"), 5),
+    ]
+    assert groups[1].label == "device_type keyboard, scoring_versions 2 + 3"
+    assert groups[0].label == "device_type keyboard, scoring_version 1"
+
+
+def test_a_group_names_only_the_versions_it_actually_has() -> None:
+    (group,) = report_groups([_row(scoring_version="2")])
+    assert group.versions == ("2",)
+    assert group.label == "device_type keyboard, scoring_version 2"
+
+
+def test_touch_rows_are_never_grouped_with_keyboard_rows_or_across_versions() -> None:
+    rows = [
+        _row(scoring_version="3"),
+        _touch(scoring_version="3"),
+        _touch(scoring_version="4"),
+        _row(scoring_version="4"),
+        # "2" touch rows can't exist, but if one did it would not ride
+        # the keyboard equivalence.
+        _touch(scoring_version="2"),
+    ]
+    assert [(g.device_type, g.versions) for g in report_groups(rows)] == [
+        ("keyboard", ("3",)),
+        ("keyboard", ("4",)),
+        ("touch", ("2",)),
+        ("touch", ("3",)),
+        ("touch", ("4",)),
+    ]
+
+
+def test_a_version_outside_the_list_stays_on_its_own() -> None:
+    rows = [_row(scoring_version="3"), _row(scoring_version="4"), _row(scoring_version="1")]
+    assert [g.versions for g in report_groups(rows)] == [("1",), ("3",), ("4",)]
+
+
+def test_analyze_reports_keyboard_versions_2_and_3_together(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # 3 attacks at "2" and 2 at "3": neither version alone reaches the
+    # minimum group size, together they do.
+    rows = [_row(scoring_version="2", mode="attack", rhythm=1.0) for _ in range(3)] + [
+        _row(scoring_version="3", mode="attack", rhythm=3.0) for _ in range(2)
+    ]
+    analyze(rows)
+    out = capsys.readouterr().out
+    assert out.count("device_type keyboard, scoring_versions 2 + 3 -- 5 attempt(s)") == 1
+    assert "scoring_version 2 --" not in out and "scoring_version 3 --" not in out
+    assert "limit 1.3 | false accept | 5 | 0.600" in out
+    assert "hidden:" not in out.split("### False rejection / false acceptance by pace")[0]
+
+
+def test_analyze_keeps_version_1_and_touch_rows_under_their_own_headings(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = (
+        [_row(scoring_version="1") for _ in range(5)]
+        + [_row(scoring_version="3") for _ in range(5)]
+        + [_touch() for _ in range(5)]
+    )
+    analyze(rows)
+    out = capsys.readouterr().out
+    assert "device_type keyboard, scoring_version 1 -- 5 attempt(s)" in out
+    assert "device_type keyboard, scoring_version 3 -- 5 attempt(s)" in out
+    assert "device_type touch, scoring_version 3 -- 5 attempt(s)" in out
+
+
+# ---------- the lower clamp by device type ----------
+
+
+def test_lower_clamp_for_each_device_type() -> None:
+    assert lower_clamp_for("keyboard") == GAME_MIN_THRESHOLD == 1.3
+    assert lower_clamp_for("touch") == 1.65
+
+
+@pytest.mark.parametrize(
+    ("limit_value", "expected"),
+    [
+        (1.65, "at 1.65 (lower clamp)"),
+        (1.66, "1.65 to under 2.0"),
+        (1.99, "1.65 to under 2.0"),
+        (2.0, "at 2.0 (upper clamp)"),
+    ],
+)
+def test_touch_limits_are_bucketed_from_1_65(limit_value: float, expected: str) -> None:
+    assert limit_bucket(limit_value, 2.0, lower_clamp_for("touch")) == expected
+    assert limit_bucket_labels(2.0, lower_clamp_for("touch")) == [
+        "at 1.65 (lower clamp)",
+        "1.65 to under 2.0",
+        "at 2.0 (upper clamp)",
+    ]
+
+
+def test_a_keyboard_limit_of_1_65_is_not_a_clamp() -> None:
+    assert limit_bucket(1.65, 2.0) == "1.3 to under 2.0"
+    assert limit_bucket(1.65, 2.0, lower_clamp_for("keyboard")) == "1.3 to under 2.0"
+
+
+def test_limit_distribution_uses_the_lower_clamp_it_is_given() -> None:
+    rows = [
+        _touch(target_id=f"t{i}", limit_value=limit)
+        for i, limit in enumerate([1.65, 1.65, 1.8, 2.0, 2.0])
+    ]
+    (distribution,) = limit_distributions(rows, upper_clamp=2.0, lower_clamp=1.65)
+    assert distribution.buckets == {
+        "at 1.65 (lower clamp)": 2,
+        "1.65 to under 2.0": 1,
+        "at 2.0 (upper clamp)": 2,
+    }
+
+
+def test_analyze_labels_each_device_types_own_lower_clamp(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [
+        _touch(target_id=f"t{i}", limit_value=limit)
+        for i, limit in enumerate([1.65, 1.65, 1.65, 1.8, 2.0])
+    ] + [
+        _row(scoring_version="3", target_id=f"k{i}", limit_value=limit)
+        for i, limit in enumerate([1.3, 1.3, 1.65, 1.65, 2.0])
+    ]
+    analyze(rows)
+    out = capsys.readouterr().out
+    keyboard, touch = out.split("device_type touch, scoring_version 3")
+    assert "player      | at 1.65 (lower clamp) | 3       | 0.600" in touch
+    assert "1.3" not in touch.split("### Real pass rate")[0]
+    assert "player      | at 1.3 (lower clamp) | 2       | 0.400" in keyboard
+    assert "1.65 (lower clamp)" not in keyboard
