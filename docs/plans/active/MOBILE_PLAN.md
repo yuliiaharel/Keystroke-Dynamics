@@ -1,6 +1,6 @@
 # Typing Twin Party: Mobile Plan
 
-> **Status: Active.** Phase 0's capture test page is built on the `mobile` branch. Real-device results are still to come.
+> **Status: Active.** Phase 0's capture test page is built on the `mobile` branch. Real-device results are still to come. Revised on 2026-11-12 for shareable rooms, which are now live.
 
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
@@ -8,31 +8,32 @@ Repository: `yuliiaharel/Keystroke-Dynamics`
 
 Make Typing Twin Party fully playable on a phone at the same URL, with no App Store app.
 
-A group can pass one phone around, build signatures from their tap rhythm and where their thumbs land, and attack each other. A visitor from LinkedIn can start playing right away on their phone.
-
-## Status: Draft
-
-Review the open decisions below before starting.
+A group can pass one phone around, or share a room link and play from their own phones. They build signatures from their tap rhythm and where their thumbs land, and attack each other. A visitor from LinkedIn can start playing right away on their phone.
 
 ## Starting point
 
-This was checked against `master` at commit `5bb3ac1`, after the desktop launch.
+This was checked against `master` at commit `e7cc59e`, after the rooms launch.
 
 **Already live and reused here:**
 - The party game, with anonymous players, attacks, replay, scores, and a single "Start a party" flow on the sentence line
+- Shareable rooms: a link per room, member browsers, a host, player ownership, live updates by event stream or polling, and `same_keyboard` on attempts and stored scores
+- `Member.device_type`, which exists but always holds `keyboard`
+- Game scoring at `SCORING_VERSION = "2"`, with each player's limit clamped between 1.3 and 2.0
 - Pace and a one-line clue on every result
 - Automatic score collection in `score_attempts`, which already has `device_type`, `rhythm`, and `place` columns
 - `design/typing-twin-touch.html`, the approved phone design
 - `CLAUDE.md`, with the standing rules for Claude Code
+- Phase 0's capture test page, on the `mobile` branch. That branch is still based on `5bb3ac1` and conflicts with `master`
 
 **What mobile has to change:**
 
 | Area | Today | Needed |
 |---|---|---|
-| Phones | Shown "Best on a computer" and limited to looking around | The full touch game |
+| Phones | Shown "Best on a computer" or "Join from a computer to play" in four places in `party.ts`, and limited to watching | The full touch game |
+| Rooms | Every room and member is `keyboard` | Each room has one device type. The other kind of device can watch |
 | Scoring | Rhythm only. `place` is never filled | Rhythm and Place, scored separately |
 | Clue | Names pace and rhythm only | Also names tap position when it's the giveaway |
-| `score_attempts` constraints | `line_id` allows only `word`, `sentence`, and `long`. `mode` doesn't allow `grip` | A migration that allows the touch line and `grip` |
+| `score_attempts` constraints | `line_id` allows only `word`, `sentence`, and `long`. `mode` doesn't allow `grip` | A migration, following `7c2e9a4f1b3d`, that allows the touch line and `grip` |
 
 ## How to use this plan
 
@@ -43,9 +44,9 @@ This was checked against `master` at commit `5bb3ac1`, after the desktop launch.
 
 1. Follow `CLAUDE.md`. Read this file and `design/typing-twin-touch.html` first, and read `docs/plans/done/PARTY_LAUNCH_PLAN.md` only where this plan points to it.
 2. Do only the requested phase.
-3. Work on the `mobile` branch, branched from the latest `master`. Make small commits, and push the branch. Never push to or merge into `master`, because that deploys.
+3. Work on the `mobile` branch. Before Phase 1, merge the latest `master` into it, resolve the conflicts, and confirm Phase 0's tests still pass. Make small commits, and push the branch. Never push to or merge into `master`, because that deploys.
 4. Check `git status`, branches, and stashes first, and never discard my work.
-5. Desktop results must not change. Do not change the defaults or behavior of `core/` for existing callers, or the keyboard game's scoring.
+5. Desktop results must not change. Do not change the defaults or behavior of `core/` for existing callers, the keyboard game's scoring, or how keyboard rooms work.
 6. Write tests with each behavior change, and do not weaken a test or limit to get a pass.
 7. Run every check under "Done when" and show the actual results. Say clearly what could only be emulated, and what still needs a real phone.
 8. If the code contradicts this plan, stop and ask me.
@@ -60,23 +61,25 @@ This was checked against `master` at commit `5bb3ac1`, after the desktop launch.
 | Game line | A short touch-specific line: `tap the rhythm of your thumbs` |
 | Scores | Rhythm and Place shown separately, with pace as a separate clue |
 | Device separation | Phone and physical keyboard signatures are never compared |
-| Play style | Pass one phone around. Online rooms remain a separate project |
+| Play style | Pass one phone around, or share the room link with other phones |
+| Rooms | One device type per room, set by the creator's device. Someone on the other kind of device can open the link and watch, but not play |
 | Evidence | Presented as a game. The 9.1% benchmark doesn't apply to touch |
 
 ### Out of scope for now
 
-Do not add a native app, motion sensors, contact size or pressure, a tap-a-rhythm mode, scoring across device types, online play, or accounts.
+Do not add a native app, motion sensors, contact size or pressure, a tap-a-rhythm mode, scoring across device types, mixed rooms where phones and computers both play, or accounts.
 
 ## Open decisions
 
 My recommendation comes first. Claude Code should use these unless I change them.
 
 1. **Which level comes first?** One touch line. Add others only if the first test shows they're needed.
-2. **What happens with a touchscreen laptop?** Use the physical keyboard by default, and offer a clear "Use on-screen keyboard" switch before a party starts.
+2. **What happens with a touchscreen laptop?** Use the physical keyboard by default, and offer a clear "Use on-screen keyboard" switch before starting a room, or when opening a touch room's link.
 3. **What about mouse clicks on the touch keyboard?** Reject them outside debug mode, since mouse data isn't a touch signature.
 4. **Should grip tests be saved in shared scores?** Yes, as their own mode, with no extra detail about the grip.
 5. **Should screen size be recorded?** Save only a broad size bucket, because key size can affect results. Keep it out if you'd rather minimize data.
-6. **Which minimum limit should touch use?** Start at 1.65, a provisional value from one small phone test, and retest it in Phase 4.
+6. **Which limits should touch use?** Start with a minimum of 1.65, a provisional value from one small phone test, and the keyboard game's maximum of 2.0. Retest both in Phase 4.
+7. **Can one phone attack a player on another phone?** Yes, labeled "different phone" on results and in scores, as keyboards are. Phone models differ in key size, so Phase 4 compares these attacks with same-phone ones.
 
 ---
 
@@ -117,9 +120,12 @@ Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 0 only. Check the star
 
 ### 1. Device type
 
-- Add `device_type` (`keyboard` or `touch`) to a party when it's created, and expose it in party state.
+- Add `device_type` (`keyboard` or `touch`) to a room when it's created, from the creator's device, and expose it in room state.
+- Set each member's `device_type` when they join, from what their browser reports. The field already exists on `Member`.
+- A member whose device type differs from the room's is a watcher. They can read the room, receive live updates, and run a replay, as phones can today. They can't enroll, rename, or type, and they count toward the room's member limit.
 - Every player, attempt, sample target, and permanent target belongs to one device type.
-- Reject an attempt or target that doesn't match the party's type, with a clear error, and test it.
+- Reject an enrollment, attempt, or target that doesn't match the room's type, with a clear error, and test it.
+- Keep the rooms plan's ownership, host, and limit rules unchanged for touch rooms. For touch, `same_keyboard` means the same phone.
 
 ### 2. Touch event format
 
@@ -134,11 +140,11 @@ class TapEvent:
     dy: float | None   # Down events only, in letter-key heights from the center
 ```
 
-Reject non-finite values, offsets beyond a sensible limit, a position on an `up` event, and oversized samples. Reuse the existing timing validation and pairing logic. Accept `dx` and `dy` only in touch parties.
+Reject non-finite values, offsets beyond a sensible limit, a position on an `up` event, and oversized samples. Reuse the existing timing validation and pairing logic. Accept `dx` and `dy` only in touch rooms.
 
 ### 3. Touch line
 
-Add a `touch` level for the line `tap the rhythm of your thumbs`, with 5 rounds including the warm-up. Keep the keyboard levels unchanged. Use only letters and spaces, and allow this level only in touch parties, with a clear 400 error otherwise.
+Add a `touch` level for the line `tap the rhythm of your thumbs`, with 5 rounds including the warm-up. Keep the keyboard levels unchanged. Use only letters and spaces. A touch room always uses this level, and a keyboard room never does, with a clear 400 error otherwise.
 
 ### 4. Place features
 
@@ -156,7 +162,7 @@ Position values aren't milliseconds, so don't push them through the timing floor
 - applies `max(sd, 12 ms, 12% of the mean)` to timing, and `max(sd, 0.08 key)` to position
 - returns `distance`, `rhythm`, `place`, `compared_features`, and the decision
 - calculates `distance` as the mean across all compared timing and position features
-- uses a touch minimum limit of 1.65, labeled as provisional game tuning
+- uses a touch minimum limit of 1.65 and the existing maximum of 2.0, both labeled as provisional game tuning
 - requires a minimum number of compared features suited to this line
 
 Add a golden test that confirms keyboard scores and limits are identical before and after this change.
@@ -166,17 +172,19 @@ Add a golden test that confirms keyboard scores and limits are identical before 
 - Add `rhythm`, `place`, and `pace` to touch attempt responses. Reuse any existing pace field.
 - Keep raw events in memory only for the request. Do not log them.
 - Do not store offsets in `score_attempts`. Store only scores, plus the `touch` device type and agreed fields.
-- Add a `grip` mode for score collection, if I keep that decision.
+- Add a `grip` mode for score collection, if I keep that decision. It's separate from the keyboard game's `disguise` mode, and has no pace rule.
 - Fill `rhythm` and `place` for touch rows. Keyboard rows keep `place` empty.
-- Add a new migration in `migrations_scores/` that widens the `line_id` check to allow `touch`, and the `mode` check to allow `grip`. Never edit the existing migration. The existing pre-deploy job applies it, so check that the migration role can alter the table, and document any manual step in `DEPLOY.md`.
-- Increase `SCORING_VERSION` for touch scoring, and keep the keyboard rows comparable across versions. Note in the code what changed.
-- Update `evaluation/analyze_scores.py` to report Rhythm and Place, split by `device_type`.
+- Fill `same_keyboard` for touch rows, by the same rule as keyboard rows.
+- Add a new migration in `migrations_scores/`, following `7c2e9a4f1b3d`, that widens the `line_id` check to allow `touch`, and the `mode` check to allow `grip`. Never edit an existing migration. The existing pre-deploy job applies it, so check that the migration role can alter the table, and document any manual step in `DEPLOY.md`.
+- Increase `SCORING_VERSION` to `"3"` for touch scoring, and keep the keyboard rows comparable across versions. Note in the code what changed.
+- Update `evaluation/analyze_scores.py` to report Rhythm and Place, split by `device_type` and then by `same_keyboard`.
 
 ### 7. Sharing the tap map
 
 The room shows each player's tap map, so a touch player's view needs an average and spread per key. This is a deliberate exception to "never send profile statistics":
 
-- Send only position averages and spreads, only inside that player's party.
+- Send only position averages and spreads, only to members of that player's room. That means anyone with the room link.
+- Send them only in the room state request, never in the event stream, which still carries only a version number.
 - Keep timing statistics private, as they are today.
 - Permanent and sample targets follow the same rule.
 
@@ -189,16 +197,22 @@ The room shows each player's tap map, so a touch player's view needs an average 
 **Done when**
 
 - Unit tests cover position features, each validation failure, floors, mixed scoring, insufficient data, and replay.
-- API tests cover touch parties, separation by device type, and access between sessions.
+- API tests cover:
+  - creating a touch room, and joining it from a second touch member
+  - a keyboard member watching a touch room, and a touch member watching a keyboard room, with enrollment and attempts rejected for both
+  - one touch member trying to rename, delete, or type as another's player
+  - `same_keyboard` on touch attempts and in stored scores
+  - tap maps appearing in room state for members only, and never in the event stream
+- All existing room tests pass unchanged.
 - The golden test confirms keyboard results are unchanged.
-- The new migration applies to a real Postgres copy of the current schema, existing rows survive, and touch and `grip` rows can be inserted.
+- The new migration applies to a real Postgres copy of the current schema, including `same_keyboard`, existing rows survive, and touch and `grip` rows can be inserted.
 - Tests confirm no offsets or raw events reach logs or stored scores.
 - Python tests, `ruff`, and `mypy` pass.
 
 **Prompt**
 
 ```text
-Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 1 only. Do not change the frontend yet. Run the Done when checks, show the keyboard golden test result and the migration test, list anything that needs my decision, push the branch, and stop.
+Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 1 only. First merge the latest master into the mobile branch and confirm Phase 0's tests still pass. Do not change the frontend yet. Run the Done when checks, show the keyboard golden test result and the migration test, list anything that needs my decision, push the branch, and stop.
 ```
 
 ---
@@ -209,7 +223,7 @@ Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 1 only. Do not change 
 
 ### 1. Split the frontend sensibly
 
-`frontend/src/pages/party.ts` is about 1,200 lines. Move only what this work needs into small modules, such as capture, keyboard, and tap map drawing. Do not rewrite the page or change the desktop look.
+`frontend/src/pages/party.ts` is about 1,600 lines. Capture, room, and live-update code already live in `capture.ts`, `room.ts`, and `live.ts`. Move only what this work needs into small modules, such as the touch keyboard and tap map drawing. Do not rewrite the page or change the desktop look.
 
 ### 2. Touch keyboard and capture
 
@@ -231,14 +245,26 @@ Port these from the mockup:
 - Room with Add a player, Attack, Test me, and New grip
 - Result with verdict, gauge, pace, Rhythm, Place, clue, giveaways, ring overlay, and tap map overlay
 - Scores with pace, Rhythm, and Place
-- Replay, Delete me, and New party
+- Replay, Delete me, and New room
 
 The clue must name the actual giveaway. Never say that everything fits on a failed attempt.
 
+The mockup predates rooms. For these, follow the live desktop room, fitted to phone width:
+
+- Room header with the code and **Copy link**
+- Joining from a room link, and the "Leave your current room and join this one?" confirmation
+- Host controls: lock, remove a player, and end the room
+- **Leave room**, and the ended-room page
+- **Who's typing** lists only this phone's own players, plus Guest
+- Each player card shows whether it's on this phone or another one, and attacks from another phone show a "different phone" note
+- New players, attacks, and scores appear live
+
 ### 4. Device detection
 
-- Phones get the touch party. Replace the "Best on a computer" notice with the actual game, keeping the single "Start a party" flow.
+- Phones get a touch room, keeping the single "Start a party" flow. Remove all four "Best on a computer" and "Join from a computer to play" notices from the normal phone path.
 - Computers keep the keyboard game unchanged, including the mobile path being off when a physical keyboard game is chosen.
+- A phone that opens a keyboard room's link watches, with the notice "This room is for computers" and a **Start your own room** action. A computer that opens a touch room's link gets the same, with "This room is for phones".
+- When a phone is locked or the browser goes to the background, the event stream drops. When the page is visible again, reconnect and fetch the room, and fall back to polling as today.
 - A touchscreen laptop follows open decision 2.
 - Portrait mode is required while typing. In landscape, pause and ask the player to rotate, because key shape changes tap positions.
 - If a line is interrupted by rotation, app switching, or a lost connection, restart it clearly and don't score partial data.
@@ -248,8 +274,8 @@ The clue must name the actual giveaway. Never say that everything fits on a fail
 Update the privacy text and How it works to say plainly:
 
 - Key identity, tap timing, and position within the key are sent to the server for scoring.
-- Raw taps are discarded after scoring. Average tap position and timing statistics stay in memory until the player deletes themselves, or the party expires or the app restarts.
-- Everyone in the party can see names, rings, and tap maps.
+- Raw taps are discarded after scoring. Average tap position and timing statistics stay in memory until the player deletes themselves, the room ends or expires, or the app restarts.
+- Everyone in the room, which means anyone with its link, can see names, rings, and tap maps.
 - Shared scores never include tap positions or timings.
 - Different grips and phones can change a signature, and this is a game, not security.
 
@@ -266,11 +292,18 @@ Update Open Graph text so it also fits phones.
 **Done when**
 
 - Playwright with emulated touch (`Input.dispatchTouchEvent`) plays a full game: two players, an attack, a self test, a grip test, a replay, a rename, a deletion, and scores.
+- Playwright with two emulated phones in separate browser contexts covers:
+  - creating a room, joining from its link, and enrolling a player on each phone
+  - attacking across phones, with the "different phone" label
+  - live updates on both phones, and catching up after one page was hidden
+  - one phone failing to rename or delete the other's player
+  - host lock, removal, and ending the room
+- Playwright covers a phone watching a keyboard room, and a computer watching a touch room, with no typing step in either.
 - Tests cover overlapping fingers, `pointercancel`, wrong keys, mouse rejection, and rotation.
 - Tests confirm that typed text isn't sent, no third-party request is made, and the page doesn't scroll sideways at 320, 390, and 430 px.
-- The desktop Playwright suite still passes unchanged.
+- The desktop and rooms Playwright suites still pass unchanged.
 - Frontend tests and the production build pass.
-- You provide screenshots at 390 px in light and dark themes.
+- You provide screenshots at 390 px in light and dark themes, including the room header, host controls, and both watcher notices.
 
 **Prompt**
 
@@ -292,9 +325,13 @@ Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 2 only. Keep the deskt
 - [ ] No zoom, page movement, selection, or long-press menu while tapping
 - [ ] The keyboard clears the home indicator and browser bars
 - [ ] Rotation, app switching, and a lost connection recover clearly
+- [ ] Two phones join one room by its link, and each sees the other's changes within a few seconds
+- [ ] A phone that was locked for a minute shows the current room when unlocked
+- [ ] A room link opens correctly from a messaging app and from LinkedIn's in-app browser
+- [ ] A phone opening a keyboard room's link, and a computer opening a touch room's link, can watch but not play
 - [ ] Low Power Mode doesn't noticeably change the results
 - [ ] Sound and haptics are optional, and absent ones cause no errors
-- [ ] The app stays within the 512 MiB memory limit during the existing load test, extended for touch parties
+- [ ] The app stays within the 512 MiB memory limit during the existing load test of 300 streams across 50 rooms, extended so that half the rooms are touch rooms with tap maps
 
 **Prompt**
 
@@ -315,7 +352,7 @@ Read docs/plans/active/MOBILE_PLAN.md. Here are my Phase 3 real-device results: 
 1. Enrollment
 2. 5 **Test me** attempts
 3. 2 **New grip** attempts
-4. 5 attacks on someone else, trying to match their pace (within 0.85x to 1.15x)
+4. 5 attacks on someone else, trying to match their pace (within 0.85x to 1.15x). Type at least 2 on the target's phone, and at least 2 from your own phone in the same room
 
 **Before looking at results,** decide what counts as good enough. As a starting point, which is my judgment and not a standard:
 
@@ -328,7 +365,8 @@ Read docs/plans/active/MOBILE_PLAN.md. Here are my Phase 3 real-device results: 
 - Use scores only, with `evaluation/analyze_scores.py`.
 - Compare self-tests, grip tests, and pace-matched attacks.
 - Compare Rhythm and Place.
-- Check how each result would change at limits from 1.3 to 2.5.
+- Compare attacks typed on the target's phone with attacks from another phone, using `same_keyboard`.
+- Check how each result would change at limits from 1.3 to 2.5. The current maximum is 2.0, so this also shows whether that cap suits touch.
 
 **Decide from the results:**
 
@@ -337,6 +375,7 @@ Read docs/plans/active/MOBILE_PLAN.md. Here are my Phase 3 real-device results: 
 | Clear separation | Keep going, and adjust the limit modestly |
 | Rhythm works, Place doesn't | Make Rhythm the main score, and keep Place as a visual |
 | Grip changes results heavily | Ask players to enroll with their usual grip, and say so more clearly |
+| Attacks from another phone score very differently | Say so on results, and consider counting only same-phone attacks in the scores |
 | Attacks often pass | Keep it as a party game, say so on the page, and don't tune to hide it |
 | Results are too mixed | Launch only as an experimental mode, or hold it back |
 
@@ -360,8 +399,11 @@ Read docs/plans/active/MOBILE_PLAN.md. Here are the Phase 4 field test scores: [
    - [ ] Touch attempts are stored with `device_type = touch`, with no positions or timings
    - [ ] **Delete me** removes test rows
    - [ ] Logs contain no tap data
-   - [ ] A phone and a computer can't attack each other's signatures
+   - [ ] Two phones at different locations join one room link and play a full round
+   - [ ] A phone in a keyboard room, and a computer in a touch room, can watch but not play
+   - [ ] Touch attempts from another phone store `same_keyboard = false`
    - [ ] `scripts/check_live_rate_limit.sh https://typingtwin.com` still passes
+   - [ ] `scripts/check_live_events.sh https://typingtwin.com` still passes
    - [ ] The link preview looks right on LinkedIn
 4. Update `README.md` and the post text to say that phones are supported and how the results should be read.
 
@@ -382,6 +424,6 @@ Read docs/plans/active/MOBILE_PLAN.md and carry out Phase 5 steps 1 and 4. Push 
 ## After launch
 
 - Compare real touch and keyboard results from saved scores
-- Private rooms that keep phones with phones
+- Mixed rooms, where phones and computers share a room and each attacks only its own kind
 - A tap-a-rhythm bonus round
 - A native iOS version, only if the web version shows real limits
