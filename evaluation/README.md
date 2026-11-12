@@ -83,8 +83,17 @@ new ones): the distribution of limits actually given (each attempt's own
 `limit_value`, counted once per target), the real pass rate at each
 attempt's own limit, false-reject/false-accept rates across a range of
 hypothetical limits, those same rates by `device_type` and by pace bucket,
-rhythm compared with place, attempts per player and per party, and flags for
-unusually bursty activity on one day. Any group with fewer than 5 attempts
+rhythm compared with place, Rhythm and Place split by `device_type` and then
+by mode and same or different keyboard (or phone), attempts per player and
+per party, and flags for unusually bursty activity on one day.
+
+A touch row is judged on its `total` (rhythm and place together), a keyboard
+row on its `rhythm`, which for a keyboard row is the same number. Versions
+"2" and "3" score keyboard rows identically (`"3"` only added touch rooms),
+so keyboard rows can be compared across the two, but the script still prints
+each version under its own heading. The limit tables don't yet know that
+touch limits start at 1.65 rather than 1.3: a touch limit at its lower clamp
+is counted in the lowest range, not labeled as a clamp. Any group with fewer than 5 attempts
 has its numbers hidden, never shown with a caveat; the table is followed by
 a `hidden:` line naming the group and its size, so a missing row is not
 mistaken for no data.

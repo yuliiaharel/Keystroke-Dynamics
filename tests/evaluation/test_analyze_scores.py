@@ -28,6 +28,7 @@ from evaluation.analyze_scores import (
     pace_bucket,
     pass_rates_at_own_limit,
     rates_by_group,
+    rhythm_and_place_by_group,
     rhythm_vs_place,
     upper_clamp_for,
 )
@@ -447,3 +448,146 @@ def test_analyze_buckets_version_2_limits_against_the_2_0_clamp(
     out = capsys.readouterr().out
     assert "player      | at 2.0 (upper clamp) | 3       | 0.600" in out
     assert "3.5" not in out.split("### Real pass rate")[0]
+
+
+# ---------- touch rows (docs/plans/active/MOBILE_PLAN.md Phase 1 section 6) ----------
+
+
+def _touch(**overrides: object) -> Row:
+    defaults: dict[str, object] = {
+        "scoring_version": "3",
+        "device_type": "touch",
+        "mode": "attack",
+        "rhythm": 1.0,
+        "place": 2.0,
+        "total": 1.4,
+        "same_keyboard": True,
+        "limit_value": 1.65,
+    }
+    defaults.update(overrides)
+    return _row(**defaults)
+
+
+def test_a_touch_row_is_judged_on_its_total_and_a_keyboard_row_on_its_rhythm() -> None:
+    assert _touch(rhythm=1.0, place=2.0, total=1.4).score == 1.4
+    assert _row(rhythm=1.0).score == 1.0
+    # A keyboard row's total is the same number as its rhythm in real
+    # data, and rhythm is what this script has always read for it.
+    assert _row(rhythm=1.0, total=1.0).score == 1.0
+    assert _touch(rhythm=None, place=None, total=None).score is None
+    # A hand-built touch row with no total falls back to its rhythm.
+    assert _row(device_type="touch", rhythm=1.2).score == 1.2
+
+
+def test_touch_false_accept_uses_the_total_not_the_rhythm() -> None:
+    # Rhythm 1.0 alone would pass a limit of 1.2; the total, 1.4, doesn't.
+    rows = [_touch(mode="attack") for _ in range(5)]
+    assert false_reject_and_accept_rates(rows, limit=1.2)[0].rate == 0.0
+    assert false_reject_and_accept_rates(rows, limit=1.4)[0].rate == 1.0
+
+
+def test_touch_pass_rate_at_own_limit_uses_the_total() -> None:
+    rows = [_touch(mode="self", total=t, limit_value=1.65) for t in (1.0, 1.65, 1.7, 2.0, 2.5)]
+    (rate,) = pass_rates_at_own_limit(rows)
+    assert (rate.mode, rate.n, rate.at_or_under) == ("self", 5, 2)
+
+
+def test_grip_tests_are_left_out_of_false_reject_and_listed_at_their_own_limit() -> None:
+    rows = [_touch(mode="grip", total=3.0) for _ in range(5)]
+    assert false_reject_and_accept_rates(rows, limit=1.65) == []
+    (rate,) = pass_rates_at_own_limit(rows)
+    assert (rate.mode, rate.rate) == ("grip", 0.0)
+
+
+def test_rhythm_and_place_are_split_by_device_type_then_same_keyboard() -> None:
+    rows = (
+        [_touch(same_keyboard=True, rhythm=1.0, place=0.5) for _ in range(5)]
+        + [_touch(same_keyboard=False, rhythm=2.0, place=3.0) for _ in range(5)]
+        + [
+            _row(mode="attack", scoring_version="3", same_keyboard=True, rhythm=1.5)
+            for _ in range(5)
+        ]
+        + [
+            _row(mode="attack", scoring_version="3", same_keyboard=False, rhythm=2.5)
+            for _ in range(5)
+        ]
+    )
+    summaries = {
+        (s.device_type, s.keyboard, s.dimension): (s.n, s.mean, s.median)
+        for s in rhythm_and_place_by_group(rows)
+    }
+    assert summaries == {
+        ("keyboard", "different", "rhythm"): (5, 2.5, 2.5),
+        ("keyboard", "same", "rhythm"): (5, 1.5, 1.5),
+        ("touch", "different", "rhythm"): (5, 2.0, 2.0),
+        ("touch", "different", "place"): (5, 3.0, 3.0),
+        ("touch", "same", "rhythm"): (5, 1.0, 1.0),
+        ("touch", "same", "place"): (5, 0.5, 0.5),
+    }
+
+
+def test_rhythm_and_place_groups_keep_modes_apart() -> None:
+    # A player's own self-tests and someone else's attack on the same
+    # phone are both "same", and must not be averaged together.
+    rows = [_touch(mode="self", rhythm=0.5, place=0.5) for _ in range(5)] + [
+        _touch(mode="attack", rhythm=2.5, place=2.5) for _ in range(5)
+    ]
+    means = {(s.mode, s.dimension): s.mean for s in rhythm_and_place_by_group(rows)}
+    assert means == {
+        ("self", "rhythm"): 0.5,
+        ("self", "place"): 0.5,
+        ("attack", "rhythm"): 2.5,
+        ("attack", "place"): 2.5,
+    }
+
+
+def test_rhythm_and_place_median_and_mean_are_of_the_groups_own_values() -> None:
+    rows = [
+        _touch(rhythm=r, place=p) for r, p in zip([1, 2, 3, 4, 10], [0, 0, 1, 1, 8], strict=True)
+    ]
+    by_dimension = {s.dimension: s for s in rhythm_and_place_by_group(rows)}
+    assert (by_dimension["rhythm"].mean, by_dimension["rhythm"].median) == (4.0, 3)
+    assert (by_dimension["place"].mean, by_dimension["place"].median) == (2.0, 1)
+
+
+def test_rhythm_and_place_hide_a_small_group_and_skip_what_has_no_values() -> None:
+    rows = [_touch(same_keyboard=False) for _ in range(MIN_GROUP_SIZE - 1)] + [
+        # Unusable: no scores at all, so it adds to neither dimension.
+        _touch(same_keyboard=False, rhythm=None, place=None, total=None),
+        *[_row(mode="attack", scoring_version="3") for _ in range(MIN_GROUP_SIZE)],
+    ]
+    hidden: list[HiddenGroup] = []
+    summaries = rhythm_and_place_by_group(rows, hidden)
+    # The keyboard group is shown for rhythm; it has no place to hide.
+    assert [(s.device_type, s.dimension) for s in summaries] == [("keyboard", "rhythm")]
+    assert hidden == [
+        HiddenGroup("device_type=touch, mode=attack, keyboard=different, rhythm", 4),
+        HiddenGroup("device_type=touch, mode=attack, keyboard=different, place", 4),
+    ]
+
+
+def test_analyze_prints_rhythm_and_place_for_touch_rows(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [_touch(same_keyboard=True, rhythm=1.0, place=0.5, total=0.8) for _ in range(5)] + [
+        _touch(same_keyboard=False, rhythm=2.0, place=3.0, total=2.3) for _ in range(5)
+    ]
+    analyze(rows)
+    out = capsys.readouterr().out
+    assert "Rhythm and Place by device_type" in out
+    assert "touch       | attack | different | place     | 5 | 3.000 | 3.000" in out
+    assert "touch       | attack | same      | rhythm    | 5 | 1.000 | 1.000" in out
+    # Judged on the total: at a limit of 1.3, the five 0.8s pass and
+    # the five 2.3s don't.
+    assert "limit 1.3 | false accept | 10 | 0.500" in out
+
+
+def test_keyboard_rates_are_unchanged_by_a_total_column() -> None:
+    # Same rows with and without a total: identical rates either way.
+    without = [_row(mode="attack", rhythm=r) for r in (0.5, 0.9, 1.0, 1.1, 1.5)]
+    with_total = [_row(mode="attack", rhythm=r, total=r) for r in (0.5, 0.9, 1.0, 1.1, 1.5)]
+    for limit in (0.9, 1.0, 1.3):
+        assert false_reject_and_accept_rates(without, limit) == false_reject_and_accept_rates(
+            with_total, limit
+        )
+    assert pass_rates_at_own_limit(without) == pass_rates_at_own_limit(with_total)

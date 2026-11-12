@@ -12,6 +12,7 @@ from evaluation.analyze_scores import (
     attack_rates_by_keyboard,
     false_reject_and_accept_rates,
     fetch_rows,
+    rhythm_and_place_by_group,
 )
 from keystroke_dynamics.scores.writer import _write_batch
 from tests.scores.conftest import SCORES_TEST_DATABASE_URL
@@ -79,3 +80,35 @@ def test_fetch_rows_carries_same_keyboard_into_the_keyboard_split(scores_db_sess
 
     rates = {r.label: r.rate for r in attack_rates_by_keyboard(fetched, limit=1.0)}
     assert rates == {"keyboard=same, limit 1.0": 1.0, "keyboard=different, limit 1.0": 0.0}
+
+
+def test_fetch_rows_carries_touch_scores_into_the_rhythm_and_place_split(scores_db_session) -> None:
+    version = "analyze-touch"
+    touch = {"device_type": "touch", "line_id": "touch", "mode": "attack"}
+    rows = [
+        _values(
+            scoring_version=version, **touch, rhythm=1.0, place=0.5, total=0.8, same_keyboard=True
+        )
+        for _ in range(5)
+    ] + [
+        _values(
+            scoring_version=version, **touch, rhythm=2.0, place=3.0, total=2.3, same_keyboard=False
+        )
+        for _ in range(5)
+    ]
+    _write_batch(rows, [])
+
+    fetched = [r for r in fetch_rows(SCORES_TEST_DATABASE_URL) if r.scoring_version == version]
+    assert len(fetched) == 10
+    assert {r.total for r in fetched} == {0.8, 2.3}
+
+    means = {(s.keyboard, s.dimension): s.mean for s in rhythm_and_place_by_group(fetched)}
+    assert means == {
+        ("same", "rhythm"): 1.0,
+        ("same", "place"): 0.5,
+        ("different", "rhythm"): 2.0,
+        ("different", "place"): 3.0,
+    }
+    # Judged on total: 0.8 passes a limit of 1.3, 2.3 doesn't.
+    (far,) = false_reject_and_accept_rates(fetched, limit=1.3)
+    assert far.rate == 0.5

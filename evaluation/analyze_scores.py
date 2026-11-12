@@ -81,8 +81,25 @@ class Row:
     #: time it was played.
     limit_value: float
     #: None for rows recorded before rooms existed, and wherever the
-    #: question doesn't apply (scores/models.py).
+    #: question doesn't apply (scores/models.py). For a touch row,
+    #: "keyboard" means the phone.
     same_keyboard: bool | None = None
+    #: The distance the limit was applied to. For a keyboard row it
+    #: is the same number as rhythm; for a touch row it is the mean
+    #: over rhythm and place features together.
+    total: float | None = None
+
+    @property
+    def score(self) -> float | None:
+        """What this attempt was judged on: total for a touch row,
+        rhythm for a keyboard row (where the two are the same number
+        by construction, and rhythm is what this script has always
+        read). A stored touch row has both or neither; the fallback
+        to rhythm only matters for a Row built by hand without a
+        total."""
+        if self.device_type == "touch" and self.total is not None:
+            return self.total
+        return self.rhythm
 
 
 def _row_from_orm(r: ScoreAttempt) -> Row:
@@ -101,6 +118,7 @@ def _row_from_orm(r: ScoreAttempt) -> Row:
         target_id=r.target_id,
         limit_value=r.limit_value,
         same_keyboard=r.same_keyboard,
+        total=r.total,
     )
 
 
@@ -160,20 +178,22 @@ def false_reject_and_accept_rates(
     """Re-derives, at a hypothetical limit (never the limit actually
     in effect when the row was recorded -- see
     pass_rates_at_own_limit for that), what each self/attack row's
-    outcome would have been: rhythm <= limit. disguise/replay rows
-    measure a different question (fooling your own detector; a
-    recording) and are left out of FAR/FRR.
+    outcome would have been: score <= limit (Row.score: a touch row's
+    total, a keyboard row's rhythm). disguise/replay rows measure a
+    different question (fooling your own detector; a recording) and
+    are left out of FAR/FRR, as are touch grip tests (your own line,
+    held differently on purpose).
 
     hidden: if given, a HiddenGroup is appended for each of the two
     modes that has attempts but fewer than MIN_GROUP_SIZE of them. A
     mode with no attempts at all isn't hidden -- there is nothing to
     hide -- and adds nothing.
     """
-    # rhythm_values pairs each usable row with its rhythm already
+    # rhythm_values pairs each usable row with its score already
     # narrowed to float (not float | None) -- mypy can't carry that
-    # narrowing through a plain `r.rhythm is not None` filter alone
+    # narrowing through a plain `r.score is not None` filter alone
     # once self_rows/attack_rows are built from a second comprehension.
-    rhythm_values = [(r, r.rhythm) for r in rows if r.rhythm is not None]
+    rhythm_values = [(r, score) for r in rows if (score := r.score) is not None]
     self_rows = [(r, v) for r, v in rhythm_values if r.mode == "self"]
     attack_rows = [(r, v) for r, v in rhythm_values if r.mode == "attack"]
 
@@ -339,7 +359,7 @@ def limit_distributions(
 @dataclass(frozen=True)
 class OwnLimitRate:
     mode: str
-    #: Scorable attempts only (rhythm is not None).
+    #: Scorable attempts only (score is not None).
     n: int
     at_or_under: int
     rate: float
@@ -350,18 +370,18 @@ def pass_rates_at_own_limit(
 ) -> list[OwnLimitRate]:
     """What actually happened, as opposed to
     false_reject_and_accept_rates' hypothetical limits: per mode, the
-    share of scorable attempts whose rhythm was at or under the limit
-    in effect for that attempt (its own limit_value). For "attack"
-    that share is the observed false acceptance; for "self" it is one
-    minus the observed false rejection. "disguise" and "replay" are
-    listed too, but ask a different question (see
+    share of scorable attempts whose score (Row.score) was at or under
+    the limit in effect for that attempt (its own limit_value). For
+    "attack" that share is the observed false acceptance; for "self"
+    it is one minus the observed false rejection. "disguise", "grip",
+    and "replay" are listed too, but ask a different question (see
     false_reject_and_accept_rates). A mode with fewer than
     MIN_GROUP_SIZE scorable attempts is hidden (and reported through
     `hidden`, if given)."""
     by_mode: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for r in rows:
-        if r.rhythm is not None:
-            by_mode[r.mode].append((r.rhythm, r.limit_value))
+        if (score := r.score) is not None:
+            by_mode[r.mode].append((score, r.limit_value))
 
     out = []
     for mode, pairs in sorted(by_mode.items()):
@@ -375,11 +395,11 @@ def pass_rates_at_own_limit(
 
 
 def rhythm_vs_place(rows: list[Row]) -> dict[str, dict[str, float] | None]:
-    """Basic descriptive stats for each, independently -- not a
-    correlation (there's no row today with both a meaningful rhythm
-    and a meaningful place to correlate; place stays null until the
-    touch version exists -- see game/judge.py's _clue() docstring).
-    None for a dimension with fewer than MIN_GROUP_SIZE values."""
+    """Basic descriptive stats for each, independently and across
+    every row -- not a correlation. Only touch rows have a place, so
+    this mixes device types on the rhythm side; rhythm_and_place_by_group
+    is the like-for-like comparison. None for a dimension with fewer
+    than MIN_GROUP_SIZE values."""
 
     def stats(values: list[float]) -> dict[str, float] | None:
         if len(values) < MIN_GROUP_SIZE:
@@ -395,6 +415,70 @@ def rhythm_vs_place(rows: list[Row]) -> dict[str, dict[str, float] | None]:
     rhythms = [r.rhythm for r in rows if r.rhythm is not None]
     places = [r.place for r in rows if r.place is not None]
     return {"rhythm": stats(rhythms), "place": stats(places)}
+
+
+@dataclass(frozen=True)
+class ScoreSummary:
+    device_type: str
+    mode: str
+    #: keyboard_label(same_keyboard): "same", "different", or "not
+    #: recorded". For a touch row the keyboard is the phone.
+    keyboard: str
+    dimension: str  # "rhythm" or "place"
+    n: int
+    mean: float
+    median: float
+
+
+def rhythm_and_place_by_group(
+    rows: list[Row], hidden: list[HiddenGroup] | None = None
+) -> list[ScoreSummary]:
+    """Rhythm and Place, split by device_type and then by whether the
+    typist was on the target's own keyboard or phone
+    (docs/plans/active/MOBILE_PLAN.md Phase 1 section 6), within each
+    mode -- without the mode, "same" would put a player's own
+    self-tests and other people's same-phone attacks in one group.
+
+    A group's dimension with fewer than MIN_GROUP_SIZE values is
+    hidden (and reported through `hidden`, if given). A dimension with
+    no values at all -- every keyboard group's place -- isn't hidden:
+    there is nothing to hide.
+    """
+    groups: dict[tuple[str, str, str], list[Row]] = defaultdict(list)
+    for r in rows:
+        groups[(r.device_type, r.mode, keyboard_label(r.same_keyboard))].append(r)
+
+    out = []
+    for (device_type, mode, keyboard), group in sorted(groups.items()):
+        dimensions = {
+            "rhythm": sorted(r.rhythm for r in group if r.rhythm is not None),
+            "place": sorted(r.place for r in group if r.place is not None),
+        }
+        for dimension, values in dimensions.items():
+            if not values:
+                continue
+            if len(values) < MIN_GROUP_SIZE:
+                if hidden is not None:
+                    hidden.append(
+                        HiddenGroup(
+                            f"device_type={device_type}, mode={mode}, "
+                            f"keyboard={keyboard}, {dimension}",
+                            len(values),
+                        )
+                    )
+                continue
+            out.append(
+                ScoreSummary(
+                    device_type=device_type,
+                    mode=mode,
+                    keyboard=keyboard,
+                    dimension=dimension,
+                    n=len(values),
+                    mean=sum(values) / len(values),
+                    median=statistics.median(values),
+                )
+            )
+    return out
 
 
 @dataclass(frozen=True)
@@ -499,7 +583,7 @@ def analyze(rows: list[Row]) -> None:
 
         hidden = []
         _print_table(
-            "Real pass rate: rhythm at or under the attempt's own limit_value "
+            "Real pass rate: score at or under the attempt's own limit_value "
             "(attack = observed false acceptance; self = 1 - observed false rejection)",
             ["mode", "n", "at or under own limit", "rate"],
             [
@@ -556,7 +640,7 @@ def analyze(rows: list[Row]) -> None:
             for rr in attack_rates_by_keyboard(version_rows, limit, hidden):
                 keyboard_table.append([rr.label, rr.kind, str(rr.n), f"{rr.rate:.3f}"])
         _print_table(
-            "False acceptance of attacks on players, same keyboard vs different",
+            "False acceptance of attacks on players, same keyboard (or phone) vs different",
             ["group, limit", "kind", "n", "rate"],
             keyboard_table,
             hidden,
@@ -581,6 +665,25 @@ def analyze(rows: list[Row]) -> None:
                 for dim, s in rvp.items()
                 if s is None and rvp_counts[dim] > 0
             ],
+        )
+
+        hidden = []
+        _print_table(
+            "Rhythm and Place by device_type, then mode and same keyboard (or phone) vs different",
+            ["device_type", "mode", "keyboard", "dimension", "n", "mean", "median"],
+            [
+                [
+                    s.device_type,
+                    s.mode,
+                    s.keyboard,
+                    s.dimension,
+                    str(s.n),
+                    f"{s.mean:.3f}",
+                    f"{s.median:.3f}",
+                ]
+                for s in rhythm_and_place_by_group(version_rows, hidden)
+            ],
+            hidden,
         )
 
         counts = attempts_per_player_and_party(version_rows)
