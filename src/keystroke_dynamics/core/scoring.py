@@ -64,6 +64,17 @@ def _effective_std(stats: RunningStats, min_std_ms: float, min_std_ratio: float 
     return max(stats.std or 0.0, min_std_ms, min_std_ratio * stats.mean)
 
 
+def scaled_distance(
+    value: float, stats: RunningStats, *, min_std: float, min_std_ratio: float = 0.0
+) -> float:
+    """One feature's distance from its profile: abs(value - mean) over
+    the floored standard deviation. The single copy of the scaled
+    Manhattan formula -- scaled_manhattan_score below averages it over
+    timing features, and game/touch_scoring.py over tap positions too,
+    whose floor is in key widths rather than milliseconds."""
+    return abs(value - stats.mean) / _effective_std(stats, min_std, min_std_ratio)
+
+
 def scaled_manhattan_score(
     sample: list[Feature],
     profile: dict[FeatureKey, RunningStats],
@@ -89,8 +100,11 @@ def scaled_manhattan_score(
         stats = profile.get(feature.key)
         if stats is None or stats.count < min_feature_count:
             continue  # never treat a missing/undertrained feature as zero
-        std = _effective_std(stats, min_std_ms, min_std_ratio)
-        distances.append(abs(feature.value_ms - stats.mean) / std)
+        distances.append(
+            scaled_distance(
+                feature.value_ms, stats, min_std=min_std_ms, min_std_ratio=min_std_ratio
+            )
+        )
 
     if not distances or len(distances) < min_compared_features:
         return ScoreResult(
