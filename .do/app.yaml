@@ -62,6 +62,15 @@ services:
       - key: PUBLIC_BASE_URL
         value: "https://typing-twin-party-t9ilf.ondigitalocean.app"
         scope: RUN_TIME
+      # GoatCounter site code for visitor counting
+      # (docs/plans/active/ANALYTICS_PLAN.md) -- not a secret, it's in
+      # the page source. Remove it or set it to "" to turn analytics
+      # off. Like every value here, it only takes effect once it's
+      # also set in the control panel -- see DEPLOY.md's "Visitor
+      # counting".
+      - key: GOATCOUNTER_SITE_CODE
+        value: "yuliia"
+        scope: RUN_TIME
       # No value here, ever -- see config.py's own startup check,
       # which refuses to start without a real one outside debug mode.
       # Set this in the control panel (Settings -> the web component
@@ -71,9 +80,10 @@ services:
       - key: SESSION_SECRET
         type: SECRET
         scope: RUN_TIME
-      # PARTY_LAUNCH_PLAN.md section 10: optional -- empty/absent
-      # means score collection is off and the game works normally
-      # with no opt-in shown at all. When set, this is the app
+      # docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: optional -- empty/absent
+      # means score collection is off and the game works normally,
+      # saving nothing. When set, every attempt's score is saved
+      # automatically, and this is the app
       # database role's own connection string (INSERT/DELETE on
       # score_attempts only, plus column-level SELECT on the four
       # columns its own deletes filter by -- see DEPLOY.md's "Score
@@ -85,7 +95,7 @@ services:
         scope: RUN_TIME
 jobs:
   # Runs the score table's own migrations (never the account system's
-  # -- PARTY_LAUNCH_PLAN.md Part 2 item 1: "a pre-deploy step that
+  # -- docs/plans/done/PARTY_LAUNCH_PLAN.md Part 2 item 1: "a pre-deploy step that
   # runs only the score table migrations... with a separate database
   # role for migrations") before every deploy, using the same image
   # as the web service. Skips cleanly when SCORES_DATABASE_URL isn't

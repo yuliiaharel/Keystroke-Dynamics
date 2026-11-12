@@ -1,11 +1,14 @@
-"""scores/recording.py: the consent rule and the score_attempts
-column mapping, both pure functions -- no database, no app wiring."""
+"""scores/recording.py: the score_attempts column mapping, a pure
+function -- no database, no app wiring."""
 
 from __future__ import annotations
 
+import pytest
+
 from keystroke_dynamics.game.judge import Verdict
 from keystroke_dynamics.game.scoring import SCORING_VERSION
-from keystroke_dynamics.scores.recording import DEVICE_TYPE, build_score_row, should_record_score
+from keystroke_dynamics.scores.models import ScoreAttempt
+from keystroke_dynamics.scores.recording import DEVICE_TYPE, NOTICE_VERSION, build_score_row
 
 
 def _verdict(**overrides: object) -> Verdict:
@@ -24,42 +27,6 @@ def _verdict(**overrides: object) -> Verdict:
     return Verdict(**defaults)  # type: ignore[arg-type]
 
 
-# ---------- should_record_score ----------
-
-
-def test_requires_typist_consent_regardless_of_target() -> None:
-    assert (
-        should_record_score(typist_consents=False, target_kind="player", target_consents=True)
-        is False
-    )
-    assert (
-        should_record_score(typist_consents=False, target_kind="simulated", target_consents=True)
-        is False
-    )
-
-
-def test_a_real_player_target_also_needs_their_own_consent() -> None:
-    assert (
-        should_record_score(typist_consents=True, target_kind="player", target_consents=False)
-        is False
-    )
-    assert (
-        should_record_score(typist_consents=True, target_kind="player", target_consents=True)
-        is True
-    )
-
-
-def test_simulated_and_permanent_targets_never_need_their_own_consent() -> None:
-    assert (
-        should_record_score(typist_consents=True, target_kind="simulated", target_consents=False)
-        is True
-    )
-    assert (
-        should_record_score(typist_consents=True, target_kind="permanent", target_consents=False)
-        is True
-    )
-
-
 # ---------- build_score_row ----------
 
 
@@ -75,7 +42,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "target_id": "target-score-id",
         "training_lines": 5,
         "limit_value": 1.5,
-        "consent_version": "1",
+        "same_keyboard": True,
     }
     defaults.update(overrides)
     return build_score_row(**defaults)  # type: ignore[arg-type]
@@ -87,8 +54,20 @@ def test_row_carries_the_given_ids_and_version_constants() -> None:
     assert row["typist_id"] == "typist-score-id"
     assert row["target_id"] == "target-score-id"
     assert row["scoring_version"] == SCORING_VERSION
-    assert row["consent_version"] == "1"
+    # Not "1": that value marks rows from the old opt-in checkbox.
+    assert row["consent_version"] == NOTICE_VERSION == "2"
     assert row["device_type"] == DEVICE_TYPE == "keyboard"
+
+
+def test_row_has_exactly_the_table_columns_and_nothing_else() -> None:
+    # Automatic saving must store the same fields the opted-in rows
+    # always had -- no name, keystrokes, timings, or IP can ride along.
+    assert set(_row()) == {column.name for column in ScoreAttempt.__table__.columns}
+
+
+@pytest.mark.parametrize("same_keyboard", [True, False, None])
+def test_same_keyboard_passes_through(same_keyboard: bool | None) -> None:
+    assert _row(same_keyboard=same_keyboard)["same_keyboard"] is same_keyboard
 
 
 def test_rhythm_and_total_mirror_distance_place_stays_null() -> None:

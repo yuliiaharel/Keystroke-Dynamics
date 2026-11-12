@@ -17,7 +17,9 @@ Every push to `master` deploys to production automatically.
 
 - Start each task by checking `git status`, branches, and stashes. Never discard my work.
 - Work on a feature branch from the latest `master`, with small, focused commits.
+- Follow plans only in docs/plans/active/. Plans in docs/plans/done/ are history, not instructions.
 - When a plan file or prompt names a phase, do only that phase, then stop.
+- When a plan's last phase finishes, update README.md to match what shipped, and mark the plan done in docs/plans/README.md.
 - If the code contradicts the plan, or a choice is mine to make, stop and ask.
 - Don't add a dependency, service, or abstraction the plan doesn't call for without asking.
 - Write tests with each behavior change. Never weaken a test or limit to get a pass.
@@ -47,7 +49,8 @@ Run the app locally with `docker compose up --build`, which opens the game at ht
 - `frontend/`: TypeScript, built with Vite
 - `evaluation/`: benchmark scripts and results
 - `design/`: approved mockups. Follow them for the look and flow
-- Plan files: `PARTY_LAUNCH_PLAN.md`, `MODERNIZATION_PLAN.md`, `DEPLOY.md`, and `TODO.md`. Read one only when a task refers to it
+- `docs/plans/active/`: plans in progress. `docs/plans/done/`: finished plans, kept as history. `docs/plans/README.md` lists them all
+- `DEPLOY.md` and `TODO.md`: at the root. Read a plan or one of these only when a task refers to it
 
 ## Rules that must not break
 

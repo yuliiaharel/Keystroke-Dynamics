@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # The default stack: public mode, no Postgres. Must open Party
-      # at "/" -- see PARTY_LAUNCH_PLAN.md Part 1.
+      # at "/" -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1.
       - name: Build and start the default (public-mode) stack
         run: docker compose up --build -d --wait
 

@@ -5,7 +5,7 @@ routes.
 
 Split out of pages.py (which now holds only the always-mounted
 anonymous game page) so public mode never even defines these routes,
-per PARTY_LAUNCH_PLAN.md Part 1 section 1: "Do not mount the
+per docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 1: "Do not mount the
 registration, login, or profile routes, or the old account pages."
 """
 

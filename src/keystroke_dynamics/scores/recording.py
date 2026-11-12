@@ -1,6 +1,6 @@
-"""Turns one judged game attempt into a score_attempts row, or
-decides there's nothing to record -- PARTY_LAUNCH_PLAN.md section
-10's consent rule and column mapping. Pure and side-effect free:
+"""Turns one judged game attempt into a score_attempts row --
+docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's column mapping. Every attempt is
+recorded; there's no per-player choice. Pure and side-effect free:
 callers (api/game.py) own checking settings.scores_database_url is
 set at all, and actually enqueueing the result (scores/writer.py).
 """
@@ -29,21 +29,15 @@ ScoreTargetKind = Literal["player", "simulated", "permanent"]
 #: this launch) exists.
 DEVICE_TYPE = "keyboard"
 
-
-def should_record_score(
-    *, typist_consents: bool, target_kind: ScoreTargetKind, target_consents: bool
-) -> bool:
-    """ "Store an attempt only if the typist opted in, and the target
-    opted in or is simulated or permanent."
-
-    typist_consents is always True for a server-run replay (there's no
-    real typist to consent -- see api/game.py's create_replay); for
-    every other mode it's the real typist's own choice (a stored
-    Player.shares_scores, or a Guest's per-attack flag).
-    """
-    if not typist_consents:
-        return False
-    return target_consents if target_kind == "player" else True
+#: Written to score_attempts.consent_version on every row. The column
+#: keeps its original name (its migration is never edited), but it now
+#: records which wording of the site's score-saving notice
+#: (frontend/src/scores-memo.ts) was on screen, not a choice anyone
+#: made. "1" was the old opt-in checkbox: those rows came only from
+#: players who ticked it. "2" is automatic saving, so analysis can
+#: tell the self-selected rows from the rest. Bump it in the same
+#: change that materially edits the notice.
+NOTICE_VERSION = "2"
 
 
 def build_score_row(
@@ -58,7 +52,7 @@ def build_score_row(
     target_id: str,
     training_lines: int,
     limit_value: float,
-    consent_version: str,
+    same_keyboard: bool | None,
 ) -> dict[str, object]:
     """Builds the row dict scores/writer.py's InsertRow carries.
     party_id/typist_id/target_id must already be score_ids (random,
@@ -77,7 +71,7 @@ def build_score_row(
         "id": str(uuid.uuid4()),
         "created_on": datetime.date.today(),
         "scoring_version": SCORING_VERSION,
-        "consent_version": consent_version,
+        "consent_version": NOTICE_VERSION,
         "device_type": DEVICE_TYPE,
         "line_id": line_id,
         "mode": mode,
@@ -101,4 +95,8 @@ def build_score_row(
         "limit_value": limit_value,
         "pace": pace,
         "outcome": outcome,
+        # Whether typist and target share a room member (a keyboard)
+        # -- docs/plans/active/ROOMS_PLAN.md Phase 1 section 5. A plain
+        # true/false/null, not an id: it says nothing about who.
+        "same_keyboard": same_keyboard,
     }

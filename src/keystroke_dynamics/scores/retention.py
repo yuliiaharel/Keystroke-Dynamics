@@ -1,5 +1,5 @@
 """Daily background task that deletes score_attempts rows older than
-settings.scores_retention_days (PARTY_LAUNCH_PLAN.md section 10:
+settings.scores_retention_days (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10:
 "Delete rows older than a configurable retention period, default 12
 months, with a daily background task").
 """

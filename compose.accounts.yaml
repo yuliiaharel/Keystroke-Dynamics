@@ -5,7 +5,7 @@
 #   docker compose -f compose.yaml -f compose.accounts.yaml up --build
 #
 # Opens the account system's home page at http://localhost:8000/ and
-# the game at http://localhost:8000/party (see PARTY_LAUNCH_PLAN.md
+# the game at http://localhost:8000/party (see docs/plans/done/PARTY_LAUNCH_PLAN.md
 # Part 1 section 1 for why the game moves off "/" in this mode).
 services:
   db:

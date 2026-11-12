@@ -1,4 +1,4 @@
-"""POST /api/game/debug/record-target (PARTY_LAUNCH_PLAN.md Part 1
+"""POST /api/game/debug/record-target (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1
 section 7) must not exist at all outside debug mode -- not just
 reject the request. See _debug_false_subprocess.py for why this
 needs a fresh process rather than flipping a setting in-process."""

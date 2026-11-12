@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from keystroke_dynamics.api import game, pages
+from keystroke_dynamics.api.log_redaction import install_room_code_redaction
 from keystroke_dynamics.api.middleware import MaxBodySizeMiddleware
 from keystroke_dynamics.config import settings
 from keystroke_dynamics.scores.retention import retention_task
@@ -29,7 +30,7 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
     # Both are constructed unconditionally (scores/writer.py,
     # scores/retention.py) and touch no database until started --
     # only actually run when score collection is configured at all
-    # (PARTY_LAUNCH_PLAN.md section 10: off by default, the game
+    # (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: off by default, the game
     # works normally either way). .stop() makes a best-effort flush;
     # a crash (or SIGKILL, which skips this entirely) can still lose
     # queued rows, per the plan's own allowance.
@@ -45,6 +46,10 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="Keystroke Dynamics", lifespan=_lifespan)
+
+# uvicorn configures its loggers before it imports this module, so a
+# filter added here stays on for the life of the process.
+install_room_code_redaction()
 
 # No CORS middleware: the app is same-origin only (see
 # api/security.py:require_matching_origin for the explicit Origin

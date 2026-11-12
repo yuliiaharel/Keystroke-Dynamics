@@ -24,7 +24,7 @@ DISGUISE_PACE_TOLERANCE = 0.15
 def _clue(*, distance: float, threshold: float, pace: float) -> str:
     """One-line, honest diagnosis of why a result landed where it
     did -- design/typing-twin-touch.html's own result screen shows
-    this alongside pace, per PARTY_LAUNCH_PLAN.md section 8. Derived
+    this alongside pace, per docs/plans/done/PARTY_LAUNCH_PLAN.md section 8. Derived
     only from the real numbers, never from which mode this is or
     which side a given outcome favors, so it can never claim a good
     fit on a result the distance itself contradicts (the plan's "never
@@ -64,7 +64,7 @@ class Verdict:
     clue: str | None
     #: How many features were actually compared -- game/scoring.py's
     #: ScoreResult.compared_features, surfaced here for
-    #: PARTY_LAUNCH_PLAN.md section 10's score_attempts.compared_features.
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's score_attempts.compared_features.
     #: Meaningful even when distance is None (it's exactly why: fewer
     #: than game/scoring.py's own minimum).
     compared_features: int
@@ -91,7 +91,7 @@ def pace_ratio(run_duration_ms: float, target: Player) -> float | None:
     Verdict.pace above -- is recorded even for an attempt whose
     distance couldn't be scored: pace is independently useful research
     data (e.g. pace-bucketed false-accept/-reject rates,
-    PARTY_LAUNCH_PLAN.md section 10's own analysis requirements) that
+    docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's own analysis requirements) that
     has nothing to do with whether the rhythm itself was usable.
     """
     usual = usual_duration_ms(target)
@@ -112,7 +112,7 @@ def judge(
     ratio = distance / target.threshold if distance is not None else None
 
     # Every mode's result shows pace and a clue alongside the score
-    # (PARTY_LAUNCH_PLAN.md section 8) -- computed once here, not
+    # (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8) -- computed once here, not
     # reconstructed per mode. A None raw pace (target has no notes)
     # defaults to 1.0 ("on pace") rather than leaving it undefined,
     # matching the disguise gate's own long-standing fallback below;

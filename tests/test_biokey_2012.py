@@ -1,5 +1,5 @@
 """Required tests for evaluation/biokey_2012.py, per
-MODERNIZATION_PLAN.md's BioKey 2012 section."""
+docs/plans/done/MODERNIZATION_PLAN.md's BioKey 2012 section."""
 
 import numpy as np
 import pytest
@@ -16,7 +16,7 @@ from evaluation.biokey_2012 import (
 
 SQRT2 = 2**0.5
 
-#: The thesis's own H(3) matrix, transcribed from MODERNIZATION_PLAN.md.
+#: The thesis's own H(3) matrix, transcribed from docs/plans/done/MODERNIZATION_PLAN.md.
 THESIS_H3 = np.array(
     [
         [1, 1, 1, 1, 1, 1, 1, 1],

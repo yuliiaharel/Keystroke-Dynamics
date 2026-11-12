@@ -12,7 +12,7 @@ own SCORES_TEST_DATABASE_URL, passed in rather than hardcoded here, so
 this script never carries its own copy to drift out of sync).
 
 Drives a full game over real HTTP (never scores anything itself) and
-verifies the consent rule, column values, and "Delete me"/"New party"
+verifies every attempt is stored, the column values, and "Delete me"/"New party"
 cascades by querying the real scores database afterward -- the same
 database the app just wrote to, not a mock.
 
@@ -89,21 +89,17 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     party = client.post("/api/game/party", json={"level": "sentence"}).json()
     party_score_id = None  # filled in once we can read it back -- see below
 
-    def create_player(name: str, share_scores: bool) -> dict:
+    def create_player(name: str) -> dict:
         resp = client.post(
             "/api/game/players",
-            json={
-                "name": name,
-                "training_lines": [SENTENCE_LINE] * 5,
-                "share_scores": share_scores,
-            },
+            json={"name": name, "training_lines": [SENTENCE_LINE] * 5},
         )
         assert resp.status_code == 200, resp.text
         return resp.json()
 
     attempt_counter = [0]
 
-    def attack(typist_id: str | None, target_id: str, guest_shares: bool = False) -> dict:
+    def attack(typist_id: str | None, target_id: str) -> dict:
         attempt_counter[0] += 1
         resp = client.post(
             "/api/game/attempts",
@@ -113,33 +109,57 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
                 "mode": "attack",
                 "events": SENTENCE_LINE,
                 "client_attempt_id": f"attack-{attempt_counter[0]}",
-                "guest_shares_scores": guest_shares,
             },
         )
         assert resp.status_code == 200, resp.text
         return resp.json()
 
-    alice = create_player("Alice", share_scores=True)
-    bob = create_player("Bob", share_scores=True)
-    carol = create_player("Carol", share_scores=False)
+    alice = create_player("Alice")
+    bob = create_player("Bob")
+    carol = create_player("Carol")
     bot_id = party["targets"][0]["id"]
 
-    # PartyView must show the opt-in as on, with real copy.
+    # PartyView says collection is on, and carries nothing left over
+    # from the old opt-in.
     assert party["scores_enabled"] is True
-    assert party["consent_label"]
-    assert party["consent_explanation"]
+    assert "consent_label" not in party
+    assert "consent_explanation" not in party
 
-    attack(bob["id"], alice["id"])  # both consent -> recorded
-    attack(carol["id"], alice["id"])  # typist doesn't consent -> not recorded
-    attack(bob["id"], carol["id"])  # target doesn't consent -> not recorded
-    attack(bob["id"], bot_id)  # target is simulated -> recorded regardless
-    attack(None, alice["id"], guest_shares=True)  # consenting guest -> recorded
-    attack(None, alice["id"], guest_shares=False)  # non-consenting guest -> not recorded
+    # Every attempt is recorded -- nobody is asked, so there's no
+    # combination of typist and target that isn't stored.
+    attack(bob["id"], alice["id"])
+    attack(carol["id"], alice["id"])
+    attack(bob["id"], carol["id"])
+    attack(bob["id"], bot_id)
+    attack(None, alice["id"])  # a Guest
+    attack(None, alice["id"])  # a second Guest attempt, its own row
 
-    replay_ok = client.post("/api/game/replay", json={"target_id": alice["id"]})
-    assert replay_ok.status_code == 200, replay_ok.text  # target consents -> recorded
-    replay_blocked = client.post("/api/game/replay", json={"target_id": carol["id"]})
-    assert replay_blocked.status_code == 200, replay_blocked.text  # target doesn't -> not recorded
+    for replay_target in (alice, carol):
+        replayed = client.post("/api/game/replay", json={"target_id": replay_target["id"]})
+        assert replayed.status_code == 200, replayed.text
+
+    # A second browser joins the same room by its code and attacks
+    # Alice from its own keyboard (docs/plans/active/ROOMS_PLAN.md
+    # Phase 1 section 5) -- the one row here with same_keyboard False.
+    other_browser = TestClient(app, headers={"origin": "http://testserver"})
+    joined = other_browser.post(f"/api/game/rooms/{party['code']}/join")
+    assert joined.status_code == 200, joined.text
+    dave = other_browser.post(
+        "/api/game/players",
+        json={"name": "Dave", "training_lines": [SENTENCE_LINE] * 5},
+    ).json()
+    from_other_keyboard = other_browser.post(
+        "/api/game/attempts",
+        json={
+            "typist_id": dave["id"],
+            "target_id": alice["id"],
+            "mode": "attack",
+            "events": SENTENCE_LINE,
+            "client_attempt_id": "other-keyboard-1",
+        },
+    )
+    assert from_other_keyboard.status_code == 200, from_other_keyboard.text
+    assert from_other_keyboard.json()["attempt"]["same_keyboard"] is False
 
     flush()
 
@@ -149,18 +169,20 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
     # deliberately don't carry it.)
     with scores_session() as session:
         all_rows = list(session.execute(select(ScoreAttempt)).scalars())
-    # bob->alice, bob->bot, guest->alice, replay->alice.
-    assert len(all_rows) == 4, [r.mode for r in all_rows]
+    # Six attacks and two replays from the first browser, and one
+    # attack from the second: one row each.
+    assert len(all_rows) == 9, [r.mode for r in all_rows]
     party_score_id = all_rows[0].party_id
     assert all(r.party_id == party_score_id for r in all_rows)
 
     for row in all_rows:
         assert row.device_type == "keyboard"
         assert row.line_id == "sentence"
-        # 5 for Alice (created with 5 training lines above); 6
-        # (SAMPLE_TRAINING_RUNS) for the one row targeting the bot.
+        # 5 for Alice and Carol (created with 5 training lines
+        # above); 6 (SAMPLE_TRAINING_RUNS) for the one row targeting
+        # the bot.
         assert row.training_lines in (5, 6)
-        assert row.consent_version == "1"
+        assert row.consent_version == "2"
         assert row.scoring_version
         assert row.outcome in ("pass", "fail")
         # No disallowed value snuck through -- test_models.py checks
@@ -170,24 +192,66 @@ with TestClient(app, headers={"origin": "http://testserver"}) as client:
         assert row.pace is not None
 
     modes = sorted(r.mode for r in all_rows)
-    assert modes == ["attack", "attack", "attack", "replay"]
-    # bob->alice, guest->alice, replay->alice are all real-player
-    # targets; bob->bot is the only simulated one. No permanent target
+    assert modes == ["attack"] * 7 + ["replay"] * 2
+    # Every target is a real player except bob->bot, the only
+    # simulated one. No permanent target
     # is ever attacked here (bot_id is always party["targets"][0], a
     # sample bot -- see _party_view), so "permanent" never appears
     # regardless of whether a recording happens to exist locally.
     kinds = sorted(r.target_kind for r in all_rows)
-    assert kinds == ["player", "player", "player", "simulated"]
+    assert kinds == ["player"] * 8 + ["simulated"]
 
-    # "Delete me": removes Alice's rows (she's the target on 3 of the
-    # 4), leaving only the bob->bot row.
+    # The two Guest attempts and the two replays can't be linked to
+    # each other: each got its own typist_id, shared with no other row.
+    typist_ids = [r.typist_id for r in all_rows]
+    assert len(set(typist_ids)) == 7, typist_ids  # bob, carol, dave, 2 guests, 2 replays
+
+    # same_keyboard, as stored: True for the five attacks on a player
+    # from the browser that enrolled them (bob->alice, carol->alice,
+    # bob->carol, and the two Guest attempts), False for dave->alice
+    # (the second browser), null for the bot target and for replays.
+    stored_same_keyboard = sorted(
+        (r.mode, r.target_kind, r.same_keyboard) for r in all_rows if r.same_keyboard is not None
+    )
+    assert (
+        stored_same_keyboard == [("attack", "player", False)] + [("attack", "player", True)] * 5
+    ), stored_same_keyboard
+    not_applicable = sorted((r.mode, r.target_kind) for r in all_rows if r.same_keyboard is None)
+    assert not_applicable == [
+        ("attack", "simulated"),
+        ("replay", "player"),
+        ("replay", "player"),
+    ], not_applicable
+
+    # "Delete me": removes Alice's rows (she's the target on 6 of the
+    # 9), leaving bob->carol, bob->bot, and replay->carol.
     deleted = client.delete(f"/api/game/players/{alice['id']}")
     assert deleted.status_code == 204
     flush()
     remaining = row_ids_for(party_score_id)
-    assert len(remaining) == 1, remaining
+    assert len(remaining) == 3, remaining
 
-    # "New party": removes everything left for this party.
+    # A member leaving takes their own players' rows with them: Dave
+    # attacks the bot (recorded), then his browser leaves.
+    dave_vs_bot = other_browser.post(
+        "/api/game/attempts",
+        json={
+            "typist_id": dave["id"],
+            "target_id": bot_id,
+            "mode": "attack",
+            "events": SENTENCE_LINE,
+            "client_attempt_id": "other-keyboard-2",
+        },
+    )
+    assert dave_vs_bot.status_code == 200, dave_vs_bot.text
+    flush()
+    assert len(row_ids_for(party_score_id)) == 4
+    assert other_browser.post("/api/game/rooms/leave").status_code == 204
+    flush()
+    assert row_ids_for(party_score_id) == remaining
+
+    # "New party": the last member leaving ends the room, which
+    # removes everything left for it.
     reset = client.post("/api/game/party/reset")
     assert reset.status_code == 204
     flush()

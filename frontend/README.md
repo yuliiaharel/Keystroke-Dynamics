@@ -58,11 +58,39 @@ suite shares this one server process and its rate limiters are in-memory,
 global, and keyed by client IP; `workers: 1` only fixes collisions between
 *parallel* spec files, not the suite's own cumulative volume run serially).
 
+The game has its own limit, `GAME_RATE_LIMIT_MAX_ATTEMPTS` (20 per minute
+per client), and joining a room by its code has another,
+`GAME_JOIN_RATE_LIMIT_MAX_ATTEMPTS` (also 20 per minute). Each spec fits
+inside them, but not all in the same minute (`rooms.spec.ts` alone fills a
+room to its limit), so add `GAME_RATE_LIMIT_MAX_ATTEMPTS=200
+GAME_JOIN_RATE_LIMIT_MAX_ATTEMPTS=200` to the command above when running the
+whole suite.
+
+`rooms.spec.ts` plays one room from several browser contexts, each its own
+member of the room. `room-screenshots.spec.ts` saves the room header, join
+step, and ended page to `screenshots/`, on a desktop and on a phone.
+
 Then, in another terminal, from `frontend/`: `npm run e2e`. Override
 the target with `E2E_BASE_URL` if the app is running somewhere other
 than `http://127.0.0.1:8000`.
 
+### Visitor-counting tests
+
+`npm run e2e:analytics` is a separate suite (`e2e-analytics/`,
+`playwright.analytics.config.ts`). It starts its own server on port
+8137 in public mode, with no database and a made-up
+`GOATCOUNTER_SITE_CODE`, so it can run alongside the main suite. The
+main suite's server must never have a site code set. Nothing reaches
+GoatCounter: the script is served from a pinned copy
+(`e2e-analytics/fixtures/count.js`) and the count request is
+intercepted. Refresh that copy from `https://gc.zgo.at/count.js` if
+GoatCounter changes its script.
+
 ## Layout
+
+- `src/analytics.ts` -- decides what GoatCounter is told about a page
+  view (see `docs/plans/active/ANALYTICS_PLAN.md`). Does nothing unless
+  the page was served with the snippet.
 
 - `src/capture.ts` -- records key timing (`event.code`, action, and a
   timestamp relative to the first event in the sample). Never reads
@@ -71,11 +99,16 @@ than `http://127.0.0.1:8000`.
 - `src/api.ts` -- thin `fetch` wrappers for the account system's JSON API.
 - `src/game-api.ts` -- thin `fetch` wrappers for the party game's JSON API
   (`/api/game/*`).
+- `src/live.ts` -- keeps a room on screen current: listens to the event
+  stream (`/api/game/room/events`), and polls the room when the stream
+  fails. See `docs/plans/active/ROOMS_PLAN.md` Phase 2.
+- `src/room.ts` -- room links and codes: reading `/r/<code>`, showing a
+  code as `ABCD-EFGH`, and naming why a join was refused.
 - `src/ui.ts` -- small DOM helpers shared by the account pages.
 - `src/pages/create-profile.ts`, `src/pages/authenticate.ts` -- the
   account system's two page-specific entry points.
 - `src/pages/party.ts` -- the party game's own entry point (ported from
-  `design/typing-twin-party.html`; see `PARTY_LAUNCH_PLAN.md`).
+  `design/typing-twin-party.html`; see `docs/plans/done/PARTY_LAUNCH_PLAN.md`).
 - `src/touch-capture.ts`, `src/pages/touch-capture.ts` -- the debug-only
   touch capture test page (`/debug/touch-capture`, `DEBUG=true` only; see
   `docs/touch-capture-testing.md`). `e2e/touch-capture.spec.ts` drives it

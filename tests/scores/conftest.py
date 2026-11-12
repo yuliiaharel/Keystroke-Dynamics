@@ -1,4 +1,4 @@
-"""Fixtures for the scores database (PARTY_LAUNCH_PLAN.md section
+"""Fixtures for the scores database (docs/plans/done/PARTY_LAUNCH_PLAN.md section
 10): a second, separate test database on the same local Postgres
 server tests/conftest.py already uses -- never the account system's
 own keystroke_dynamics_test, since these are two independent
@@ -90,7 +90,7 @@ def scores_db_session():
 
 
 #: Exactly what DEPLOY.md instructs granting to the real app role on
-#: Neon (PARTY_LAUNCH_PLAN.md section 10: "The app's database user may
+#: Neon (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: "The app's database user may
 #: only insert and delete rows in this table") -- test_db_role.py
 #: proves this grant set is actually sufficient (the app still works)
 #: and actually restrictive (nothing else is possible), against a

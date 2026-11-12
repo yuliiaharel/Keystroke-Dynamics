@@ -6,7 +6,7 @@ directory configured for the whole app.
 The page itself lives at "/" in public mode (the default -- Party is
 the only thing a visitor sees) and at "/party" when the account
 system is also enabled, so it never collides with account_pages.py's
-own home page at "/" in that mode -- see PARTY_LAUNCH_PLAN.md Part 1
+own home page at "/" in that mode -- see docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1
 sections 1 and 8. In public mode, "/party" (its old path) redirects
 to "/" instead of 404ing.
 """
@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from keystroke_dynamics.api.analytics import REFERRER_POLICY, csp_with_analytics
 from keystroke_dynamics.config import settings
 
 router = APIRouter()
@@ -28,7 +29,7 @@ templates = Jinja2Templates(directory=str(_templates_dir))
 
 #: No inline *scripts* anywhere -- script-src has no 'unsafe-inline'
 #: or 'unsafe-eval', and every script is self-hosted static/js (see
-#: PARTY_LAUNCH_PLAN.md Part 1 section 8's literal requirement). The
+#: docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 8's literal requirement). The
 #: page's dynamically-colored SVGs/layout tweaks (a player's ring
 #: color, a swatch, an inline gap) use the `style` attribute the way
 #: the approved mockup does, so style-src keeps 'unsafe-inline' --
@@ -56,10 +57,33 @@ def party_page(request: Request) -> HTMLResponse:
     response = templates.TemplateResponse(
         request,
         "party.html",
-        {"active_page": "party", "public_base_url": settings.public_base_url},
+        {
+            "active_page": "party",
+            # Where the page goes back to when it has no room on
+            # screen, and the one address its link preview names.
+            "party_path": PARTY_PATH,
+            "public_base_url": settings.public_base_url,
+            "goatcounter_site_code": settings.goatcounter_site_code,
+        },
     )
-    response.headers["Content-Security-Policy"] = _PARTY_CSP
+    response.headers["Content-Security-Policy"] = csp_with_analytics(
+        _PARTY_CSP, settings.goatcounter_site_code
+    )
+    response.headers["Referrer-Policy"] = REFERRER_POLICY
     return response
+
+
+@router.get("/r/{code}", response_class=HTMLResponse)
+def room_page(request: Request, code: str) -> HTMLResponse:
+    """A room link (docs/plans/active/ROOMS_PLAN.md). Serves the same
+    game page whatever the code is, and never looks the code up: the
+    page joins through POST /api/game/rooms/{code}/join, which is
+    where the rate limit and the single "room not found" answer live.
+    A plain GET therefore can't be used to test whether a code is
+    real, and the response is the home page's, byte for byte, so the
+    link preview never carries anything about a room -- not even its
+    code."""
+    return party_page(request)
 
 
 if settings.debug:

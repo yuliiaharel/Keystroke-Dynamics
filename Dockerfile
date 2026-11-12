@@ -22,7 +22,7 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
-# alembic_scores.ini/migrations_scores/ (PARTY_LAUNCH_PLAN.md section
+# alembic_scores.ini/migrations_scores/ (docs/plans/done/PARTY_LAUNCH_PLAN.md section
 # 10) are a separate migration run from alembic.ini/migrations/ (the
 # account system's) -- .do/app.yaml's pre-deploy job runs them with
 # this same image, overriding CMD below with its own run_command.
@@ -55,5 +55,14 @@ EXPOSE 8000
 # (main.py's https_only=not settings.debug) was never affected by
 # this either way -- it's driven by settings.debug directly, not by
 # any detected request scheme.
+#
+# --timeout-graceful-shutdown 5: a live-update stream
+# (GET /api/game/room/events) stays open for as long as its browser
+# does, and without a limit uvicorn waits for every connection to
+# close before it runs the app's shutdown. One open tab would hold a
+# deploy's old container until it was killed, skipping the score
+# writer's final flush (main.py's lifespan). Ordinary requests finish
+# in well under 5 seconds; browsers reconnect to the new container on
+# their own.
 CMD ["uvicorn", "keystroke_dynamics.main:app", "--host", "0.0.0.0", "--port", "8000", \
-     "--workers", "1"]
+     "--workers", "1", "--timeout-graceful-shutdown", "5"]

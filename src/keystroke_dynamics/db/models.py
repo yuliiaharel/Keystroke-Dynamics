@@ -1,4 +1,4 @@
-"""SQLAlchemy models, per MODERNIZATION_PLAN.md Phase 4's schema."""
+"""SQLAlchemy models, per docs/plans/done/MODERNIZATION_PLAN.md Phase 4's schema."""
 
 from __future__ import annotations
 

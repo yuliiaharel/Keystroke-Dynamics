@@ -1,6 +1,6 @@
 """Welford's online algorithm for mean and variance.
 
-Fixes the old app's statistics bugs (see MODERNIZATION_PLAN.md Phase 0):
+Fixes the old app's statistics bugs (see docs/plans/done/MODERNIZATION_PLAN.md Phase 0):
 the running mean here is a real running mean, not `(mean + value) /
 count`, and variance accumulates across every sample instead of being
 overwritten by the latest one.

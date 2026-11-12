@@ -13,3 +13,10 @@ from keystroke_dynamics.config import settings
 game_rate_limiter = RateLimiter(
     settings.game_rate_limit_max_attempts, settings.game_rate_limit_window_seconds
 )
+
+#: Counts every join-by-code request, hit or miss, per client IP --
+#: so room codes can't be guessed at speed
+#: (docs/plans/active/ROOMS_PLAN.md Phase 1 section 4).
+game_join_rate_limiter = RateLimiter(
+    settings.game_join_rate_limit_max_attempts, settings.game_join_rate_limit_window_seconds
+)

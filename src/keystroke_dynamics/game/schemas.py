@@ -51,6 +51,12 @@ class PlayerView(BaseModel):
     threshold: float
     notes: list[NoteView]
     kind: TargetKind
+    #: The member (browser) that enrolled this player; compare with
+    #: PartyView.member_id to tell "on this keyboard" from "on
+    #: another one". None for sample bots and the permanent target.
+    #: Useless on its own: a member id only counts inside a signed
+    #: session cookie.
+    owner_member_id: str | None
 
     @classmethod
     def from_player(cls, player: Player, *, kind: TargetKind) -> PlayerView:
@@ -61,6 +67,7 @@ class PlayerView(BaseModel):
             threshold=player.threshold,
             notes=[NoteView.from_core(n) for n in player.notes],
             kind=kind,
+            owner_member_id=player.owner_member_id,
         )
 
 
@@ -75,7 +82,7 @@ class AttemptView(BaseModel):
     ratio: float | None
     #: This attempt's duration over the target's own usual duration,
     #: where 1.0 is the same pace -- shown as its own measure
-    #: alongside distance (PARTY_LAUNCH_PLAN.md section 8), kept in
+    #: alongside distance (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8), kept in
     #: history the same way distance/ratio are. None exactly when
     #: distance is None.
     pace: float | None
@@ -86,6 +93,10 @@ class AttemptView(BaseModel):
     word: str
     counted: bool
     passed: bool | None
+    #: False -> typed on a different keyboard from the target's own,
+    #: which can change timing (shown as "different keyboard"). None
+    #: when it doesn't apply: a bot target, or a replay.
+    same_keyboard: bool | None
 
     @classmethod
     def from_core(cls, attempt: Attempt) -> AttemptView:
@@ -102,11 +113,24 @@ class AttemptView(BaseModel):
             word=attempt.word,
             counted=attempt.counted,
             passed=attempt.passed,
+            same_keyboard=attempt.same_keyboard,
         )
 
 
 class PartyView(BaseModel):
+    """A room, as one of its members sees it."""
+
     id: str
+    #: The room code, 8 characters with no dash -- the link is
+    #: /r/<code>.
+    code: str
+    #: Goes up on every change to the room.
+    version: int
+    locked: bool
+    #: The member this response was built for.
+    member_id: str
+    is_host: bool
+    member_count: int
     level: Level
     phrase: str
     players: list[PlayerView]
@@ -115,28 +139,33 @@ class PartyView(BaseModel):
     #: merged in here for the frontend's convenience.
     targets: list[PlayerView]
     attempts: list[AttemptView]
-    #: PARTY_LAUNCH_PLAN.md section 10: "If it's empty, collection is
-    #: off, and the game works normally without showing the opt-in."
-    #: The frontend shows the consent checkbox only when this is
-    #: True -- never derives it from anything else.
+    #: Whether score collection is on (settings.scores_database_url
+    #: is set). The frontend shows its score-saving notice only when
+    #: this is True -- never derives it from anything else -- so the
+    #: privacy text always matches what the server does.
     scores_enabled: bool
-    #: scores/consent.py's current wording -- exposed here so the
-    #: frontend never carries its own, possibly-stale copy.
-    consent_label: str
-    consent_explanation: str
+
+
+class NameSuggestionView(BaseModel):
+    name: str
 
 
 class CreatePlayerRequest(BaseModel):
     #: None -> the server generates one (game/names.py).
     name: str | None = None
-    #: 3-8 training lines, per PARTY_LAUNCH_PLAN.md Part 1 section 5.
+    #: 3-8 training lines, per docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5.
     training_lines: list[list[KeyEventSchema]] = Field(min_length=3, max_length=8)
-    #: PARTY_LAUNCH_PLAN.md section 10's opt-in checkbox, unchecked by
-    #: default on the client and never a condition of playing --
-    #: ignored outright when score collection is off (settings.
-    #: scores_database_url unset), same as the checkbox not being
-    #: shown at all in that case.
-    share_scores: bool = False
+
+
+class JoinRoomRequest(BaseModel):
+    #: A browser is in one room at a time. Joining a second room is
+    #: refused (409) unless this is set, so the page can ask "Leave
+    #: your current room and join this one?" first.
+    leave_current: bool = False
+
+
+class LockRoomRequest(BaseModel):
+    locked: bool
 
 
 class RenamePlayerRequest(BaseModel):
@@ -153,14 +182,6 @@ class AttemptRequest(BaseModel):
     #: (typist_id, client_attempt_id) returns the original result
     #: instead of being scored and recorded twice.
     client_attempt_id: str = Field(min_length=1, max_length=64)
-    #: The same opt-in as CreatePlayerRequest.share_scores, but for a
-    #: Guest attacker, who has no enrolled Player to have opted in at
-    #: creation time -- PARTY_LAUNCH_PLAN.md section 10: "for a Guest
-    #: before their first attack, show an unchecked option." Ignored
-    #: entirely when typist_id is set (a real player's own stored
-    #: choice is authoritative then, not anything re-askable per
-    #: attempt) or when score collection is off.
-    guest_shares_scores: bool = False
 
 
 class AttemptResponse(BaseModel):
@@ -191,7 +212,7 @@ class ReplayResponse(BaseModel):
 
 class RecordTargetRequest(BaseModel):
     """Only reachable when settings.debug is true (see api/game.py) --
-    a local-only way to record a permanent target (PARTY_LAUNCH_PLAN.md
+    a local-only way to record a permanent target (docs/plans/done/PARTY_LAUNCH_PLAN.md
     Part 1 section 7). `lines` maps level -> 3-8 training runs, the
     same shape POST /api/game/players takes, just across every level
     at once instead of one party's own.

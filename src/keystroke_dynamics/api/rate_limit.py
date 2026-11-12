@@ -1,6 +1,6 @@
 """In-memory, per-process rate limiting.
 
-Documented limitation (per MODERNIZATION_PLAN.md Phase 4): state lives
+Documented limitation (per docs/plans/done/MODERNIZATION_PLAN.md Phase 4): state lives
 in this one process's memory. It resets on restart, and running more
 than one process (multiple workers, multiple containers) gives each
 its own independent counters rather than a shared one -- so the real

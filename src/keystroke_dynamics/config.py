@@ -1,7 +1,7 @@
 """Application settings, loaded from the environment (and a .env file
 in local development)."""
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: The placeholders shipped in .env.example -- never real deployment
@@ -17,6 +17,18 @@ _LOCAL_ALLOWED_ORIGIN = "http://127.0.0.1:8000"
 #: on its own.
 _UNSET_URL_PLACEHOLDER = "REPLACE_ME"
 
+_PSYCOPG3_SCHEME = "postgresql+psycopg://"
+#: postgres:// is the libpq alias some providers still hand out;
+#: SQLAlchemy 2 rejects it outright.
+_DRIVERLESS_POSTGRES_SCHEMES = ("postgresql://", "postgres://")
+
+
+def _with_psycopg3_driver(url: str) -> str:
+    for scheme in _DRIVERLESS_POSTGRES_SCHEMES:
+        if url.startswith(scheme):
+            return _PSYCOPG3_SCHEME + url[len(scheme) :]
+    return url
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -29,7 +41,7 @@ class Settings(BaseSettings):
 
     #: Whether the account system (register/login/profile routes, the
     #: old account-based pages, and Postgres) is mounted at all. False
-    #: is the public-launch mode PARTY_LAUNCH_PLAN.md Part 1 adds: the
+    #: is the public-launch mode docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 adds: the
     #: app must start and a full game must be playable with no
     #: DATABASE_URL and no database connection whatsoever. The anonymous
     #: game (api/game.py) never depends on this flag either way -- it
@@ -50,6 +62,16 @@ class Settings(BaseSettings):
     #: below.
     public_base_url: str | None = None
 
+    #: The GoatCounter site code for visitor counting
+    #: (docs/plans/active/ANALYTICS_PLAN.md): the "example" in
+    #: example.goatcounter.com. Empty, the default, turns analytics off
+    #: entirely -- no script tag and no extra Content-Security-Policy
+    #: sources -- so local development, tests, and Playwright never
+    #: count anything. Not a secret: it's in the page source wherever
+    #: it's set. Restricted to what a hostname label can hold, because
+    #: the value goes into a URL and a response header.
+    goatcounter_site_code: str = Field(default="", pattern=r"^[a-z0-9-]*$")
+
     #: Request body / event-count limits (core.events.validate takes
     #: max_events directly; max_body_bytes is enforced by middleware
     #: before the body is even parsed).
@@ -64,21 +86,41 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: float = 60.0
 
     #: In-memory game store limits (game/store.py) -- see
-    #: PARTY_LAUNCH_PLAN.md Part 1 section 2. Same in-memory/per-process
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 2. Same in-memory/per-process
     #: caveat as the rate limiters above: this is deliberately a
     #: single-worker app (see main.py's docstring on why).
     game_party_limit: int = 500
     game_players_per_party_limit: int = 12
     game_attempts_per_party_limit: int = 200
+    #: How many browsers may join one room
+    #: (docs/plans/active/ROOMS_PLAN.md, open decision 1).
+    game_members_per_party_limit: int = 12
     game_idle_expiry_seconds: float = 2 * 60 * 60
     #: Separate from the account system's rate limiters (different
     #: endpoints, different abuse shape) but the same mechanism.
     game_rate_limit_max_attempts: int = 20
     game_rate_limit_window_seconds: float = 60.0
+    #: Joining a room by code, successful or not, has its own budget
+    #: per client IP on top of the one above -- it's the one route
+    #: where guessing pays off. 20 leaves room for a full room of 12
+    #: friends joining from behind one shared address.
+    game_join_rate_limit_max_attempts: int = 20
+    game_join_rate_limit_window_seconds: float = 60.0
+    #: Live-update streams (GET /api/game/room/events,
+    #: docs/plans/active/ROOMS_PLAN.md Phase 2). Each open stream is a
+    #: held connection, so both counts are capped: per browser (a few
+    #: tabs), and across the whole single instance.
+    game_streams_per_member_limit: int = 3
+    game_streams_total_limit: int = 300
+    #: How often a quiet stream sends a comment line, so proxies keep
+    #: the connection open. Also how often it checks that its room
+    #: hasn't expired.
+    game_stream_heartbeat_seconds: float = 20.0
 
-    #: PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
-    #: for opted-in score collection -- empty/None means collection is
-    #: off and the game works normally with no opt-in shown at all.
+    #: docs/plans/done/PARTY_LAUNCH_PLAN.md section 10: a separate, optional database
+    #: for score collection -- empty/None means collection is off and
+    #: the game works normally, saving nothing. When set, every
+    #: attempt's score is saved automatically.
     #: Deliberately independent of database_url/enable_accounts: the
     #: account system and score collection are two unrelated optional
     #: databases, either, both, or neither of which may be configured.
@@ -102,6 +144,19 @@ class Settings(BaseSettings):
         # this module treats "falsy" and "unset" as the same thing.
         if self.scores_database_url == "":
             self.scores_database_url = None
+        return self
+
+    @model_validator(mode="after")
+    def _use_psycopg3_for_driverless_postgres_urls(self) -> "Settings":
+        # Hosted Postgres (Neon's console and CLI, DigitalOcean) hands
+        # out plain postgresql:// URLs. SQLAlchemy reads those as
+        # psycopg2, which this project doesn't install -- it uses
+        # psycopg 3 -- so name the driver here instead of asking every
+        # pasted URL to be hand-edited. A URL that already names a
+        # driver is left exactly as given.
+        self.database_url = _with_psycopg3_driver(self.database_url)
+        if self.scores_database_url is not None:
+            self.scores_database_url = _with_psycopg3_driver(self.scores_database_url)
         return self
 
     @model_validator(mode="after")

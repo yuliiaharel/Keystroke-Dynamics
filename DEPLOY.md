@@ -2,7 +2,7 @@
 
 This deploys the app in **public mode** (`ENABLE_ACCOUNTS=false`): Typing
 Twin Party at the app's URL, no database, no account system. See
-[`PARTY_LAUNCH_PLAN.md`](PARTY_LAUNCH_PLAN.md) for the full design and
+[`docs/plans/done/PARTY_LAUNCH_PLAN.md`](docs/plans/done/PARTY_LAUNCH_PLAN.md) for the full design and
 [`.do/app.yaml`](.do/app.yaml) for the exact spec these steps create.
 
 Nothing in this repository creates a DigitalOcean resource, spends money,
@@ -125,6 +125,10 @@ change any other app-level environment variable.
    done "Score database setup" yet -- score collection stays off
    until it's set, and the game works normally either way.
 
+   The wizard creates only the `web` service. The `scores-migration`
+   pre-deploy job in `.do/app.yaml` is **not** created here -- "Score
+   database setup" below adds it, and the app deploys fine without it.
+
 4. Click **Create App**. For a brand-new app, once it's live, copy
    its assigned `https://<something>.ondigitalocean.app` URL (control
    panel: the app's overview page, under its name) and update
@@ -153,7 +157,7 @@ up a separate instance of this app under a different account.
 
 Run these by hand after every deploy that could affect them (a new
 release, or after "Score database setup"/"Turning score collection
-off again" above).
+off again" below).
 
 ### Rate-limit identity can't be spoofed
 
@@ -181,14 +185,42 @@ describes for "any host other than DigitalOcean App Platform"). A
 FAIL against the live site, not just locally, means something is
 wrong -- not a routine difference.
 
-### If score collection is on: an opt-in attempt is stored, and Delete me removes it
+### Live updates reach the browser
 
-Matches `PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
+Rooms update live through a server-sent event stream,
+`GET /api/game/room/events` (`docs/plans/active/ROOMS_PLAN.md` Phase 2).
+DigitalOcean's documentation says its edge cache must be off for a
+stream like this to work over `GET`
+([How to Configure Edge Settings](https://docs.digitalocean.com/products/app-platform/how-to/configure-edge-settings/),
+checked 2026-11-09). That is a setting on the app, not something this
+repository's code can change: in the control panel, **Networking** >
+**Advanced networking and security** > **Edge caching** > **Off**. The
+app already sends the two headers that page asks for
+(`Content-Type: text/event-stream` and `Cache-Control: no-cache`).
 
-1. On the live site, start a party, add yourself with **Share my
-   scores** checked, and make one attack attempt.
+```bash
+scripts/check_live_events.sh https://typingtwin.com
+```
+
+It creates one room, changes it every 30 seconds for 5 minutes, and
+expects **PASS** on all three lines: every change arrived on the
+stream within 2 seconds, the one connection stayed open, and ending
+the room closed it. It prints the stream's response headers either
+way.
+
+A FAIL doesn't break the game. A browser whose stream is silent or
+refused falls back to asking for the room every 5 seconds
+(`frontend/src/live.ts`), so rooms still update, just more slowly.
+
+### If score collection is on: an attempt is stored, and Delete me removes it
+
+Matches `docs/plans/done/PARTY_LAUNCH_PLAN.md`'s own Done-when checklist:
+
+1. On the live site, start a party, add yourself, and make one
+   attack attempt. Scores are saved automatically, so there is
+   nothing to tick.
 2. Confirm the row landed, using the **read-only** role (see "Running
-   the analysis" above):
+   the analysis" below):
    ```bash
    uv run python -m evaluation.analyze_scores "<read-only connection string>"
    ```
@@ -233,33 +265,107 @@ doctl apps update <app-id> --spec /tmp/live-spec.yaml
 
 ## Score database setup
 
-Optional (`PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
+Optional (`docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10). Skip this whole section
 to keep score collection off -- leave `SCORES_DATABASE_URL` unset on
-both the `web` service and the `scores-migration` job, and the game
-works exactly as it does today, with no opt-in shown.
+the `web` service (and on the `scores-migration` job, if it exists),
+and the game works exactly as it does today, saving no scores and
+showing no score-saving note.
 
-### Create the Neon project and three roles
+### Create the Neon project and its roles
 
 1. [Create a Neon project](https://neon.com/docs/manage/projects)
    (free tier). Note the database name Neon creates by default.
 
-2. Neon's default role already exists; you need two more. In the
-   Neon console (**Postgres database → Roles → Add role**) or via SQL
-   from the console's own SQL Editor, create:
-   - a **migration** role -- owns/creates the table, so needs to be
-     either the database owner or granted `CREATE` on the schema
+2. Three roles are involved. Neon's default role (the database
+   owner, e.g. `neondb_owner`) is the **migration** role -- it
+   creates and owns the table. Create the other two yourself:
    - an **app** role -- the one `SCORES_DATABASE_URL` on the `web`
      service actually uses
    - a **read-only** role -- for `evaluation/analyze_scores.py`, run
      by hand, never by the app
 
-   Neon generates each role's password; **Connect** in the console
-   gives you the full `postgresql://role:password@.../dbname`
-   connection string for a given role + database.
+   Create both **with SQL, from the Neon console's SQL Editor** --
+   not with **Roles → Add role**, the Neon CLI, or the API. Neon
+   makes every role created those ways a member of `neon_superuser`,
+   which can read and write all data, so the grants in step 6 would
+   restrict nothing. A role created with SQL starts with no access
+   to the table (see <https://neon.com/docs/manage/roles>):
 
-3. After the migration role has run the first deploy's pre-deploy
-   job at least once (so `score_attempts` exists), grant the app
-   role exactly what `PARTY_LAUNCH_PLAN.md` section 10 specifies --
+   ```sql
+   CREATE ROLE <app_role> LOGIN PASSWORD '<password>';
+   CREATE ROLE <readonly_role> LOGIN PASSWORD '<password>';
+   ```
+
+   Neon rejects weak passwords (it requires 60 bits of entropy).
+   Generate each one, and never reuse one across roles:
+
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+   ```
+
+3. Build each role's connection string. **Connect** in the Neon
+   console shows the default role's string; for the two SQL-created
+   roles, take the same string and swap in that role's name and
+   password. Two changes to what Neon shows, for every role:
+   - Change the prefix from `postgresql://` to
+     `postgresql+psycopg://`. The app, the migration job, and
+     `evaluation/analyze_scores.py` all hand the string to
+     SQLAlchemy, which treats a plain `postgresql://` as psycopg2 --
+     not installed here (this project uses psycopg 3) -- and fails
+     with `ModuleNotFoundError: No module named 'psycopg2'`.
+   - For the **migration** role, use the direct connection string
+     (turn **Connection pooling** off in the Connect dialog). The
+     pooled string is fine for the app role.
+
+   The result looks like
+   `postgresql+psycopg://role:password@<host>/<dbname>?sslmode=require`.
+
+### Add the migration job and run it once
+
+4. Create the `scores-migration` job, if the app doesn't have one yet
+   (check the app's **Settings** tab for a component with that name).
+   This uses the control panel so no spec is resubmitted -- see "Why
+   the control panel, not `doctl`" above. The values match
+   `.do/app.yaml`'s own `jobs:` entry:
+
+   1. Open the app → **Add components** → **Create resources from
+      source code**.
+   2. Select this repo and the `master` branch → **Next**.
+   3. Under **Info**, click **Edit**, set **Resource type** to
+      **Job**, and name it `scores-migration`.
+   4. Under **Job trigger**, click **Edit** and choose **Before every
+      deploy**.
+   5. Under **Deployment settings**, click **Edit** next to the run
+      command and paste this as one line. Nothing is run on your own
+      machine -- DigitalOcean runs it before each deploy:
+
+      ```
+      sh -c 'if [ -z "$SCORES_DATABASE_URL" ]; then echo "SCORES_DATABASE_URL not set, skipping score migrations"; else alembic -c alembic_scores.ini upgrade head; fi'
+      ```
+
+   6. Set the instance size to `apps-s-1vcpu-0.5gb`.
+   7. Add the environment variable `SCORES_DATABASE_URL`, marked
+      **Encrypted**, set to the **migration** role's connection
+      string from step 3 -- never the app role's, which lacks the
+      privileges to create or alter a table at all.
+   8. Click **Add resources**. This triggers a deploy.
+
+   If the job already exists, set that variable on it instead
+   (Settings → the `scores-migration` component → Environment
+   Variables → **Encrypted**) and save.
+
+5. Confirm the job ran `alembic -c alembic_scores.ini upgrade head`
+   with no errors, in that job's own logs (`doctl apps logs <app-id>
+   scores-migration --type run`, or the control panel's Activity tab
+   for that deployment). `score_attempts` now exists. The `web`
+   service still has no `SCORES_DATABASE_URL`, so collection is
+   still off.
+
+### Grant the two roles their access
+
+6. In Neon's SQL Editor (which runs as the default role, the table's
+   owner), grant the app role exactly what
+   `docs/plans/done/PARTY_LAUNCH_PLAN.md` section 10 specifies --
    insert and delete, nothing else, confirmed against a real Postgres
    role by `tests/scores/test_db_role.py` (including the one
    non-obvious wrinkle: a `DELETE ... WHERE` needs `SELECT` on the
@@ -284,28 +390,16 @@ works exactly as it does today, with no opt-in shown.
    GRANT SELECT ON score_attempts TO <readonly_role>;
    ```
 
-### Wire it into the app
+### Turn collection on
 
-4. On the `web` service, set `SCORES_DATABASE_URL` (Settings → the
+7. On the `web` service, set `SCORES_DATABASE_URL` (Settings → the
    `web` component → Environment Variables → **Encrypted**) to the
-   **app** role's connection string.
+   **app** role's connection string from step 3 -- a different value
+   from the job's. Saving triggers a deploy.
 
-5. On the `scores-migration` job (Settings → the `scores-migration`
-   component → Environment Variables → **Encrypted**), set its own
-   `SCORES_DATABASE_URL` to the **migration** role's connection
-   string -- a different value from the `web` service's, and never
-   the app role's, which lacks the privileges to create or alter a
-   table at all.
-
-6. Save either one (or push a commit) to trigger a deploy. The
-   pre-deploy job runs `alembic -c alembic_scores.ini upgrade head`
-   against the migration role's connection before the `web` service
-   redeploys; confirm it ran with no errors in that job's own logs
-   (`doctl apps logs <app-id> scores-migration --type run`, or the
-   control panel's Activity tab for that deployment).
-
-7. Confirm collection is actually on: open the live site and check
-   that the opt-in checkbox appears when adding a player (it's
+8. Confirm collection is actually on: open the live site and check
+   that the score-saving note ("This site saves a few numbers about
+   each result...") appears under the name form when adding a player (it's
    PartyView's own `scores_enabled` field driving this -- see
    `GET /api/game/party` in a browser's own network tab for the raw
    response if you want to check it directly instead).
@@ -321,16 +415,43 @@ anyway):
 uv run python -m evaluation.analyze_scores "<read-only connection string>"
 ```
 
+The string needs the `postgresql+psycopg://` prefix here too (step 3).
+
 See `evaluation/README.md` for what it prints and its own caveats.
 
 ### Turning score collection off again
 
 Clear `SCORES_DATABASE_URL` on the `web` service (control panel,
-same place you set it) and save. The game goes back to working with
-no opt-in shown, same as before this section. The `scores-migration`
+same place you set it) and save. The game goes back to saving no
+scores and showing no score-saving note, same as before this section. The `scores-migration`
 job's own `SCORES_DATABASE_URL` can stay set either way -- it only
 ever runs `upgrade head`, which is a no-op once the table already
 exists, and skips cleanly if it's ever unset instead.
+
+## Visitor counting
+
+The game page loads GoatCounter's script only when
+`GOATCOUNTER_SITE_CODE` is set on the `web` component. It's a plain
+value, not a secret: the site code is the `example` in
+`example.goatcounter.com`, and it's visible in the page source.
+
+To turn it on, add `GOATCOUNTER_SITE_CODE` in the control panel (the
+app → Settings → the `web` component → Environment Variables), with
+the same value as `.do/app.yaml`. Saving redeploys. Merging the code
+alone doesn't start counting, because a push deploys the code but not
+this file's environment values.
+
+To turn it off, delete the variable or set it to an empty value. The
+script tag and the two extra Content-Security-Policy sources go with
+it.
+
+After turning it on:
+
+1. Open the site in a private window and check the visit appears in
+   the GoatCounter dashboard within a minute.
+2. Open any `/r/<code>` link and check the dashboard shows `/r/*`,
+   never a code.
+3. Check the browser console shows no Content-Security-Policy errors.
 
 ## Keeping CI in the loop
 

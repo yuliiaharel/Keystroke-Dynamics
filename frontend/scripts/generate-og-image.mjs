@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Generates static/img/party-preview.png -- the Open Graph/Twitter
-// preview image (PARTY_LAUNCH_PLAN.md Part 1 section 9), a 1200x630
+// preview image (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 9), a 1200x630
 // screenshot of og-image.html's three decorative signature rings.
 //
 // Uses @playwright/test's own bundled chromium (already a

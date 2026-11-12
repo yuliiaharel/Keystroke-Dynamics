@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The anonymous party game (PARTY_LAUNCH_PLAN.md Part 1), driven end
+ * The anonymous party game (docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1), driven end
  * to end against the real backend: two players enrolled on one
  * keyboard, an attack, a server-run replay, a rename, a deletion,
  * and the scores page. Every verdict comes from a real
@@ -25,13 +25,30 @@ async function enrollPlayer(page: Page, name: string): Promise<void> {
     await typeLine(page);
   }
   await expect(page.locator("text=This is how you type.")).toBeVisible({ timeout: 10000 });
+
+  // The reveal's four stats come from the player's server-provided
+  // notes. They used to read enrollment lines that had already been
+  // cleared, and showed "undefined" and NaN.
+  const stats = page.locator(".traits .trait");
+  await expect(stats).toHaveCount(4);
+  const text = await page.locator(".traits").innerText();
+  expect(text).not.toContain("undefined");
+  expect(text).not.toContain("NaN");
+  await expect(stats.locator(".eyebrow")).toHaveText([
+    "Pace",
+    "Typical hold",
+    "Fastest pair",
+    "Slowest pair",
+  ]);
+  await expect(stats.nth(0).locator("b")).toHaveText(/^\d+ wpm$/);
+  await expect(stats.nth(1).locator("b")).toHaveText(/^\d+ ms$/);
 }
 
 test("a full one-keyboard party: two players, an attack, a replay, a rename, a deletion, and the scores page", async ({
   page,
 }) => {
-  // GET /api/game/party legitimately 404s once, on first load, before
-  // any party exists (party.ts probes for one in the background and
+  // GET /api/game/room legitimately 404s once, on first load, before
+  // any room exists (party.ts probes for one in the background and
   // catches the rejection) -- that one network-level 404 log is
   // expected, not a bug, so it's filtered out below rather than
   // loosening the check for every other console error.
@@ -49,20 +66,25 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   // click's own POST and read back a 404/no session yet.
   await expect(page.locator("#name-form")).toBeVisible();
 
-  // The opt-in checkbox's presence must track the server's own
+  // Scores are saved automatically, so there's a memo and nothing to
+  // tick. The memo's presence must track the server's own
   // scores_enabled, not any hardcoded assumption -- this suite runs
   // against both the default (off) stack and, run locally with
-  // SCORES_DATABASE_URL set, an on one (PARTY_LAUNCH_PLAN.md section
-  // 10: "the game works normally without showing the opt-in" when
-  // off).
-  const party = await page.evaluate(() => fetch("/api/game/party").then((r) => r.json()));
-  const checkbox = page.locator("#enroll-share-scores");
-  if (party.scores_enabled) {
-    await expect(checkbox).toBeVisible();
-    await expect(checkbox).not.toBeChecked(); // never pre-checked
-  } else {
-    await expect(checkbox).toHaveCount(0);
-  }
+  // SCORES_DATABASE_URL set, an on one. With collection off nothing
+  // is saved, so the memo isn't shown.
+  const party = await page.evaluate(() => fetch("/api/game/room").then((r) => r.json()));
+  const memo = page.locator("#scores-memo");
+  const expectMemo = async (): Promise<void> => {
+    if (party.scores_enabled) {
+      await expect(memo).toBeVisible();
+      await expect(memo).toContainText("This site saves a few numbers about each result");
+    } else {
+      await expect(memo).toHaveCount(0);
+    }
+    await expect(page.locator("#app input[type=checkbox]")).toHaveCount(0);
+  };
+  await expectMemo();
+  await expect(page.locator("#enroll-share-scores")).toHaveCount(0);
 
   await enrollPlayer(page, "Alice");
   await page.click("#to-room");
@@ -79,24 +101,20 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   // actual stored profile.
   await page.locator("article.card", { hasText: "Alice" }).locator("[data-attack]").click();
   // "Who's typing?" defaults to whoever was just enrolled (Bob), not
-  // Guest -- select Guest explicitly to exercise "for a Guest before
-  // their first attack", then confirm the checkbox is gone again once
-  // a real enrolled player is typing instead.
-  const guestCheckbox = page.locator("#guest-share-scores");
+  // Guest. The memo is the same for a Guest and for an enrolled
+  // player, and neither is asked anything.
   await page.selectOption("#who", { label: "Guest" });
-  if (party.scores_enabled) {
-    await expect(guestCheckbox).toBeVisible();
-  } else {
-    await expect(guestCheckbox).toHaveCount(0);
-  }
+  await expectMemo();
+  await expect(page.locator("#guest-share-scores")).toHaveCount(0);
   await page.selectOption("#who", { label: "Bob" });
-  await expect(guestCheckbox).toHaveCount(0);
+  await expectMemo();
   await typeLine(page);
   const attackResult = page.locator("#result");
   await expect(attackResult).toBeVisible({ timeout: 10000 });
   await expect(attackResult).toContainText(/Fooled it!|Caught!|Too messy/);
+  await expectMemo(); // still there, under the result
   // Pace and a one-line clue show on every scoreable result
-  // (PARTY_LAUNCH_PLAN.md section 8) -- "Too messy" is the one
+  // (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8) -- "Too messy" is the one
   // outcome that hides both, so only assert this when the attack
   // actually got scored.
   const resultText = (await attackResult.textContent()) ?? "";
@@ -130,11 +148,26 @@ test("a full one-keyboard party: two players, an attack, a replay, a rename, a d
   await expect(page.locator("h2", { hasText: "Scores" })).toBeVisible();
   await expect(page.locator("text=Latest attempts")).toBeVisible();
 
-  // New party resets the UI back to the start.
+  // New room asks first, then opens a fresh, empty room at its own
+  // link, on the name step.
   await page.click('button[data-tab="room"]');
-  await page.click("#new-party");
-  await page.click("#new-party");
+  const oldRoom = new URL(page.url()).pathname;
+  await page.click("#new-room");
+  await expect(page.locator("#confirm")).toContainText("Start a new room?");
+  await page.click("#confirm-yes");
+  await expect(page.locator("#name-form")).toBeVisible();
+  expect(new URL(page.url()).pathname).toMatch(/^\/r\/[A-HJ-NP-Z2-9]{8}$/);
+  expect(new URL(page.url()).pathname).not.toBe(oldRoom);
+  const fresh = await page.evaluate(() => fetch("/api/game/room").then((r) => r.json()));
+  expect(fresh.players).toEqual([]);
+
+  // Leave room asks first too, then resets the UI back to the start.
+  await enrollPlayer(page, "Dana");
+  await page.click("#to-room");
+  await page.click("#leave-room");
+  await page.click("#confirm-yes");
   await expect(page.locator('[data-level="sentence"]')).toBeVisible();
+  expect(new URL(page.url()).pathname).not.toMatch(/^\/r\//);
 
   expect(consoleErrors).toEqual([]);
 });

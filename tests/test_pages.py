@@ -39,8 +39,39 @@ def test_pages_link_to_the_built_static_assets(client: TestClient) -> None:
     assert "fonts.gstatic.com" not in resp.text
 
 
+@pytest.mark.parametrize("code", ["ABCDEFGH", "abcd-efgh", "ZZZZZZZZ", "nonsense"])
+def test_a_room_link_serves_the_game_page_whatever_the_code(client: TestClient, code: str) -> None:
+    # No room exists for any of these. The page never looks a code up
+    # (the join request does, behind its rate limit), so a GET can't
+    # tell a real code from a made-up one.
+    room_page = client.get(f"/r/{code}")
+    assert room_page.status_code == 200
+    assert room_page.text == client.get("/party").text
+    assert "script-src 'self'" in room_page.headers["content-security-policy"]
+
+
+def test_a_room_link_preview_is_the_home_pages_and_never_names_the_room(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With a public base URL the page carries og: tags. A room link's
+    # must be the home page's own, so a preview shows nothing about
+    # the room, not even its code (ROOMS_PLAN.md Phase 3 section 3).
+    monkeypatch.setattr(
+        "keystroke_dynamics.api.pages.settings.public_base_url", "https://example.com"
+    )
+    room_page = client.get("/r/ABCD-EFGH")
+    assert room_page.text == client.get("/party").text
+    assert 'property="og:url" content="https://example.com/party"' in room_page.text
+    assert "ABCD" not in room_page.text
+
+
+def test_the_page_is_told_its_home_path(client: TestClient) -> None:
+    # party.ts returns here when it leaves a room.
+    assert '<body data-home="/party">' in client.get("/r/ABCDEFGH").text
+
+
 def test_typing_twin_page_no_longer_exists(client: TestClient) -> None:
-    # Removed entirely -- Party replaces it (PARTY_LAUNCH_PLAN.md).
+    # Removed entirely -- Party replaces it (docs/plans/done/PARTY_LAUNCH_PLAN.md).
     # Checked here, under the accounts-enabled suite, since that's
     # the only mode the old page was ever reachable in.
     assert client.get("/typing-twin").status_code == 404

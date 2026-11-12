@@ -3,7 +3,7 @@
 kept past enrollment, see game/store.py) and scores it the same way
 any other attempt is scored.
 
-PARTY_LAUNCH_PLAN.md Part 1 section 6: "Run the replay on the server
+docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 6: "Run the replay on the server
 using the target's median timing, then score it. The browser receives
 only what it needs to animate the replay." The browser gets back the
 same Note list it already gets for drawing any player's signature

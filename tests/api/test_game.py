@@ -7,8 +7,10 @@ back over the wire.
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
+from keystroke_dynamics.api import game as game_api
 from keystroke_dynamics.game.rate_limit import game_rate_limiter
 from keystroke_dynamics.main import app
 
@@ -132,6 +134,41 @@ def test_create_player_generates_a_name_when_none_given(client: TestClient) -> N
     assert player["kind"] == "player"
 
 
+def test_name_suggestion_is_a_name_create_player_accepts(client: TestClient) -> None:
+    _create_party(client)
+    resp = client.get("/api/game/room/name-suggestion")
+    assert resp.status_code == 200, resp.text
+    name = resp.json()["name"]
+    assert name
+    assert _create_player(client, name)["name"] == name
+
+
+def test_name_suggestion_skips_a_name_already_taken_in_the_room(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _create_party(client)
+    _create_player(client, "quiet otter")
+    # Taken twice (the check ignores case), then free.
+    names = iter(["Quiet Otter", "Quiet Otter", "Sly Fox"])
+    monkeypatch.setattr(game_api, "generate_name", lambda: next(names))
+    resp = client.get("/api/game/room/name-suggestion")
+    assert resp.json() == {"name": "Sly Fox"}
+
+
+def test_name_suggestion_needs_a_room(client: TestClient) -> None:
+    assert client.get("/api/game/room/name-suggestion").status_code == 404
+
+
+def test_create_player_with_no_name_skips_a_name_already_taken(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _create_party(client)
+    _create_player(client, "Quiet Otter")
+    names = iter(["Quiet Otter", "Sly Fox"])
+    monkeypatch.setattr(game_api, "generate_name", lambda: next(names))
+    assert _create_player(client, name=None)["name"] == "Sly Fox"
+
+
 def test_create_player_rejects_a_blocked_word_name(client: TestClient) -> None:
     _create_party(client)
     resp = client.post(
@@ -152,7 +189,7 @@ def test_create_player_rejects_a_duplicate_name_within_the_party(client: TestCli
 def test_player_name_with_html_round_trips_as_plain_text(client: TestClient) -> None:
     # The API stores and returns it verbatim -- escaping it on display
     # is the frontend's job (Jinja autoescape / DOM text assignment),
-    # not something the wire format does. See PARTY_LAUNCH_PLAN.md
+    # not something the wire format does. See docs/plans/done/PARTY_LAUNCH_PLAN.md
     # Part 1 section 3 for the full "render as text only" requirement,
     # which still needs a frontend/Playwright check once that exists.
     _create_party(client)
@@ -166,7 +203,15 @@ def test_player_name_with_html_round_trips_as_plain_text(client: TestClient) -> 
 def test_player_view_never_includes_the_underlying_profile(client: TestClient) -> None:
     _create_party(client)
     player = _create_player(client, "Alice")
-    assert set(player.keys()) == {"id", "name", "color", "threshold", "notes", "kind"}
+    assert set(player.keys()) == {
+        "id",
+        "name",
+        "color",
+        "threshold",
+        "notes",
+        "kind",
+        "owner_member_id",
+    }
 
 
 def test_rename_player(client: TestClient) -> None:
@@ -243,7 +288,7 @@ def test_attack_against_a_real_player_with_matching_rhythm_fools_it(client: Test
     body = resp.json()
     assert body["attempt"]["word"] == "Fooled it!"
     assert body["attempt"]["passed"] is True
-    # Pace and clue (PARTY_LAUNCH_PLAN.md section 8): present on every
+    # Pace and clue (docs/plans/done/PARTY_LAUNCH_PLAN.md section 8): present on every
     # scoreable attempt, not just disguise mode.
     assert isinstance(body["attempt"]["pace"], float)
     assert isinstance(body["clue"], str)

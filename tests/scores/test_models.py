@@ -1,4 +1,4 @@
-"""score_attempts' column set is exhaustive, per PARTY_LAUNCH_PLAN.md
+"""score_attempts' column set is exhaustive, per docs/plans/done/PARTY_LAUNCH_PLAN.md
 section 10: this fails loudly if a column outside the plan's own list
 is ever added, rather than silently letting one more field in
 (name, IP address, user agent, key timing, key identity, profile
@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 
 from keystroke_dynamics.scores.models import ScoreAttempt
 
-#: Exactly PARTY_LAUNCH_PLAN.md section 10's table definition -- add a
+#: Exactly docs/plans/done/PARTY_LAUNCH_PLAN.md section 10's table definition -- add a
 #: column here (with a one-line note of which plan line it's from)
 #: only alongside an actual plan update, never just to make this pass.
 _ALLOWED_COLUMNS = {
@@ -38,6 +38,8 @@ _ALLOWED_COLUMNS = {
     "limit_value",
     "pace",
     "outcome",
+    # docs/plans/active/ROOMS_PLAN.md Phase 1 section 5.
+    "same_keyboard",
 }
 
 
@@ -83,6 +85,18 @@ def test_a_full_row_round_trips(scores_db_session) -> None:
     assert stored.device_type == "keyboard"
     assert stored.place is None
     assert stored.total == 0.8
+
+
+@pytest.mark.parametrize("same_keyboard", [True, False, None])
+def test_same_keyboard_round_trips(scores_db_session, same_keyboard: bool | None) -> None:
+    row = _row(same_keyboard=same_keyboard)
+    scores_db_session.execute(insert(ScoreAttempt), [row])
+    scores_db_session.commit()
+
+    stored = scores_db_session.execute(
+        select(ScoreAttempt).where(ScoreAttempt.id == row["id"])
+    ).scalar_one()
+    assert stored.same_keyboard is same_keyboard
 
 
 def test_an_unusable_row_with_null_scores_round_trips(scores_db_session) -> None:

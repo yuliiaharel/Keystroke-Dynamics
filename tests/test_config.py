@@ -4,6 +4,7 @@ with a value anyone can read in this repo's own .env.example, or with
 no real origin/public URL, outside local development."""
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from keystroke_dynamics.config import Settings
 
@@ -88,7 +89,7 @@ def test_reports_every_missing_field_at_once() -> None:
     assert "PUBLIC_BASE_URL" in message
 
 
-# ---------- scores_database_url (PARTY_LAUNCH_PLAN.md section 10) ----------
+# ---------- scores_database_url (docs/plans/done/PARTY_LAUNCH_PLAN.md section 10) ----------
 
 
 def test_scores_database_url_defaults_to_off() -> None:
@@ -107,3 +108,48 @@ def test_a_real_scores_database_url_is_kept() -> None:
     url = "postgresql+psycopg://user:pass@neon.example.com/scores"
     settings = Settings(**{**_REAL_VALUES, "scores_database_url": url})
     assert settings.scores_database_url == url
+
+
+# ---------- driverless Postgres URLs (what Neon and other hosts hand out) ----------
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        (
+            "postgresql://user:pass@ep-x-pooler.neon.example.com/db?sslmode=require",
+            "postgresql+psycopg://user:pass@ep-x-pooler.neon.example.com/db?sslmode=require",
+        ),
+        (
+            "postgres://user:pass@db.example.com:25060/db",
+            "postgresql+psycopg://user:pass@db.example.com:25060/db",
+        ),
+        # Already names a driver: left exactly as given, whichever driver it is.
+        (
+            "postgresql+psycopg://user:pass@db.example.com/db",
+            "postgresql+psycopg://user:pass@db.example.com/db",
+        ),
+        (
+            "postgresql+asyncpg://user:pass@db.example.com/db",
+            "postgresql+asyncpg://user:pass@db.example.com/db",
+        ),
+        # Not Postgres at all: not this validator's business.
+        ("sqlite:///scores.sqlite3", "sqlite:///scores.sqlite3"),
+    ],
+)
+@pytest.mark.parametrize("field", ["database_url", "scores_database_url"])
+def test_driverless_postgres_urls_get_the_psycopg3_driver(
+    field: str, given: str, expected: str
+) -> None:
+    settings = Settings(**{**_REAL_VALUES, field: given})
+    assert getattr(settings, field) == expected
+
+
+def test_a_normalized_url_resolves_to_the_installed_driver() -> None:
+    # The point of the rewrite: SQLAlchemy must pick psycopg 3 (installed),
+    # not psycopg2 (not installed) -- checked on the parsed URL, no connection.
+    settings = Settings(
+        **{**_REAL_VALUES, "scores_database_url": "postgresql://u:p@h.example.com/db"}
+    )
+    assert settings.scores_database_url is not None
+    assert make_url(settings.scores_database_url).get_dialect().driver == "psycopg"

@@ -1,6 +1,6 @@
 """evaluation/analyze_scores.py's one database-touching function,
 fetch_rows(), against the real scores test database -- and
-end_to_end() on known seeded data, matching PARTY_LAUNCH_PLAN.md
+end_to_end() on known seeded data, matching docs/plans/done/PARTY_LAUNCH_PLAN.md
 section 10's own 'Done when' bullet: "evaluation/analyze_scores.py
 produces correct results on known test data."
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from evaluation.analyze_scores import (
     analyze,
+    attack_rates_by_keyboard,
     false_reject_and_accept_rates,
     fetch_rows,
 )
@@ -60,3 +61,21 @@ def test_analyze_produces_correct_rates_on_known_seeded_data(scores_db_session, 
     assert version in output
     assert "false reject" in output
     assert "false accept" in output
+
+
+def test_fetch_rows_carries_same_keyboard_into_the_keyboard_split(scores_db_session) -> None:
+    version = "analyze-same-keyboard"
+    rows = [
+        _values(scoring_version=version, mode="attack", rhythm=0.5, same_keyboard=True)
+        for _ in range(5)
+    ] + [
+        _values(scoring_version=version, mode="attack", rhythm=2.0, same_keyboard=False)
+        for _ in range(5)
+    ]
+    _write_batch(rows, [])
+
+    fetched = [r for r in fetch_rows(SCORES_TEST_DATABASE_URL) if r.scoring_version == version]
+    assert sorted(r.same_keyboard for r in fetched) == [False] * 5 + [True] * 5
+
+    rates = {r.label: r.rate for r in attack_rates_by_keyboard(fetched, limit=1.0)}
+    assert rates == {"keyboard=same, limit 1.0": 1.0, "keyboard=different, limit 1.0": 0.0}
