@@ -1,5 +1,6 @@
-"""game/touch_scoring.py: rhythm and place scored together, each with
-its own floor, and the touch limit's clamps."""
+"""game/touch_scoring.py: rhythm and place each scored with its own
+floor and its own minimum, averaged with equal weight, and the touch
+limit's clamps."""
 
 from __future__ import annotations
 
@@ -21,22 +22,26 @@ from keystroke_dynamics.game.touch_scoring import (
     extract_touch_line,
     line_place_feature_count,
     line_timing_feature_count,
+    min_compared_place_features,
+    min_compared_timing_features,
     score_touch,
-    touch_min_compared_features,
 )
 from tests.touch_lines import TOUCH_PHRASE, tap_line, tap_lines, to_taps
 
-#: A two-key phrase whose minimum is small enough to build cases by
-#: hand: 2 holds + 1 flight + 2 tap_x + 2 tap_y = 7 features, minimum 4.
-#: (int(7 * 0.7) == 4.)
+#: A two-key phrase small enough to build cases by hand. One correct
+#: typing gives 3 timing features (2 holds, 1 flight) and 4 position
+#: features (2 tap_x, 2 tap_y). 70% of each, rounded up, is 3 and 3.
 TINY = "ab"
 
 HOLD_A: FeatureKey = ("hold", "KeyA")
 HOLD_B: FeatureKey = ("hold", "KeyB")
+FLIGHT: FeatureKey = ("flight", "KeyA", "KeyB")
+TIMING_KEYS = (HOLD_A, HOLD_B, FLIGHT)
 X_A: PlaceKey = ("tap_x", "KeyA")
 Y_A: PlaceKey = ("tap_y", "KeyA")
 X_B: PlaceKey = ("tap_x", "KeyB")
 Y_B: PlaceKey = ("tap_y", "KeyB")
+PLACE_KEYS = (X_A, Y_A, X_B, Y_B)
 
 
 def _lines(typist: str = "alice", count: int = 4, **kwargs: object) -> list[TouchLine]:
@@ -49,19 +54,59 @@ def _exact(mean: float) -> RunningStats:
     return from_values([mean, mean, mean])
 
 
+def _timing_profile(mean: float = 100.0) -> dict[FeatureKey, RunningStats]:
+    return {key: _exact(mean) for key in TIMING_KEYS}
+
+
+def _place_profile(stats: RunningStats | None = None) -> dict[PlaceKey, RunningStats]:
+    return {key: stats or _exact(0.0) for key in PLACE_KEYS}
+
+
+def _line(timing: float = 100.0, place: float = 0.0) -> TouchLine:
+    """Every timing feature at `timing` ms and every tap at `place`."""
+    return TouchLine(
+        timing=[Feature(key, timing) for key in TIMING_KEYS],
+        place=[PlaceFeature(key, place) for key in PLACE_KEYS],
+    )
+
+
+def _score(line: TouchLine, profile=None, place_profile=None, threshold: float = 1.65):
+    return score_touch(
+        line,
+        _timing_profile() if profile is None else profile,
+        _place_profile() if place_profile is None else place_profile,
+        phrase=TINY,
+        threshold=threshold,
+    )
+
+
 # ---------- what a line produces ----------
 
 
-def test_the_touch_lines_feature_counts() -> None:
+def test_the_touch_lines_feature_counts_and_minimums() -> None:
     # 29 keys: a hold each, and a flight between each consecutive pair.
     assert line_timing_feature_count(TOUCH_PHRASE) == 29 + 28
     # 13 distinct letters and the space bar.
     assert line_place_feature_count(TOUCH_PHRASE) == 13 + 14
-    assert touch_min_compared_features(TOUCH_PHRASE) == 58  # int(84 * 0.7)
-    # More than either kind alone can supply, so a scored line always
-    # compared some rhythm and some place.
-    assert touch_min_compared_features(TOUCH_PHRASE) > line_timing_feature_count(TOUCH_PHRASE)
-    assert touch_min_compared_features(TOUCH_PHRASE) > line_place_feature_count(TOUCH_PHRASE)
+    # At least 70% of each: 39.9 and 18.9, rounded up.
+    assert min_compared_timing_features(TOUCH_PHRASE) == 40
+    assert min_compared_place_features(TOUCH_PHRASE) == 19
+
+
+@pytest.mark.parametrize(
+    ("phrase", "timing", "place"),
+    [
+        ("ab", 3, 3),  # 70% of 3 and of 4
+        ("a", 1, 2),  # 70% of 1 and of 2
+        ("abcde", 7, 7),  # 70% of 9 is 6.3; of 10 is exactly 7, not 8
+        ("", 1, 1),  # never zero: nothing compared is never enough
+    ],
+)
+def test_the_minimums_are_at_least_70_percent_rounded_up(
+    phrase: str, timing: int, place: int
+) -> None:
+    assert min_compared_timing_features(phrase) == timing
+    assert min_compared_place_features(phrase) == place
 
 
 def test_the_feature_counts_are_what_a_real_line_produces() -> None:
@@ -88,20 +133,9 @@ def test_place_profile_counts_one_value_per_training_line() -> None:
 
 
 def test_place_floor_is_in_key_widths_not_milliseconds() -> None:
-    profile = {HOLD_A: _exact(100.0), HOLD_B: _exact(100.0)}
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0), X_B: _exact(0.0), Y_B: _exact(0.0)}
-    line = TouchLine(
-        timing=[Feature(HOLD_A, 100.0), Feature(HOLD_B, 100.0)],
-        # Each exactly one floor away from a spot hit identically
-        # every training line.
-        place=[
-            PlaceFeature(X_A, TOUCH_MIN_PLACE_STD),
-            PlaceFeature(Y_A, -TOUCH_MIN_PLACE_STD),
-            PlaceFeature(X_B, TOUCH_MIN_PLACE_STD),
-            PlaceFeature(Y_B, TOUCH_MIN_PLACE_STD),
-        ],
-    )
-    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+    # Each tap exactly one floor away from a spot hit identically on
+    # every training line.
+    score = _score(_line(place=TOUCH_MIN_PLACE_STD))
     assert score.place == pytest.approx(1.0)
     # Had position gone through the timing floor of 12, a 0.08 offset
     # would have scored 0.08 / 12 -- next to nothing.
@@ -110,13 +144,7 @@ def test_place_floor_is_in_key_widths_not_milliseconds() -> None:
 
 def test_a_real_place_spread_above_the_floor_is_used_as_it_is() -> None:
     wide = from_values([-0.3, 0.0, 0.3])  # std 0.3
-    profile = {HOLD_A: _exact(100.0), HOLD_B: _exact(100.0)}
-    place_profile = {X_A: wide, Y_A: wide, X_B: wide, Y_B: wide}
-    line = TouchLine(
-        timing=[Feature(HOLD_A, 100.0), Feature(HOLD_B, 100.0)],
-        place=[PlaceFeature(k, 0.3) for k in (X_A, Y_A, X_B, Y_B)],
-    )
-    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+    score = _score(_line(place=0.3), place_profile=_place_profile(wide))
     assert score.place == pytest.approx(1.0)
 
 
@@ -130,82 +158,69 @@ def test_a_real_place_spread_above_the_floor_is_used_as_it_is() -> None:
 def test_timing_keeps_the_keyboard_games_floors(
     mean: float, sample: float, expected: float
 ) -> None:
-    profile = {HOLD_A: _exact(mean), HOLD_B: _exact(mean)}
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0)}
-    line = TouchLine(
-        timing=[Feature(HOLD_A, sample), Feature(HOLD_B, sample)],
-        place=[PlaceFeature(X_A, 0.0), PlaceFeature(Y_A, 0.0)],
-    )
-    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+    score = _score(_line(timing=sample), profile=_timing_profile(mean))
     assert score.rhythm == pytest.approx(expected)
     assert score.place == 0.0
 
 
-# ---------- mixed scoring ----------
+# ---------- the distance ----------
 
 
-def test_distance_is_the_mean_over_every_compared_feature() -> None:
-    profile = {HOLD_A: _exact(100.0), HOLD_B: _exact(100.0)}
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0), X_B: _exact(0.0), Y_B: _exact(0.0)}
-    line = TouchLine(
-        # Rhythm: 3 floors off on each of 2 features.
-        timing=[Feature(HOLD_A, 136.0), Feature(HOLD_B, 136.0)],
-        # Place: dead on, on each of 4 features.
-        place=[PlaceFeature(k, 0.0) for k in (X_A, Y_A, X_B, Y_B)],
-    )
-    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+def test_distance_is_the_equal_weight_average_of_rhythm_and_place() -> None:
+    # Rhythm: 3 floors off on each of 3 features. Place: dead on, on
+    # each of 4.
+    score = _score(_line(timing=136.0, place=0.0))
     assert score.rhythm == pytest.approx(3.0)
     assert score.place == 0.0
-    # (2 * 3.0 + 4 * 0.0) / 6: weighted by how many features each
-    # kind had, not a plain average of the two scores.
-    assert score.distance == pytest.approx(1.0)
-    assert score.compared_features == 6
+    # (3.0 + 0.0) / 2 -- not (3 * 3.0 + 4 * 0.0) / 7, which is what a
+    # mean over all seven features would give.
+    assert score.distance == pytest.approx(1.5)
+    assert score.compared_features == 7
     assert score.decision is Decision.MATCH
 
 
-def test_the_decision_uses_distance_not_rhythm_or_place_alone() -> None:
-    profile = {HOLD_A: _exact(100.0), HOLD_B: _exact(100.0)}
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0), X_B: _exact(0.0), Y_B: _exact(0.0)}
+def test_the_weight_does_not_depend_on_how_many_features_each_kind_has() -> None:
+    # Twice as many timing features as position features, as on the
+    # real line: place still counts for half.
+    profile = {("hold", f"Key{c}"): _exact(100.0) for c in "ABCDEFGH"}
     line = TouchLine(
-        timing=[Feature(HOLD_A, 100.0), Feature(HOLD_B, 100.0)],
-        place=[PlaceFeature(k, 0.4) for k in (X_A, Y_A, X_B, Y_B)],  # 5 floors off
+        timing=[Feature(key, 100.0) for key in profile],
+        place=[PlaceFeature(key, 0.32) for key in PLACE_KEYS],  # 4 floors off
     )
-    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+    score = score_touch(line, profile, _place_profile(), phrase=TINY, threshold=1.65)
     assert score.rhythm == 0.0
-    assert score.place == pytest.approx(5.0)
-    assert score.distance == pytest.approx(20 / 6)
+    assert score.place == pytest.approx(4.0)
+    assert score.distance == pytest.approx(2.0)
     assert score.decision is Decision.NO_MATCH
 
 
+def test_a_distance_exactly_on_the_limit_matches() -> None:
+    score = _score(_line(timing=136.0, place=0.0), threshold=1.5)
+    assert score.distance == pytest.approx(1.5)
+    assert _score(_line(timing=136.0), threshold=score.distance).decision is Decision.MATCH
+    assert _score(_line(timing=136.0), threshold=score.distance - 1e-9).decision is (
+        Decision.NO_MATCH
+    )
+
+
 def test_a_feature_the_profile_has_not_seen_twice_is_skipped_not_zero() -> None:
-    profile = {HOLD_A: _exact(100.0), HOLD_B: from_values([100.0])}  # B seen once
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0), X_B: from_values([0.0])}
+    profile = {**_timing_profile(), ("hold", "KeyZ"): from_values([5.0])}  # Z seen once
+    place_profile = {**_place_profile(), ("tap_y", "KeyZ"): from_values([0.0])}
     line = TouchLine(
-        timing=[Feature(HOLD_A, 112.0), Feature(HOLD_B, 900.0), Feature(("hold", "KeyZ"), 5.0)],
+        timing=[*_line(timing=112.0).timing, Feature(("hold", "KeyZ"), 900.0)],
         place=[
-            PlaceFeature(X_A, 0.08),
-            PlaceFeature(Y_A, 0.08),
-            PlaceFeature(X_B, 3.0),
-            PlaceFeature(Y_B, 0.5),
+            *_line(place=0.08).place,
+            PlaceFeature(("tap_y", "KeyZ"), 0.9),  # seen once
+            PlaceFeature(("tap_x", "KeyQ"), 0.9),  # never seen
         ],
     )
-    score = score_touch(line, profile, place_profile, phrase="a", threshold=1.65)
-    assert score.compared_features == 3
+    score = score_touch(line, profile, place_profile, phrase=TINY, threshold=1.65)
+    assert score.compared_features == 7
     assert score.rhythm == pytest.approx(1.0)
     assert score.place == pytest.approx(1.0)
 
 
 # ---------- insufficient data ----------
-
-
-def _scorable_tiny() -> tuple[dict, dict, TouchLine]:
-    profile = {HOLD_A: _exact(100.0), HOLD_B: _exact(100.0)}
-    place_profile = {X_A: _exact(0.0), Y_A: _exact(0.0), X_B: _exact(0.0), Y_B: _exact(0.0)}
-    line = TouchLine(
-        timing=[Feature(HOLD_A, 100.0), Feature(HOLD_B, 100.0)],
-        place=[PlaceFeature(k, 0.0) for k in (X_A, Y_A, X_B, Y_B)],
-    )
-    return profile, place_profile, line
 
 
 def _assert_insufficient(score, compared: int) -> None:
@@ -216,36 +231,47 @@ def _assert_insufficient(score, compared: int) -> None:
     assert score.compared_features == compared
 
 
-def test_too_few_compared_features_is_insufficient_data() -> None:
-    profile, place_profile, line = _scorable_tiny()
-    assert touch_min_compared_features(TINY) == 4
-    short = TouchLine(timing=line.timing[:1], place=line.place[:2])
-    _assert_insufficient(
-        score_touch(short, profile, place_profile, phrase=TINY, threshold=1.65), compared=3
-    )
-
-
-def test_exactly_the_minimum_is_enough() -> None:
-    profile, place_profile, line = _scorable_tiny()
-    enough = TouchLine(timing=line.timing[:1], place=line.place[:3])
-    score = score_touch(enough, profile, place_profile, phrase=TINY, threshold=1.65)
+def test_exactly_70_percent_of_each_kind_is_enough() -> None:
+    line = _line()
+    enough = TouchLine(timing=line.timing, place=line.place[:3])
+    score = _score(enough)
     assert score.decision is Decision.MATCH
-    assert score.compared_features == 4
+    assert score.compared_features == 6
+
+
+def test_too_little_timing_is_insufficient_however_much_place_there_is() -> None:
+    line = _line()
+    # 2 of 3 timing features is under 70%; all 4 position features.
+    short = TouchLine(timing=line.timing[:2], place=line.place)
+    _assert_insufficient(_score(short), compared=6)
+
+
+def test_too_little_place_is_insufficient_however_much_timing_there_is() -> None:
+    line = _line()
+    # All 3 timing features; 2 of 4 position features is under 70%.
+    short = TouchLine(timing=line.timing, place=line.place[:2])
+    _assert_insufficient(_score(short), compared=5)
+
+
+def test_each_kind_is_checked_on_its_own_not_as_a_total() -> None:
+    # 6 of 7 features overall is 86%, and either shortfall alone still
+    # isn't enough.
+    line = _line()
+    for short in (
+        TouchLine(timing=line.timing[:2], place=line.place),
+        TouchLine(timing=[*line.timing, *line.timing], place=line.place[:2]),
+    ):
+        assert _score(short).decision is Decision.INSUFFICIENT_DATA
 
 
 def test_a_line_with_no_place_at_all_is_insufficient_data() -> None:
-    # Enough timing features to clear the minimum on their own.
-    profile = {("hold", f"Key{c}"): _exact(100.0) for c in "ABCDE"}
-    line = TouchLine(timing=[Feature(k, 100.0) for k in profile], place=[])
-    _assert_insufficient(score_touch(line, profile, {}, phrase=TINY, threshold=1.65), compared=5)
+    line = TouchLine(timing=_line().timing, place=[])
+    _assert_insufficient(_score(line), compared=3)
 
 
 def test_a_line_with_no_rhythm_at_all_is_insufficient_data() -> None:
-    _, place_profile, line = _scorable_tiny()
-    only_place = TouchLine(timing=[], place=line.place)
-    _assert_insufficient(
-        score_touch(only_place, {}, place_profile, phrase=TINY, threshold=1.65), compared=4
-    )
+    line = TouchLine(timing=[], place=_line().place)
+    _assert_insufficient(_score(line), compared=4)
 
 
 def test_an_empty_profile_is_insufficient_data() -> None:
@@ -264,7 +290,27 @@ def test_half_a_line_is_insufficient_data() -> None:
         threshold=1.65,
     )
     assert score.decision is Decision.INSUFFICIENT_DATA
-    assert 0 < score.compared_features < touch_min_compared_features(TOUCH_PHRASE)
+    assert score.compared_features > 0
+
+
+@pytest.mark.parametrize(
+    ("keys", "scorable"),
+    [
+        # 21 keys: 41 timing features (min 40), and 12 distinct keys
+        # give 23 position features (min 19).
+        pytest.param(21, True, id="just-enough-timing"),
+        # 20 keys: 39 timing features, one short.
+        pytest.param(20, False, id="one-timing-feature-short"),
+    ],
+)
+def test_the_real_lines_timing_minimum_is_40(keys: int, scorable: bool) -> None:
+    profile, place_profile = build_touch_profiles(_lines())
+    part = tap_line(line=9)[: 2 * keys]
+    line = extract_touch_line(to_taps(part))
+    assert len(line.timing) == 2 * keys - 1
+    assert len(line.place) >= min_compared_place_features(TOUCH_PHRASE)
+    score = score_touch(line, profile, place_profile, phrase=TOUCH_PHRASE, threshold=1.65)
+    assert (score.decision is not Decision.INSUFFICIENT_DATA) is scorable
 
 
 # ---------- whole lines ----------
@@ -284,6 +330,25 @@ def test_a_typists_own_line_scores_well_under_someone_elses() -> None:
     assert other.decision is Decision.NO_MATCH
     assert own.distance < other.distance
     assert own.compared_features == other.compared_features == 84
+
+
+def test_own_rhythm_with_every_tap_shifted_0_35_of_a_key_fails() -> None:
+    # The case that passed when distance was a mean over all features
+    # (57 timing, 27 position): Alice's own rhythm, at her own pace,
+    # with every tap 0.35 of a key off in both directions.
+    lines = _lines("alice")
+    profile, place_profile = build_touch_profiles(lines)
+    threshold = calibrate_touch_threshold(lines, phrase=TOUCH_PHRASE)
+    shifted = extract_touch_line(to_taps(tap_line("alice", line=9, shift=(0.35, -0.35))))
+    score = score_touch(shifted, profile, place_profile, phrase=TOUCH_PHRASE, threshold=threshold)
+    assert score.rhythm < 0.5  # the rhythm really is hers
+    assert score.place > 3.0
+    assert score.distance == pytest.approx((score.rhythm + score.place) / 2)
+    assert score.distance > TOUCH_MAX_THRESHOLD >= threshold
+    assert score.decision is Decision.NO_MATCH
+    # The old feature-weighted mean, for the record, was under the limit.
+    old = (57 * score.rhythm + 27 * score.place) / 84
+    assert old < threshold
 
 
 def test_the_same_rhythm_from_a_different_grip_moves_place_and_not_rhythm() -> None:

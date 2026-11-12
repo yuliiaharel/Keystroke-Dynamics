@@ -3,7 +3,8 @@ profile (docs/plans/active/MOBILE_PLAN.md Phase 1 section 5).
 
 Rhythm is scored exactly as the keyboard game scores it -- the same
 features, the same floors -- and Place the same way with its own
-floor, because a position isn't a time. Both go through
+floor, because a position isn't a time. The distance the limit is
+applied to is the plain average of the two scores. Both go through
 core.scoring.scaled_distance, the one copy of the scaled Manhattan
 formula. Nothing here is called for a keyboard room, so keyboard
 scores can't move (tests/game/test_keyboard_golden.py).
@@ -15,6 +16,7 @@ for a physical keyboard and says nothing about this.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -57,9 +59,12 @@ class TouchLine:
 @dataclass(frozen=True)
 class TouchScore:
     decision: Decision
-    #: The mean over every compared feature, timing and position
-    #: alike -- what the limit is applied to. None, with rhythm and
-    #: place, when decision is INSUFFICIENT_DATA.
+    #: The average of rhythm and place, each counting equally however
+    #: many features it was computed from -- what the limit is applied
+    #: to. A line has about twice as many timing features as position
+    #: features, so a mean over all of them would let a matching
+    #: rhythm hide taps that land in the wrong places. None, with
+    #: rhythm and place, when decision is INSUFFICIENT_DATA.
     distance: float | None
     #: The mean over the compared timing features only.
     rhythm: float | None
@@ -91,17 +96,19 @@ def line_place_feature_count(phrase: str) -> int:
     return len(keys) + len(keys - {" "})
 
 
-def touch_min_compared_features(phrase: str) -> int:
-    """GAME_MIN_COMPARED_FRACTION of everything a correct line gives
-    the scorer, timing and position together. Deliberately without the
-    keyboard game's cap of 20: the touch line produces more position
-    features alone than that cap, so a capped minimum could be met
-    with no rhythm at all.
+def _at_least_the_fraction(total: int) -> int:
+    """The smallest count that is at least GAME_MIN_COMPARED_FRACTION
+    of `total`, and never less than 1. The epsilon keeps a product
+    like 0.7 * 10, which floats a hair above 7, from rounding up to 8."""
+    return max(1, math.ceil(total * GAME_MIN_COMPARED_FRACTION - 1e-9))
 
-    For the touch line this is more than either kind can supply on
-    its own, so a scored line always compared some of each."""
-    total = line_timing_feature_count(phrase) + line_place_feature_count(phrase)
-    return max(1, int(total * GAME_MIN_COMPARED_FRACTION))
+
+def min_compared_timing_features(phrase: str) -> int:
+    return _at_least_the_fraction(line_timing_feature_count(phrase))
+
+
+def min_compared_place_features(phrase: str) -> int:
+    return _at_least_the_fraction(line_place_feature_count(phrase))
 
 
 def build_place_profile(lines: Sequence[Sequence[PlaceFeature]]) -> dict[PlaceKey, RunningStats]:
@@ -126,9 +133,10 @@ def score_touch(
     A feature the profile hasn't seen at least GAME_MIN_FEATURE_COUNT
     times is skipped, never treated as zero -- the keyboard game's rule.
 
-    INSUFFICIENT_DATA when too few features could be compared, or when
-    either kind is missing entirely: Rhythm and Place are each a mean,
-    and there is no mean of nothing.
+    INSUFFICIENT_DATA unless at least GAME_MIN_COMPARED_FRACTION of
+    the line's timing features and the same fraction of its position
+    features were compared, each checked on its own: plenty of one
+    kind can't make up for too little of the other.
     """
     rhythm_parts = [
         scaled_distance(
@@ -143,7 +151,9 @@ def score_touch(
         if (stats := place_profile.get(f.key)) is not None and stats.count >= GAME_MIN_FEATURE_COUNT
     ]
     compared = len(rhythm_parts) + len(place_parts)
-    if not rhythm_parts or not place_parts or compared < touch_min_compared_features(phrase):
+    if len(rhythm_parts) < min_compared_timing_features(phrase) or len(
+        place_parts
+    ) < min_compared_place_features(phrase):
         return TouchScore(
             decision=Decision.INSUFFICIENT_DATA,
             distance=None,
@@ -152,12 +162,14 @@ def score_touch(
             threshold=threshold,
             compared_features=compared,
         )
-    distance = (sum(rhythm_parts) + sum(place_parts)) / compared
+    rhythm = sum(rhythm_parts) / len(rhythm_parts)
+    place = sum(place_parts) / len(place_parts)
+    distance = (rhythm + place) / 2
     return TouchScore(
         decision=Decision.MATCH if distance <= threshold else Decision.NO_MATCH,
         distance=distance,
-        rhythm=sum(rhythm_parts) / len(rhythm_parts),
-        place=sum(place_parts) / len(place_parts),
+        rhythm=rhythm,
+        place=place,
         threshold=threshold,
         compared_features=compared,
     )

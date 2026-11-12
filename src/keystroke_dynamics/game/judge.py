@@ -52,9 +52,8 @@ def _touch_clue(*, rhythm: float, place: float, threshold: float, pace: float) -
     their own.
 
     "All fit" is only ever said when both are at or under the limit,
-    and the distance is a weighted mean of the two, so it is at or
-    under the limit too: this can't claim a good fit on a failed
-    attempt.
+    and the distance is the average of the two, so it is at or under
+    the limit too: this can't claim a good fit on a failed attempt.
     """
     fast = pace < 1 - DISGUISE_PACE_TOLERANCE
     slow = pace > 1 + DISGUISE_PACE_TOLERANCE

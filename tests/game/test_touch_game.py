@@ -26,7 +26,7 @@ from keystroke_dynamics.game.touch_scoring import (
     TOUCH_MAX_THRESHOLD,
     TOUCH_MIN_THRESHOLD,
     extract_touch_line,
-    touch_min_compared_features,
+    min_compared_timing_features,
 )
 from tests.touch_lines import TOUCH_PHRASE, tap_line, tap_lines, to_taps
 
@@ -133,7 +133,9 @@ def test_a_line_too_short_to_score_is_too_messy_with_no_scores() -> None:
     assert verdict.place is None
     assert verdict.pace is None
     assert verdict.clue is None
-    assert 0 < verdict.compared_features < touch_min_compared_features(TOUCH_PHRASE)
+    # 14 keys: 27 timing features, under the 40 the line needs.
+    assert 0 < verdict.compared_features
+    assert 27 < min_compared_timing_features(TOUCH_PHRASE)
 
 
 # ---------- the clue ----------
