@@ -759,3 +759,61 @@ def test_a_touch_game_logs_no_tap_positions_or_timings(
         assert secret not in logged
     for word in ('"dx"', "'dx'", "dx=", "t_ms", "KeyT"):
         assert word not in logged
+
+
+# ---------- screen size ----------
+
+
+def _member(member_id: str):
+    from keystroke_dynamics.api import game as game_api
+
+    for party in game_api._store._parties.values():  # type: ignore[attr-defined]
+        if member_id in party.members:
+            return party.members[member_id]
+    raise AssertionError("no such member")
+
+
+def test_a_touch_members_viewport_width_is_kept_only_as_a_bucket(
+    phone: TestClient, second_phone: TestClient, laptop: TestClient
+) -> None:
+    created = phone.post(
+        "/api/game/rooms", json={"level": TOUCH_LEVEL, **TOUCH, "viewport_width": 320}
+    )
+    assert created.status_code == 200, created.text
+    room = created.json()
+    joined = _join(second_phone, room["code"], **TOUCH, viewport_width=430)
+    # A computer watching has no bucket, whatever width it sends.
+    watcher = _join(laptop, room["code"], viewport_width=1440)
+
+    assert _member(room["member_id"]).screen_size == "small"
+    assert _member(joined["member_id"]).screen_size == "large"
+    assert _member(watcher["member_id"]).screen_size is None
+    # The width isn't on the member, and no room response has either.
+    for member_id in (room["member_id"], joined["member_id"]):
+        assert not hasattr(_member(member_id), "viewport_width")
+    for view in (room, joined, watcher, phone.get("/api/game/room").json()):
+        assert "screen_size" not in view and "viewport_width" not in view
+
+
+def test_a_touch_member_who_sends_no_width_has_no_bucket(phone: TestClient) -> None:
+    room = _create_touch_room(phone)
+    assert _member(room["member_id"]).screen_size is None
+
+
+def test_a_keyboard_room_never_records_a_screen_size(laptop: TestClient) -> None:
+    created = laptop.post("/api/game/rooms", json={"level": "sentence", "viewport_width": 1440})
+    assert created.status_code == 200, created.text
+    assert _member(created.json()["member_id"]).screen_size is None
+
+
+@pytest.mark.parametrize("width", [0, -390, 20_001, 390.5, "wide"])
+def test_a_nonsense_viewport_width_is_refused(phone: TestClient, width: object) -> None:
+    created = phone.post(
+        "/api/game/rooms", json={"level": TOUCH_LEVEL, **TOUCH, "viewport_width": width}
+    )
+    assert created.status_code == 422
+    room = _create_touch_room(phone)
+    joined = phone.post(
+        f"/api/game/rooms/{room['code']}/join", json={**TOUCH, "viewport_width": width}
+    )
+    assert joined.status_code == 422

@@ -9,7 +9,8 @@ only INSERT and DELETE rows here, nothing else.
 The column set is exhaustive and intentionally not open to
 extension -- see tests/scores/test_models.py's test that fails if a
 column outside docs/plans/done/PARTY_LAUNCH_PLAN.md's own list (plus
-same_keyboard, from docs/plans/active/ROOMS_PLAN.md) is added. In
+same_keyboard, from docs/plans/active/ROOMS_PLAN.md, and screen_size,
+from docs/plans/active/MOBILE_PLAN.md) is added. In
 particular, there is no name, IP address, user agent, key timing, key
 identity, or profile-statistics column, and party_id/typist_id/
 target_id are random ids created only for this table (game/store.py's
@@ -40,6 +41,9 @@ class ScoreAttempt(Base):
             "target_kind IN ('player', 'simulated', 'permanent')", name="ck_target_kind"
         ),
         CheckConstraint("outcome IN ('pass', 'fail', 'unusable')", name="ck_outcome"),
+        CheckConstraint(
+            "screen_size IN ('small', 'medium', 'large', 'xlarge')", name="ck_screen_size"
+        ),
     )
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
@@ -86,3 +90,10 @@ class ScoreAttempt(Base):
     #: for rows from before rooms, for bot and permanent targets, and
     #: for replays.
     same_keyboard: Mapped[bool | None] = mapped_column(Boolean)
+    #: Roughly how wide the typist's screen was, as one of four
+    #: buckets by viewport width (game/screen.py) -- never the width
+    #: itself. Touch rows only (docs/plans/active/MOBILE_PLAN.md
+    #: Phase 1 section 6), because key size can change where taps
+    #: land. Null for every keyboard row, for replays, and when the
+    #: browser didn't report a width.
+    screen_size: Mapped[str | None] = mapped_column(String)

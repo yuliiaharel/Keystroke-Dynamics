@@ -37,6 +37,7 @@ from keystroke_dynamics.core.stats import RunningStats
 from keystroke_dynamics.game.codes import generate_code
 from keystroke_dynamics.game.levels import Level
 from keystroke_dynamics.game.place import PlaceKey
+from keystroke_dynamics.game.screen import ScreenSize
 
 #: "disguise" is the keyboard game's own-player mode with a pace rule;
 #: "grip" is the touch game's (docs/plans/active/MOBILE_PLAN.md Phase 1
@@ -153,6 +154,10 @@ class Member:
 
     id: str
     device_type: DeviceType = "keyboard"
+    #: Roughly how wide this member's screen is (game/screen.py) --
+    #: touch members only, and only if their browser said. Saved with
+    #: their attempts' scores; never the width itself.
+    screen_size: ScreenSize | None = None
     created_at: float = field(default_factory=time.monotonic)
     last_seen: float = field(default_factory=time.monotonic)
 
@@ -235,12 +240,20 @@ class RoomListener(Protocol):
 
 
 class GameStore(Protocol):
-    def create_party(self, level: Level, device_type: DeviceType = "keyboard") -> Party: ...
+    def create_party(
+        self,
+        level: Level,
+        device_type: DeviceType = "keyboard",
+        screen_size: ScreenSize | None = None,
+    ) -> Party: ...
     def get_party(self, party_id: str) -> Party | None: ...
     def touch(self, party_id: str) -> None: ...
     def delete_party(self, party_id: str) -> None: ...
     def join_party(
-        self, code: str, device_type: DeviceType = "keyboard"
+        self,
+        code: str,
+        device_type: DeviceType = "keyboard",
+        screen_size: ScreenSize | None = None,
     ) -> tuple[Party, Member]: ...
     def remove_member(self, party_id: str, member_id: str) -> MemberRemoval | None: ...
     def mark_member_seen(self, party_id: str, member_id: str) -> None: ...
@@ -299,7 +312,12 @@ class InMemoryGameStore:
                 self._drop(pid)
             return len(expired)
 
-    def create_party(self, level: Level, device_type: DeviceType = "keyboard") -> Party:
+    def create_party(
+        self,
+        level: Level,
+        device_type: DeviceType = "keyboard",
+        screen_size: ScreenSize | None = None,
+    ) -> Party:
         """The room takes its device type from its creator, who is
         therefore always able to play in it."""
         self.sweep_expired()
@@ -321,7 +339,7 @@ class InMemoryGameStore:
             code = generate_code()
             while code in live_codes:
                 code = generate_code()
-            host = Member(id=str(uuid.uuid4()), device_type=device_type)
+            host = Member(id=str(uuid.uuid4()), device_type=device_type, screen_size=screen_size)
             party = Party(
                 id=str(uuid.uuid4()),
                 level=level,
@@ -333,7 +351,12 @@ class InMemoryGameStore:
             self._parties[party.id] = party
             return party
 
-    def join_party(self, code: str, device_type: DeviceType = "keyboard") -> tuple[Party, Member]:
+    def join_party(
+        self,
+        code: str,
+        device_type: DeviceType = "keyboard",
+        screen_size: ScreenSize | None = None,
+    ) -> tuple[Party, Member]:
         """Adds a new member to the live room with this (already
         normalized) code. Lookup and add happen under one lock, so a
         room can't fill, lock, or end between the two. A member whose
@@ -353,7 +376,7 @@ class InMemoryGameStore:
                 raise RoomMembersFullError(
                     f"This room is full: {self._members_per_party_limit} browsers have joined."
                 )
-            member = Member(id=str(uuid.uuid4()), device_type=device_type)
+            member = Member(id=str(uuid.uuid4()), device_type=device_type, screen_size=screen_size)
             party.members[member.id] = member
             self._changed(party)
             party.last_activity = now

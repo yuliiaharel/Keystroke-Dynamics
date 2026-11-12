@@ -412,7 +412,8 @@ is applied on the deploy that ships it. Nothing is run by hand.
 
 `9d5b3e6a2c81` (touch rooms, `docs/plans/active/MOBILE_PLAN.md` Phase 1)
 widens two `CHECK` constraints so `line_id` may be `touch` and `mode` may
-be `grip`:
+be `grip`, and adds a nullable `screen_size` column that holds one of four
+size buckets for touch rows:
 
 - It needs the table's owner. The migration role is the owner (step 2), so
   the job's existing `SCORES_DATABASE_URL` is enough.
@@ -420,19 +421,21 @@ be `grip`:
   not on particular values, so it can write touch rows as soon as the
   migration has run (`tests/scores/test_migrations.py` checks this against
   a real restricted role).
-- Existing rows are kept and untouched. Postgres rechecks them against the
-  wider constraints under a lock that briefly blocks writes; a blocked
-  insert just waits in the app's background writer.
+- Existing rows are kept and untouched, with an empty `screen_size`.
+  Postgres rechecks them against the wider constraints under a lock that
+  briefly blocks writes; a blocked insert just waits in the app's
+  background writer.
 - The job runs before the new code starts, so the constraints are already
   wide when the first touch room is created. If the job is missing or its
-  `SCORES_DATABASE_URL` is unset, touch attempts still play normally, but
-  their score rows are refused by the old constraints, with an error in
-  the `web` logs. The writer saves rows in small batches and a refused
-  batch is dropped whole, so keyboard rows and "Delete me" requests that
-  happened to share a batch with a touch row are lost with it. Check that
+  `SCORES_DATABASE_URL` is unset, the game still plays normally, but every
+  score row is refused, keyboard rows included, because the new code
+  writes `screen_size` on all of them and the column isn't there. The
+  refusals show as errors in the `web` logs, and "Delete me" requests that
+  share a batch with a refused row are lost with it. Check that
   the job ran (step 5) before sharing a touch room.
 - Rolling the app back to an older version needs no database change: the
-  old code only writes values the wider constraints still allow. Don't run
+  old code only writes values the wider constraints still allow, and
+  leaves `screen_size` empty. Don't run
   `alembic downgrade` for this revision once touch rows exist. It refuses,
   and changes nothing, because the narrower constraints can't hold them.
 

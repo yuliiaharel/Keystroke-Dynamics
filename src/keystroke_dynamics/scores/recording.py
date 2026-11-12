@@ -14,6 +14,7 @@ from typing import Literal
 from keystroke_dynamics.game.judge import Verdict
 from keystroke_dynamics.game.levels import Level
 from keystroke_dynamics.game.scoring import SCORING_VERSION
+from keystroke_dynamics.game.screen import ScreenSize
 from keystroke_dynamics.game.store import DeviceType, Mode
 
 #: score_attempts.target_kind's own vocabulary -- deliberately not
@@ -51,6 +52,7 @@ def build_score_row(
     limit_value: float,
     same_keyboard: bool | None,
     device_type: DeviceType = DEVICE_TYPE,
+    screen_size: ScreenSize | None = None,
 ) -> dict[str, object]:
     """Builds the row dict scores/writer.py's InsertRow carries.
     party_id/typist_id/target_id must already be score_ids (random,
@@ -103,4 +105,9 @@ def build_score_row(
         # true/false/null, not an id: it says nothing about who. In a
         # touch room the "keyboard" is the phone.
         "same_keyboard": same_keyboard,
+        # Touch rows only: roughly how wide the typist's screen was
+        # (game/screen.py), since key size can move tap positions.
+        # One of four buckets, null when the browser didn't say, and
+        # always null for a keyboard row.
+        "screen_size": screen_size if device_type == "touch" else None,
     }

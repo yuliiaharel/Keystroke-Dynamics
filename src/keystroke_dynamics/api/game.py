@@ -94,6 +94,7 @@ from keystroke_dynamics.game.schemas import (
     ReplayRequest,
     ReplayResponse,
 )
+from keystroke_dynamics.game.screen import ScreenSize, screen_size_bucket
 from keystroke_dynamics.game.store import (
     REPLAY_TYPIST_ID,
     Attempt,
@@ -238,6 +239,14 @@ _ATTEMPT_MODES: dict[DeviceType, frozenset[AttemptMode]] = {
 }
 
 
+def _screen_size(device_type: DeviceType, viewport_width: int | None) -> ScreenSize | None:
+    """The size bucket for a touch browser that reported its width.
+    The width itself goes no further than this."""
+    if device_type != "touch" or viewport_width is None:
+        return None
+    return screen_size_bucket(viewport_width)
+
+
 def _is_watching(room: RoomSession) -> bool:
     return room.member.device_type != room.party.device_type
 
@@ -379,7 +388,9 @@ def create_room(
         )
     previous = _current_room(request, store)
     try:
-        party = store.create_party(body.level, body.device_type)
+        party = store.create_party(
+            body.level, body.device_type, _screen_size(body.device_type, body.viewport_width)
+        )
     except PartyLimitReached as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     # A browser is in one room at a time. Leaving the old one only
@@ -415,8 +426,11 @@ def join_room(
             "You're already in another room. Leave it to join this one.",
         )
     try:
+        device_type: DeviceType = body.device_type if body is not None else "keyboard"
         party, member = store.join_party(
-            normalized, body.device_type if body is not None else "keyboard"
+            normalized,
+            device_type,
+            _screen_size(device_type, body.viewport_width if body is not None else None),
         )
     except RoomNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _ROOM_NOT_FOUND) from exc
@@ -830,6 +844,7 @@ def create_attempt(
             limit_value=target.threshold,
             same_keyboard=attempt.same_keyboard,
             device_type=party.device_type,
+            screen_size=room.member.screen_size,
         )
         score_writer.enqueue(InsertRow(row))
 

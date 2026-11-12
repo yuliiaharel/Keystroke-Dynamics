@@ -2,7 +2,8 @@
 applied to a database at the schema production ran before it, with
 rows already in it, and loses none of them: same_keyboard
 (docs/plans/active/ROOMS_PLAN.md Phase 1 section 5), then the touch
-line and grip mode (docs/plans/active/MOBILE_PLAN.md Phase 1 section 6).
+line, grip mode, and screen_size (docs/plans/active/MOBILE_PLAN.md
+Phase 1 section 6).
 """
 
 from __future__ import annotations
@@ -24,14 +25,21 @@ from tests.scores.test_db_role import _COLUMNS, _values
 #: The schema live before rooms: score_attempts as first created.
 BEFORE_ROOMS = "4148bfbe4bd6"
 ADD_SAME_KEYBOARD = "7c2e9a4f1b3d"
-#: The schema live before touch rooms: with same_keyboard, and with
-#: line_id and mode still limited to the keyboard game's values.
+#: The schema live before touch rooms: with same_keyboard, without
+#: screen_size, and with line_id and mode still limited to the
+#: keyboard game's values.
 ALLOW_TOUCH = "9d5b3e6a2c81"
 
 _COLUMNS_WITH_SAME_KEYBOARD = (*_COLUMNS, "same_keyboard")
 _INSERT_WITH_SAME_KEYBOARD = (
     f"INSERT INTO score_attempts ({', '.join(_COLUMNS_WITH_SAME_KEYBOARD)}) "  # noqa: S608
     f"VALUES ({', '.join(f':{c}' for c in _COLUMNS_WITH_SAME_KEYBOARD)})"
+)
+
+
+_INSERT_WITH_SCREEN_SIZE = (
+    f"INSERT INTO score_attempts ({', '.join(_COLUMNS_WITH_SAME_KEYBOARD)}, screen_size) "  # noqa: S608
+    f"VALUES ({', '.join(f':{c}' for c in _COLUMNS_WITH_SAME_KEYBOARD)}, :screen_size)"
 )
 
 
@@ -143,6 +151,7 @@ def test_touch_migration_keeps_existing_rows_and_allows_touch_and_grip() -> None
         # two constraints still allow only the keyboard game's values.
         command.downgrade(cfg, ADD_SAME_KEYBOARD)
         assert "same_keyboard" in _column_names()
+        assert "screen_size" not in _column_names()
 
         before = [
             {
@@ -182,12 +191,15 @@ def test_touch_migration_keeps_existing_rows_and_allows_touch_and_grip() -> None
                 expected = row[column]
                 actual = stored[column]
                 assert str(actual) == str(expected) if expected is not None else actual is None
+            # ...and the new column reads as "not recorded".
+            assert stored["screen_size"] is None
 
-        # After it, a touch-line row and a grip row both go in...
-        touch = _touch_row(mode="attack")
-        grip = _touch_row(mode="grip")
+        # After it, a touch-line row and a grip row both go in, with
+        # a screen size bucket or without one...
+        touch = {**_touch_row(mode="attack"), "screen_size": "medium"}
+        grip = {**_touch_row(mode="grip"), "screen_size": None}
         with _scores_engine.begin() as conn:
-            conn.execute(text(_INSERT_WITH_SAME_KEYBOARD), [touch, grip])
+            conn.execute(text(_INSERT_WITH_SCREEN_SIZE), [touch, grip])
         with _scores_engine.connect() as conn:
             stored_rows = {
                 str(row["id"]): row
@@ -197,17 +209,23 @@ def test_touch_migration_keeps_existing_rows_and_allows_touch_and_grip() -> None
             }
         assert set(stored_rows) == {touch["id"], grip["id"]}
         assert stored_rows[str(grip["id"])]["mode"] == "grip"
+        assert stored_rows[str(grip["id"])]["screen_size"] is None
         assert stored_rows[str(touch["id"])]["place"] == 1.4
+        assert stored_rows[str(touch["id"])]["screen_size"] == "medium"
 
         # ...and the constraints still refuse anything else.
         for refused in (_touch_row(line_id="paragraph"), _touch_row(mode="practice")):
             with pytest.raises(IntegrityError), _scores_engine.begin() as conn:
                 conn.execute(text(_INSERT_WITH_SAME_KEYBOARD), refused)
+        # A screen size is one of the four buckets, never a width.
+        for bad in ("390", "huge"):
+            with pytest.raises(IntegrityError), _scores_engine.begin() as conn:
+                conn.execute(text(_INSERT_WITH_SCREEN_SIZE), {**_touch_row(), "screen_size": bad})
     finally:
         command.upgrade(cfg, "head")
 
 
-def test_touch_migration_leaves_every_other_constraint_as_it_was() -> None:
+def test_touch_migration_changes_only_the_constraints_it_means_to() -> None:
     cfg = _alembic_config()
     try:
         command.downgrade(cfg, ADD_SAME_KEYBOARD)
@@ -216,9 +234,12 @@ def test_touch_migration_leaves_every_other_constraint_as_it_was() -> None:
         after = _check_constraints()
     finally:
         command.upgrade(cfg, "head")
-    assert set(after) == set(before)
-    changed = {name for name in after if after[name] != before[name]}
+    assert set(after) - set(before) == {"ck_screen_size"}
+    assert set(before) - set(after) == set()
+    changed = {name for name in before if after[name] != before[name]}
     assert changed == {"ck_line_id", "ck_mode"}
+    for bucket in ("small", "medium", "large", "xlarge"):
+        assert f"'{bucket}'" in after["ck_screen_size"]
     assert "'touch'" in after["ck_line_id"] and "'touch'" not in before["ck_line_id"]
     assert "'grip'" in after["ck_mode"] and "'grip'" not in before["ck_mode"]
 
@@ -233,7 +254,9 @@ def test_touch_migration_downgrade_refuses_to_drop_touch_rows() -> None:
         with pytest.raises(IntegrityError):
             command.downgrade(cfg, ADD_SAME_KEYBOARD)
         # The failed downgrade changed nothing: the row is still there,
-        # and the database still accepts another like it.
+        # screen_size is still a column, and the database still
+        # accepts another row like it.
+        assert "screen_size" in _column_names()
         with _scores_engine.begin() as conn:
             conn.execute(text(_INSERT_WITH_SAME_KEYBOARD), _touch_row(mode="grip"))
         with _scores_engine.connect() as conn:
@@ -250,12 +273,16 @@ def test_the_app_role_can_insert_touch_and_grip_rows_with_no_new_grant(
 ) -> None:
     # The app role's INSERT is on the table, so widening a constraint
     # needs no grant change -- nothing to do by hand after the deploy.
-    rows = [_touch_row(mode="attack"), _touch_row(mode="grip")]
+    rows = [
+        {**_touch_row(mode="attack"), "screen_size": "large"},
+        {**_touch_row(mode="grip"), "screen_size": None},
+    ]
+    columns = (*_COLUMNS_WITH_SAME_KEYBOARD, "screen_size")
     with psycopg.connect(scores_app_role_url) as conn:
         for row in rows:
             conn.execute(
-                f"INSERT INTO score_attempts ({', '.join(_COLUMNS_WITH_SAME_KEYBOARD)}) "  # noqa: S608
-                f"VALUES ({', '.join(f'%({c})s' for c in _COLUMNS_WITH_SAME_KEYBOARD)})",
+                f"INSERT INTO score_attempts ({', '.join(columns)}) "  # noqa: S608
+                f"VALUES ({', '.join(f'%({c})s' for c in columns)})",
                 row,
             )
         conn.commit()
@@ -267,6 +294,14 @@ def test_the_app_role_can_insert_touch_and_grip_rows_with_no_new_grant(
             )
         }
     assert modes == {"attack", "grip"}
+    with _scores_engine.connect() as conn:
+        sizes = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT screen_size FROM score_attempts WHERE device_type = 'touch'")
+            )
+        }
+    assert sizes == {"large", None}
 
 
 def test_migrated_schema_matches_the_model() -> None:

@@ -40,6 +40,9 @@ _ALLOWED_COLUMNS = {
     "outcome",
     # docs/plans/active/ROOMS_PLAN.md Phase 1 section 5.
     "same_keyboard",
+    # docs/plans/active/MOBILE_PLAN.md Phase 1 section 6: a broad size
+    # bucket, never a width.
+    "screen_size",
 }
 
 
@@ -126,3 +129,36 @@ def test_outcome_check_constraint_rejects_an_unknown_value(scores_db_session) ->
     with pytest.raises(IntegrityError):
         scores_db_session.execute(insert(ScoreAttempt), [row])
     scores_db_session.rollback()
+
+
+@pytest.mark.parametrize("screen_size", ["small", "medium", "large", "xlarge", None])
+def test_screen_size_round_trips(scores_db_session, screen_size: str | None) -> None:
+    row = _row(device_type="touch", line_id="touch", screen_size=screen_size)
+    scores_db_session.execute(insert(ScoreAttempt), [row])
+    scores_db_session.commit()
+
+    stored = scores_db_session.execute(
+        select(ScoreAttempt).where(ScoreAttempt.id == row["id"])
+    ).scalar_one()
+    assert stored.screen_size == screen_size
+
+
+@pytest.mark.parametrize("screen_size", ["390", "tiny", "", "Medium"])
+def test_screen_size_check_constraint_rejects_anything_but_a_bucket(
+    scores_db_session, screen_size: str
+) -> None:
+    # In particular a width can't be stored, even as text.
+    row = _row(device_type="touch", line_id="touch", screen_size=screen_size)
+    with pytest.raises(IntegrityError):
+        scores_db_session.execute(insert(ScoreAttempt), [row])
+    scores_db_session.rollback()
+
+
+def test_a_row_written_without_a_screen_size_has_none(scores_db_session) -> None:
+    row = _row()
+    scores_db_session.execute(insert(ScoreAttempt), [row])
+    scores_db_session.commit()
+    stored = scores_db_session.execute(
+        select(ScoreAttempt).where(ScoreAttempt.id == row["id"])
+    ).scalar_one()
+    assert stored.screen_size is None

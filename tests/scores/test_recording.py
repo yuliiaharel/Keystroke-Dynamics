@@ -181,6 +181,17 @@ def test_a_touch_row_has_exactly_the_table_columns_and_nothing_else() -> None:
     assert set(_touch_row()) == {column.name for column in ScoreAttempt.__table__.columns}
 
 
+@pytest.mark.parametrize("screen_size", ["small", "medium", "large", "xlarge", None])
+def test_a_touch_row_carries_the_typists_screen_size_bucket(screen_size: str | None) -> None:
+    assert _touch_row(screen_size=screen_size)["screen_size"] == screen_size
+
+
+def test_a_keyboard_row_never_has_a_screen_size() -> None:
+    assert _row()["screen_size"] is None
+    # Not even if a caller passes one.
+    assert _row(screen_size="large")["screen_size"] is None
+
+
 def test_a_keyboard_row_ignores_rhythm_and_place_on_the_verdict() -> None:
     # A keyboard verdict never has them, but the row must not depend
     # on that: a keyboard row's place is always empty.

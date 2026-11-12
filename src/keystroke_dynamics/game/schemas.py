@@ -25,6 +25,9 @@ AttemptMode = Literal["attack", "self", "disguise", "grip"]
 
 TargetKind = Literal["player", "sample", "target"]
 
+#: Far wider than any real screen; only here to refuse nonsense.
+MAX_VIEWPORT_WIDTH = 20_000
+
 
 class GameEventSchema(BaseModel):
     """One key or tap event. dx and dy are sent only from a touch
@@ -50,6 +53,10 @@ class CreatePartyRequest(BaseModel):
     #: own device type. A page from before touch rooms sends nothing
     #: and gets a keyboard room, as before.
     device_type: DeviceType = "keyboard"
+    #: The browser's viewport width in CSS pixels, from a touch
+    #: browser. Turned into one of four size buckets on arrival
+    #: (game/screen.py) and not kept.
+    viewport_width: int | None = Field(default=None, ge=1, le=MAX_VIEWPORT_WIDTH)
 
 
 class NoteView(BaseModel):
@@ -232,6 +239,8 @@ class JoinRoomRequest(BaseModel):
     #: What the joining browser types on. If it differs from the
     #: room's, this member watches.
     device_type: DeviceType = "keyboard"
+    #: As on CreatePartyRequest.
+    viewport_width: int | None = Field(default=None, ge=1, le=MAX_VIEWPORT_WIDTH)
 
 
 class LockRoomRequest(BaseModel):

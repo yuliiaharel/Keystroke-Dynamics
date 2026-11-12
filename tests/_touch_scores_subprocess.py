@@ -12,6 +12,7 @@ real scores database and the process's own logs to confirm:
   line, with rhythm, place, and total filled in
 - a grip test is stored as its own mode
 - same_keyboard is true on the target's own phone, false from another
+- each typist's screen size bucket is stored, and never the width
 - no tap position or timing reaches a stored row or a log line
 - a keyboard room's rows still leave place empty
 
@@ -22,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -134,9 +136,14 @@ with (
     TestClient(app, headers=ORIGIN) as other_phone,
     TestClient(app, headers=ORIGIN) as laptop,
 ):
-    room = phone.post("/api/game/rooms", json={"level": "touch", **TOUCH}).json()
+    # The first phone is 393 wide ("medium"), the second 430 ("large").
+    room = phone.post(
+        "/api/game/rooms", json={"level": "touch", **TOUCH, "viewport_width": 393}
+    ).json()
     assert room["scores_enabled"] is True
-    joined = other_phone.post(f"/api/game/rooms/{room['code']}/join", json=TOUCH)
+    joined = other_phone.post(
+        f"/api/game/rooms/{room['code']}/join", json={**TOUCH, "viewport_width": 430}
+    )
     assert joined.status_code == 200, joined.text
 
     alice = enroll(phone, "Alice")
@@ -225,6 +232,21 @@ with (
     assert other["same_keyboard"] is False and same_phone["same_keyboard"] is True
     assert guest["same_keyboard"] is False
 
+    # screen_size, as stored: the sending phone's bucket on every
+    # typed attempt, and nothing on the replay, which nobody typed.
+    assert sorted(
+        (r.mode, r.same_keyboard, r.screen_size) for r in stored if r.target_kind == "player"
+    ) == [
+        ("attack", False, "large"),
+        ("attack", False, "large"),
+        ("attack", True, "medium"),
+        ("attack", True, "medium"),
+        ("grip", True, "medium"),
+        ("replay", None, None),
+        ("self", True, "medium"),
+    ]
+    assert stored_row("attack", target_kind="simulated").screen_size == "medium"
+
     # Nothing raw was stored: no value in any row is a submitted tap
     # position or timing.
     # (Minus 0.0: every line starts at t=0, and a replay's place score
@@ -260,6 +282,7 @@ with (
     assert keyboard_rows[0].place is None
     assert keyboard_rows[0].rhythm == keyboard_rows[0].total is not None
     assert keyboard_rows[0].scoring_version == "3"
+    assert keyboard_rows[0].screen_size is None
 
     # "Delete me" works for a touch player: Alice is the target of
     # seven of the eight rows and the typist of the eighth.
@@ -272,7 +295,12 @@ logged = "\n".join(capture.lines)
 assert "INSERT INTO score_attempts" in logged, "the capture missed the driver's own logging"
 for value in raw:
     assert repr(value) not in logged, value
-for word in ("'dx'", '"dx"', "dx=", "t_ms", "tap_x", "KeyT"):
+for word in ("'dx'", '"dx"', "dx=", "t_ms", "tap_x", "KeyT", "viewport_width"):
     assert word not in logged, word
+# The widths were logged nowhere as a value of their own. (As bare
+# digits they turn up inside scores and random ids, so look for them
+# standing alone.)
+for width in ("393", "430"):
+    assert re.search(rf"(?<![\w.-]){width}(?![\w.-])", logged) is None, width
 
 print("OK")
