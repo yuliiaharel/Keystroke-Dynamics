@@ -1,0 +1,648 @@
+{
+ "sentence": {
+  "limits": {
+   "steady": 1.3,
+   "quick": 1.3063671185468957,
+   "slow": 1.4725642956675762,
+   "erratic": 1.5904003994059255
+  },
+  "sample_bot_limits": {
+   "sample-quick-fingers": 1.3,
+   "sample-steady-hands": 1.3,
+   "sample-two-finger-typist": 1.3
+  },
+  "scores": {
+   "steady->steady#0": {
+    "score": 0.48147589280952474,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.9894756414371386,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "steady->steady#1": {
+    "score": 0.48014523895980343,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.9882941378481945,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "quick->steady#0": {
+    "score": 2.5752962945152382,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.6759580791715724,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "quick->steady#1": {
+    "score": 2.373915683275092,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.69429339477337,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "slow->steady#0": {
+    "score": 4.029706002373873,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.4732589954364148,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "slow->steady#1": {
+    "score": 4.611254056834491,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.4911938317270013,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->steady#0": {
+    "score": 4.926891199001301,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.1113256238221416,
+    "clue": "Right speed, wrong rhythm"
+   },
+   "erratic->steady#1": {
+    "score": 4.016875633619748,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.080037965210779,
+    "clue": "Right speed, wrong rhythm"
+   },
+   "short->steady": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->quick#0": {
+    "score": 2.2676461400240595,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.2698383928244301,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "steady->quick#1": {
+    "score": 2.249202338596615,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.26832211636883,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "quick->quick#0": {
+    "score": 1.1685965665409812,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8674872679283129,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "quick->quick#1": {
+    "score": 0.9456481067523552,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.891017799374139,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "slow->quick#0": {
+    "score": 5.166834666758703,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.8906992316272835,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "slow->quick#1": {
+    "score": 5.465622671558934,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.91371581004222,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->quick#0": {
+    "score": 4.385474362491649,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.4262139308545771,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->quick#1": {
+    "score": 3.7733070193286657,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.386061077704411,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "short->quick": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->slow#0": {
+    "score": 1.0736141425782955,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5826868980259644,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "steady->slow#1": {
+    "score": 1.0645131093572473,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5819911288403294,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->slow#0": {
+    "score": 1.6334893189499933,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.39806125573339385,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "quick->slow#1": {
+    "score": 1.5919002821757542,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.4088586394434377,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "slow->slow#0": {
+    "score": 0.9261811839911039,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8675794310538671,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "slow->slow#1": {
+    "score": 0.8944748504629741,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.878140978692965,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "erratic->slow#0": {
+    "score": 1.583211679006146,
+    "decision": "no_match",
+    "compared_features": 105,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.6544424676297932,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "erratic->slow#1": {
+    "score": 1.35117452278634,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.636017649494532,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "short->slow": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->erratic#0": {
+    "score": 0.8867713026043317,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.7894776928006377,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "steady->erratic#1": {
+    "score": 0.89759253006483,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.7885350008450476,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->erratic#0": {
+    "score": 1.0462317596181308,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5393299263024119,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->erratic#1": {
+    "score": 0.9449257714456785,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5539592128172922,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "slow->erratic#0": {
+    "score": 1.582825829808449,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 1.1754762461111259,
+    "clue": "Too slow, but the rhythm fits"
+   },
+   "slow->erratic#1": {
+    "score": 1.4285603779132334,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 1.1897860002702927,
+    "clue": "Too slow, but the rhythm fits"
+   },
+   "erratic->erratic#0": {
+    "score": 1.29050684325705,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8866987247619605,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "erratic->erratic#1": {
+    "score": 0.967492381665852,
+    "decision": "match",
+    "compared_features": 105,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.861735089984902,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "short->erratic": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   }
+  }
+ },
+ "long": {
+  "limits": {
+   "steady": 1.3,
+   "quick": 1.3499031261010845,
+   "slow": 1.3,
+   "erratic": 1.3748745387728256
+  },
+  "sample_bot_limits": {
+   "sample-quick-fingers": 1.3,
+   "sample-steady-hands": 1.3,
+   "sample-two-finger-typist": 1.3
+  },
+  "scores": {
+   "steady->steady#0": {
+    "score": 0.6519542239662152,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.9871906475183192,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "steady->steady#1": {
+    "score": 0.6761985662691975,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.990937706892408,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "quick->steady#0": {
+    "score": 2.3161087678298133,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.6942455659085863,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "quick->steady#1": {
+    "score": 2.2163917983962134,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.723056382694139,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "slow->steady#0": {
+    "score": 3.500557222808732,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.434143443446137,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "slow->steady#1": {
+    "score": 3.658821661735495,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.497726484463968,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->steady#0": {
+    "score": 3.0613431852842923,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.1011824355620048,
+    "clue": "Right speed, wrong rhythm"
+   },
+   "erratic->steady#1": {
+    "score": 2.9580854791649673,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.052317998632861,
+    "clue": "Right speed, wrong rhythm"
+   },
+   "short->steady": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->quick#0": {
+    "score": 1.8762972217424791,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.2590630373569205,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "steady->quick#1": {
+    "score": 1.894430258196273,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.2638420372072097,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "quick->quick#0": {
+    "score": 0.9613046857709133,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8854408548964887,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "quick->quick#1": {
+    "score": 0.9398665801675713,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.9221861731204223,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "slow->quick#0": {
+    "score": 3.8222247308912607,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.8291066719990359,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "slow->quick#1": {
+    "score": 4.166710167942886,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.9102004880208436,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->quick#0": {
+    "score": 3.0066035381931333,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.4044481737019907,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "erratic->quick#1": {
+    "score": 2.816286336901398,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 1.342126466609844,
+    "clue": "Too slow, and the rhythm is off too"
+   },
+   "short->quick": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->slow#0": {
+    "score": 0.8829403130007347,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5701208234363598,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "steady->slow#1": {
+    "score": 0.8775923141322161,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5722848193992377,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->slow#0": {
+    "score": 1.470264246682015,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.4009396307570873,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "quick->slow#1": {
+    "score": 1.4262763789073352,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.41757840932629836,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "slow->slow#0": {
+    "score": 0.9255281241403411,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8282443142657461,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "slow->slow#1": {
+    "score": 0.9108940262115084,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8649646942580017,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "erratic->slow#0": {
+    "score": 1.1937789310167342,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.6359531854302906,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "erratic->slow#1": {
+    "score": 1.3276220382302204,
+    "decision": "no_match",
+    "compared_features": 215,
+    "word": "Caught!",
+    "passed": false,
+    "pace": 0.6077330710189246,
+    "clue": "Too fast, and the rhythm is off too"
+   },
+   "short->slow": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   },
+   "steady->erratic#0": {
+    "score": 0.4766217434435812,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.7875706555905347,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "steady->erratic#1": {
+    "score": 0.4851794475900974,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.7905600214391745,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->erratic#0": {
+    "score": 0.7002376225084392,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5538620497043362,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "quick->erratic#1": {
+    "score": 0.7050858727212417,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 0.5768470262343893,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "slow->erratic#0": {
+    "score": 0.9825963958912343,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 1.1441450491909986,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "slow->erratic#1": {
+    "score": 1.103847705620319,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "Fooled it!",
+    "passed": true,
+    "pace": 1.1948709524648378,
+    "clue": "Too slow, but the rhythm fits"
+   },
+   "erratic->erratic#0": {
+    "score": 0.8014782396707567,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8785121444176326,
+    "clue": "Right speed, and the rhythm fits"
+   },
+   "erratic->erratic#1": {
+    "score": 0.7858630769828668,
+    "decision": "match",
+    "compared_features": 215,
+    "word": "That's you",
+    "passed": true,
+    "pace": 0.8395285937487798,
+    "clue": "Too fast, but the rhythm fits"
+   },
+   "short->erratic": {
+    "score": null,
+    "decision": "insufficient_data",
+    "compared_features": 11
+   }
+  }
+ }
+}
