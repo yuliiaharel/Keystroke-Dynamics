@@ -77,7 +77,7 @@ My recommendation comes first. Claude Code should use these unless I change them
 2. **What happens with a touchscreen laptop?** Use the physical keyboard by default, and offer a clear "Use on-screen keyboard" switch before starting a room, or when opening a touch room's link.
 3. **What about mouse clicks on the touch keyboard?** Reject them outside debug mode, since mouse data isn't a touch signature.
 4. **Should grip tests be saved in shared scores?** Yes, as their own mode, with no extra detail about the grip.
-5. **Should screen size be recorded?** Save only a broad size bucket, because key size can affect results. Keep it out if you'd rather minimize data.
+5. **Should screen size be recorded?** Decided: yes, as a broad size bucket only, because key size can affect results. Phase 1 section 6 has the buckets.
 6. **Which limits should touch use?** Start with a minimum of 1.65, a provisional value from one small phone test, and the keyboard game's maximum of 2.0. Retest both in Phase 4.
 7. **Can one phone attack a player on another phone?** Yes, labeled "different phone" on results and in scores, as keyboards are. Phone models differ in key size, so Phase 4 compares these attacks with same-phone ones.
 
@@ -160,10 +160,12 @@ Position values aren't milliseconds, so don't push them through the timing floor
 
 - reuses `core.stats` and the existing scaled Manhattan approach, with no second copy of its formula if a small shared helper can avoid one
 - applies `max(sd, 12 ms, 12% of the mean)` to timing, and `max(sd, 0.08 key)` to position
+- keeps the keyboard game's timing features unchanged, so every key press and every consecutive pair counts, repeats included
 - returns `distance`, `rhythm`, `place`, `compared_features`, and the decision
-- calculates `distance` as the mean across all compared timing and position features
+- calculates `rhythm` as the mean across the compared timing features, and `place` as the mean across the compared position features
+- calculates `distance` as the equal-weight average of `rhythm` and `place`. A line has about twice as many timing features as position features, so a mean across all features would let the right rhythm hide taps in the wrong places
 - uses a touch minimum limit of 1.65 and the existing maximum of 2.0, both labeled as provisional game tuning
-- requires a minimum number of compared features suited to this line
+- requires at least 70% of the line's timing features and at least 70% of its position features to be compared, each checked separately, and returns insufficient data otherwise. For this line that's 40 of 57 timing features and 19 of 27 position features
 
 Add a golden test that confirms keyboard scores and limits are identical before and after this change.
 
@@ -175,7 +177,16 @@ Add a golden test that confirms keyboard scores and limits are identical before 
 - Add a `grip` mode for score collection, if I keep that decision. It's separate from the keyboard game's `disguise` mode, and has no pace rule.
 - Fill `rhythm` and `place` for touch rows. Keyboard rows keep `place` empty.
 - Fill `same_keyboard` for touch rows, by the same rule as keyboard rows.
-- Add a new migration in `migrations_scores/`, following `7c2e9a4f1b3d`, that widens the `line_id` check to allow `touch`, and the `mode` check to allow `grip`. Never edit an existing migration. The existing pre-deploy job applies it, so check that the migration role can alter the table, and document any manual step in `DEPLOY.md`.
+- Save a screen size bucket for touch rows, in a nullable `screen_size` column that stays empty for keyboard rows and replays. The browser reports its viewport width when it creates or joins a touch room. The server keeps only the bucket, and never stores or logs the width:
+
+  | Bucket | Viewport width | Typical devices |
+  |---|---|---|
+  | `small` | Under 360 px | The narrowest phones, such as 320 px |
+  | `medium` | 360 to 399 px | Most phones |
+  | `large` | 400 to 479 px | Large phones |
+  | `xlarge` | 480 px and up | Tablets and touchscreen laptops |
+
+- Add a new migration in `migrations_scores/`, following `7c2e9a4f1b3d`, that widens the `line_id` check to allow `touch`, and the `mode` check to allow `grip`, and adds `screen_size` with a check that allows only the four buckets. Never edit an existing migration. The existing pre-deploy job applies it, so check that the migration role can alter the table, and document any manual step in `DEPLOY.md`.
 - Increase `SCORING_VERSION` to `"3"` for touch scoring, and keep the keyboard rows comparable across versions. Note in the code what changed.
 - Update `evaluation/analyze_scores.py` to report Rhythm and Place, split by `device_type` and then by `same_keyboard`.
 
@@ -196,7 +207,8 @@ The room shows each player's tap map, so a touch player's view needs an average 
 
 **Done when**
 
-- Unit tests cover position features, each validation failure, floors, mixed scoring, insufficient data, and replay.
+- Unit tests cover position features, each validation failure, floors, mixed scoring, insufficient data for each kind of feature on its own, and replay.
+- A test confirms that a typist's own rhythm fails when every tap is shifted 0.35 of a key.
 - API tests cover:
   - creating a touch room, and joining it from a second touch member
   - a keyboard member watching a touch room, and a touch member watching a keyboard room, with enrollment and attempts rejected for both
@@ -205,7 +217,7 @@ The room shows each player's tap map, so a touch player's view needs an average 
   - tap maps appearing in room state for members only, and never in the event stream
 - All existing room tests pass unchanged.
 - The golden test confirms keyboard results are unchanged.
-- The new migration applies to a real Postgres copy of the current schema, including `same_keyboard`, existing rows survive, and touch and `grip` rows can be inserted.
+- The new migration applies to a real Postgres copy of the current schema, including `same_keyboard`, existing rows survive with an empty `screen_size`, and touch and `grip` rows can be inserted with a bucket or without one.
 - Tests confirm no offsets or raw events reach logs or stored scores.
 - Python tests, `ruff`, and `mypy` pass.
 
