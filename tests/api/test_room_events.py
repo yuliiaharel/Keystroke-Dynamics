@@ -27,6 +27,7 @@ from keystroke_dynamics.game.events import RoomEvents
 from keystroke_dynamics.game.store import InMemoryGameStore
 from keystroke_dynamics.main import app
 from tests.api.test_game import SENTENCE_LINE
+from tests.touch_lines import tap_line, tap_lines
 
 ORIGIN = {"origin": "http://testserver"}
 #: The plan's own bar for "live".
@@ -562,3 +563,68 @@ def test_the_stream_carries_only_version_numbers_and_ended(
     ]
     for secret in secrets:
         assert secret not in stream.raw
+
+
+def test_a_touch_rooms_stream_never_carries_a_tap_map(
+    browser: Browser, events: RoomEvents, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Tap maps travel only in GET /room
+    # (docs/plans/active/MOBILE_PLAN.md Phase 1 section 7).
+    monkeypatch.setattr(settings, "game_stream_heartbeat_seconds", 0.05)
+    host, friend = browser(), browser()
+    created = host.post("/api/game/rooms", json={"level": "touch", "device_type": "touch"})
+    assert created.status_code == 200, created.text
+    joined = friend.post(
+        f"/api/game/rooms/{created.json()['code']}/join", json={"device_type": "touch"}
+    )
+    assert joined.status_code == 200, joined.text
+    stream = Stream(friend)
+
+    enrolled = host.post(
+        "/api/game/players", json={"name": "Ada", "training_lines": tap_lines("ada")}
+    )
+    assert enrolled.status_code == 200, enrolled.text
+    ada = enrolled.json()
+    attempt = friend.post(
+        "/api/game/attempts",
+        json={
+            "typist_id": None,
+            "target_id": ada["id"],
+            "mode": "attack",
+            "events": tap_line("grace"),
+            "client_attempt_id": "a1",
+        },
+    )
+    assert attempt.status_code == 200, attempt.text
+    replay = friend.post("/api/game/replay", json={"target_id": ada["id"]})
+    assert replay.status_code == 200, replay.text
+    time.sleep(0.15)  # a few heartbeats' worth
+
+    # The room state does have the tap map...
+    state = friend.get("/api/game/room").json()
+    tap_map = state["players"][0]["tap_map"]
+    assert len(tap_map) == 14
+
+    host.post("/api/game/room/end")
+    stream.expect_ended()
+
+    # ...and the stream has nothing but version numbers.
+    lines = [line for line in stream.raw.split("\n") if line]
+    data_lines = [line for line in lines if line.startswith("data: ")]
+    assert len(data_lines) >= 4
+    assert set(lines) - set(data_lines) <= {": keep-alive"}
+    for line in data_lines[:-1]:
+        payload = json.loads(line.removeprefix("data: "))
+        assert list(payload) == ["version"]
+        assert type(payload["version"]) is int
+    assert data_lines[-1] == 'data: {"ended":true}'
+
+    for word in ("tap_map", "x_spread", "KeyT", "Space", "touch", "Ada"):
+        assert word not in stream.raw
+    for point in tap_map:
+        for value in (point["x"], point["y"], point["x_spread"], point["y_spread"]):
+            if value:
+                assert str(value) not in stream.raw
+    scores = attempt.json()["attempt"]
+    for value in (scores["rhythm"], scores["place"], scores["distance"]):
+        assert str(value) not in stream.raw

@@ -15,8 +15,15 @@ from __future__ import annotations
 from keystroke_dynamics.core.events import KeyEvent, pair_presses
 from keystroke_dynamics.core.features import FeatureKey, extract_features
 from keystroke_dynamics.core.stats import RunningStats
+from keystroke_dynamics.game.place import PlaceKey
 from keystroke_dynamics.game.scoring import build_profile, calibrate_threshold
 from keystroke_dynamics.game.store import Note
+from keystroke_dynamics.game.taps import TapEvent
+from keystroke_dynamics.game.touch_scoring import (
+    build_touch_profiles,
+    calibrate_touch_threshold,
+    extract_touch_line,
+)
 
 
 def char_to_code(ch: str) -> str:
@@ -59,3 +66,15 @@ def build_profile_and_threshold(
     profile = build_profile(training_features)
     threshold = calibrate_threshold(training_features, phrase=phrase)
     return profile, threshold
+
+
+def build_touch_profiles_and_threshold(
+    phrase: str, runs: list[list[TapEvent]]
+) -> tuple[dict[FeatureKey, RunningStats], dict[PlaceKey, RunningStats], float]:
+    """build_profile_and_threshold for a touch player: a timing
+    profile, a tap-position profile, and a limit calibrated with the
+    touch scorer. The runs themselves aren't kept past this call
+    either."""
+    lines = [extract_touch_line(run) for run in runs]
+    profile, place_profile = build_touch_profiles(lines)
+    return profile, place_profile, calibrate_touch_threshold(lines, phrase=phrase)

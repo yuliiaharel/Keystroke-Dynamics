@@ -29,20 +29,25 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
 
 from keystroke_dynamics.core.features import FeatureKey
 from keystroke_dynamics.core.stats import RunningStats
 from keystroke_dynamics.game.codes import generate_code
 from keystroke_dynamics.game.levels import Level
+from keystroke_dynamics.game.place import PlaceKey
 
-Mode = Literal["attack", "self", "disguise", "replay"]
+#: "disguise" is the keyboard game's own-player mode with a pace rule;
+#: "grip" is the touch game's (docs/plans/active/MOBILE_PLAN.md Phase 1
+#: section 6), with no pace rule. A room only ever sees one of the two.
+Mode = Literal["attack", "self", "disguise", "grip", "replay"]
 
-#: What a member's browser types on. Everyone is "keyboard" until the
-#: mobile version adds "touch" (docs/plans/active/MOBILE_PLAN.md); it
-#: lives on the member so that later an attack can be refused when the
-#: typist's and the target owner's device types differ.
+#: What a browser types on: a physical keyboard, or the on-page touch
+#: keyboard. A room has one (Party.device_type), set by whoever
+#: created it, and a member whose own differs can watch but not play
+#: -- the two kinds of signature are never compared
+#: (docs/plans/active/MOBILE_PLAN.md).
 DeviceType = Literal["keyboard", "touch"]
 
 
@@ -86,6 +91,10 @@ class Player:
     #: may also delete). None only for the sample bots and the
     #: permanent target, which belong to no room.
     owner_member_id: str | None = None
+    #: Where this player's taps land on each key -- touch players
+    #: only, empty for a keyboard player. Like `profile`, running
+    #: statistics and never a raw tap.
+    place_profile: dict[PlaceKey, RunningStats] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,8 +131,14 @@ class Attempt:
     #: Whether the typist and the target belong to the same member,
     #: i.e. were typed on the same keyboard. None when that question
     #: has no answer: the target is a sample bot or the permanent
-    #: target, or the "typist" is the replay bot.
+    #: target, or the "typist" is the replay bot. In a touch room,
+    #: "keyboard" here means the phone.
     same_keyboard: bool | None = None
+    #: The two parts of a touch attempt's distance: timing only, and
+    #: tap position only. Both None for every keyboard attempt, and
+    #: for a touch attempt that couldn't be scored.
+    rhythm: float | None = None
+    place: float | None = None
 
 
 #: Attempt.typist_id for a server-run replay (game/replay.py) -- never
@@ -152,6 +167,8 @@ class Party:
     #: Starts as the member who created the room; passes to the
     #: longest-standing remaining member if the host leaves.
     host_member_id: str
+    #: What this room's players type on. Fixed at creation.
+    device_type: DeviceType = "keyboard"
     members: dict[str, Member] = field(default_factory=dict)
     #: A locked room refuses new joiners; current members are
     #: unaffected.
@@ -218,11 +235,13 @@ class RoomListener(Protocol):
 
 
 class GameStore(Protocol):
-    def create_party(self, level: Level) -> Party: ...
+    def create_party(self, level: Level, device_type: DeviceType = "keyboard") -> Party: ...
     def get_party(self, party_id: str) -> Party | None: ...
     def touch(self, party_id: str) -> None: ...
     def delete_party(self, party_id: str) -> None: ...
-    def join_party(self, code: str) -> tuple[Party, Member]: ...
+    def join_party(
+        self, code: str, device_type: DeviceType = "keyboard"
+    ) -> tuple[Party, Member]: ...
     def remove_member(self, party_id: str, member_id: str) -> MemberRemoval | None: ...
     def mark_member_seen(self, party_id: str, member_id: str) -> None: ...
     def set_locked(self, party_id: str, locked: bool) -> bool: ...
@@ -280,7 +299,9 @@ class InMemoryGameStore:
                 self._drop(pid)
             return len(expired)
 
-    def create_party(self, level: Level) -> Party:
+    def create_party(self, level: Level, device_type: DeviceType = "keyboard") -> Party:
+        """The room takes its device type from its creator, who is
+        therefore always able to play in it."""
         self.sweep_expired()
         with self._lock:
             if len(self._parties) >= self._party_limit:
@@ -300,21 +321,24 @@ class InMemoryGameStore:
             code = generate_code()
             while code in live_codes:
                 code = generate_code()
-            host = Member(id=str(uuid.uuid4()))
+            host = Member(id=str(uuid.uuid4()), device_type=device_type)
             party = Party(
                 id=str(uuid.uuid4()),
                 level=level,
                 code=code,
                 members={host.id: host},
                 host_member_id=host.id,
+                device_type=device_type,
             )
             self._parties[party.id] = party
             return party
 
-    def join_party(self, code: str) -> tuple[Party, Member]:
+    def join_party(self, code: str, device_type: DeviceType = "keyboard") -> tuple[Party, Member]:
         """Adds a new member to the live room with this (already
         normalized) code. Lookup and add happen under one lock, so a
-        room can't fill, lock, or end between the two."""
+        room can't fill, lock, or end between the two. A member whose
+        device type differs from the room's still joins, and counts
+        toward the member limit like any other: they watch."""
         now = time.monotonic()
         with self._lock:
             party = next((p for p in self._parties.values() if p.code == code), None)
@@ -329,7 +353,7 @@ class InMemoryGameStore:
                 raise RoomMembersFullError(
                     f"This room is full: {self._members_per_party_limit} browsers have joined."
                 )
-            member = Member(id=str(uuid.uuid4()))
+            member = Member(id=str(uuid.uuid4()), device_type=device_type)
             party.members[member.id] = member
             self._changed(party)
             party.last_activity = now
@@ -425,21 +449,10 @@ class InMemoryGameStore:
             party = self._parties.get(party_id)
             if party is None or player_id not in party.players:
                 return False
-            existing = party.players[player_id]
-            party.players[player_id] = Player(
-                id=existing.id,
-                name=new_name,
-                color=existing.color,
-                profile=existing.profile,
-                threshold=existing.threshold,
-                notes=existing.notes,
-                created_at=existing.created_at,
-                # A rename must never mint a new score_id -- it's
-                # set once, at enrollment.
-                score_id=existing.score_id,
-                training_line_count=existing.training_line_count,
-                owner_member_id=existing.owner_member_id,
-            )
+            # replace() copies every other field as it is. In
+            # particular a rename must never mint a new score_id --
+            # it's set once, at enrollment.
+            party.players[player_id] = replace(party.players[player_id], name=new_name)
             self._changed(party)
             party.last_activity = time.monotonic()
             return True

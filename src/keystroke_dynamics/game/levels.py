@@ -13,7 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Level = Literal["sentence", "long"]
+Level = Literal["sentence", "long", "touch"]
+
+#: The one level a touch room uses, and the one a keyboard room never
+#: does (docs/plans/active/MOBILE_PLAN.md Phase 1 section 3): its line
+#: is typed on the on-page keyboard, which has only letters and a
+#: space bar.
+TOUCH_LEVEL: Level = "touch"
 
 
 @dataclass(frozen=True)
@@ -39,5 +45,11 @@ LEVELS: dict[Level, LevelInfo] = {
             "and those records are surprisingly hard to fake"
         ),
         rounds=4,
+    ),
+    TOUCH_LEVEL: LevelInfo(
+        name="A tap line",
+        blurb="For phones. About a minute each.",
+        phrase="tap the rhythm of your thumbs",
+        rounds=5,
     ),
 }

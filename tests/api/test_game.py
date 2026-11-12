@@ -211,7 +211,12 @@ def test_player_view_never_includes_the_underlying_profile(client: TestClient) -
         "notes",
         "kind",
         "owner_member_id",
+        # Tap positions, for touch players only -- the one deliberate
+        # exception, docs/plans/active/MOBILE_PLAN.md Phase 1 section 7.
+        "tap_map",
     }
+    # A keyboard player has none.
+    assert player["tap_map"] == []
 
 
 def test_rename_player(client: TestClient) -> None:
@@ -497,3 +502,82 @@ def test_record_target_requires_a_matching_origin(client: TestClient) -> None:
             json={"name": "Yuliia", "lines": {"sentence": [SENTENCE_LINE] * 5}},
         )
         assert resp.status_code == 403
+
+
+def test_record_target_keeps_a_touch_target_apart_from_the_keyboard_one(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
+    from keystroke_dynamics.api import game as game_api
+    from keystroke_dynamics.game import targets as targets_module
+    from tests.touch_lines import tap_lines
+
+    monkeypatch.setattr(game_api, "TARGETS_DIR", tmp_path)
+    monkeypatch.setattr(targets_module, "TARGETS_DIR", tmp_path)
+
+    # Before any recording, a touch room works with no permanent target.
+    touch_room = {"level": "touch", "device_type": "touch"}
+    before = client.post("/api/game/rooms", json=touch_room).json()
+    assert [t["kind"] for t in before["targets"]] == ["sample", "sample"]
+
+    keyboard = client.post(
+        "/api/game/debug/record-target",
+        json={"name": "Yuliia", "lines": {"sentence": [SENTENCE_LINE] * 5}},
+    )
+    assert keyboard.status_code == 204, keyboard.text
+    touch = client.post(
+        "/api/game/debug/record-target",
+        json={"name": "Yuliia", "lines": {"touch": tap_lines("yuliia")}},
+    )
+    assert touch.status_code == 204, touch.text
+    # Two files, in two places: recording one didn't replace the other.
+    assert [p.name for p in tmp_path.glob("*.json")] == ["yuliia.json"]
+    assert [p.name for p in (tmp_path / "touch").glob("*.json")] == ["yuliia.json"]
+
+    room = client.post("/api/game/rooms", json=touch_room).json()
+    recorded = [t for t in room["targets"] if t["kind"] == "target"]
+    assert [t["name"] for t in recorded] == ["Yuliia"]
+    assert recorded[0]["id"] == "target-touch-yuliia"
+    assert len(recorded[0]["tap_map"]) == 14
+
+    keyboard_room = _create_party(client, level="sentence")
+    recorded = [t for t in keyboard_room["targets"] if t["kind"] == "target"]
+    assert [t["id"] for t in recorded] == ["target-yuliia"]
+    assert recorded[0]["tap_map"] == []
+
+
+@pytest.mark.parametrize(
+    ("lines", "detail"),
+    [
+        pytest.param(
+            lambda tap, key: {"touch": tap, "sentence": key},
+            "record the touch line separately from the keyboard lines",
+            id="touch-and-keyboard-together",
+        ),
+        pytest.param(
+            lambda tap, key: {"touch": key},
+            "a down event is missing its tap position",
+            id="touch-line-without-positions",
+        ),
+        pytest.param(
+            lambda tap, key: {"sentence": tap},
+            "tap positions are only accepted in touch rooms",
+            id="keyboard-line-with-positions",
+        ),
+    ],
+)
+def test_record_target_refuses_a_line_of_the_wrong_kind(
+    client: TestClient, monkeypatch, tmp_path, lines, detail: str
+) -> None:
+    from keystroke_dynamics.api import game as game_api
+    from keystroke_dynamics.game import targets as targets_module
+    from tests.touch_lines import tap_lines
+
+    monkeypatch.setattr(game_api, "TARGETS_DIR", tmp_path)
+    monkeypatch.setattr(targets_module, "TARGETS_DIR", tmp_path)
+    resp = client.post(
+        "/api/game/debug/record-target",
+        json={"name": "Yuliia", "lines": lines(tap_lines("yuliia"), [SENTENCE_LINE] * 5)},
+    )
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"] == detail
+    assert list(tmp_path.rglob("*.json")) == []

@@ -97,7 +97,9 @@ def test_the_upper_clamp_is_2_and_the_scoring_version_moved_with_it() -> None:
     # Pinned on purpose: changing either without the other makes saved
     # scores look comparable when they aren't.
     assert GAME_MAX_THRESHOLD == 2.0
-    assert SCORING_VERSION == "2"
+    # "3" added touch rooms and left keyboard scoring as it was at "2"
+    # (test_keyboard_golden.py), so the clamp still goes with it.
+    assert SCORING_VERSION == "3"
 
 
 @pytest.mark.parametrize("phrase", LEVEL_PHRASES.values())

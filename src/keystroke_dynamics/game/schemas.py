@@ -1,7 +1,8 @@
-"""Request/response schemas for /api/game/*. Reuses
-api.schemas.KeyEventSchema (no db dependency) rather than duplicating
-it -- see api/security.py for why nothing game-related imports from
-db/ at all.
+"""Request/response schemas for /api/game/*. The game has its own
+event schema (GameEventSchema) because a touch room's events also say
+where each tap landed; the account API's KeyEventSchema is left
+exactly as it is. Nothing game-related imports from db/ at all -- see
+api/security.py for why.
 """
 
 from __future__ import annotations
@@ -10,16 +11,33 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from keystroke_dynamics.api.schemas import KeyEventSchema
 from keystroke_dynamics.game.levels import Level
-from keystroke_dynamics.game.store import Attempt, Mode, Note, Player
+from keystroke_dynamics.game.place import TapPoint, tap_map
+from keystroke_dynamics.game.store import Attempt, DeviceType, Mode, Note, Player
+from keystroke_dynamics.game.taps import TapEvent
 
 #: Real attempt modes a client can submit via POST /api/game/attempts.
 #: "replay" is deliberately excluded -- only the server can start one,
-#: via POST /api/game/replay (Part 1 section 6).
-AttemptMode = Literal["attack", "self", "disguise"]
+#: via POST /api/game/replay (Part 1 section 6). "disguise" is for
+#: keyboard rooms only and "grip" for touch rooms only; api/game.py
+#: refuses the wrong one with a 400.
+AttemptMode = Literal["attack", "self", "disguise", "grip"]
 
 TargetKind = Literal["player", "sample", "target"]
+
+
+class GameEventSchema(BaseModel):
+    """One key or tap event. dx and dy are sent only from a touch
+    room, and only on down events (game/taps.py checks both)."""
+
+    code: str
+    action: Literal["down", "up"]
+    t_ms: float
+    dx: float | None = None
+    dy: float | None = None
+
+    def to_tap(self) -> TapEvent:
+        return TapEvent(code=self.code, action=self.action, t_ms=self.t_ms, dx=self.dx, dy=self.dy)
 
 
 class CreatePartyRequest(BaseModel):
@@ -28,6 +46,10 @@ class CreatePartyRequest(BaseModel):
     #: removed "word"), rather than letting pydantic's own Literal
     #: validation reject it with a generic 422.
     level: str
+    #: What the creating browser types on, which becomes the room's
+    #: own device type. A page from before touch rooms sends nothing
+    #: and gets a keyboard room, as before.
+    device_type: DeviceType = "keyboard"
 
 
 class NoteView(BaseModel):
@@ -40,10 +62,39 @@ class NoteView(BaseModel):
         return cls(ch=note.ch, start_ms=note.start_ms, dur_ms=note.dur_ms)
 
 
+class TapPointView(BaseModel):
+    """One key of a touch player's tap map: where their taps usually
+    land on it, in key widths (x) and heights (y) from its center, and
+    how much that varies. x is null for the space bar."""
+
+    code: str
+    x: float | None
+    x_spread: float | None
+    y: float
+    y_spread: float
+
+    @classmethod
+    def from_core(cls, point: TapPoint) -> TapPointView:
+        return cls(
+            code=point.code,
+            x=point.x,
+            x_spread=point.x_spread,
+            y=point.y,
+            y_spread=point.y_spread,
+        )
+
+
 class PlayerView(BaseModel):
     """Never includes `profile` -- the browser gets a player's
     threshold and median notes (enough to draw their signature ring
-    and to show the limit), never the underlying per-feature stats."""
+    and to show the limit), never the underlying per-feature timing
+    stats.
+
+    A touch player's tap map is the one deliberate exception
+    (docs/plans/active/MOBILE_PLAN.md Phase 1 section 7): the room
+    draws it, so tap-position averages and spreads are sent -- position
+    only, and only in responses that go to members of the player's own
+    room. The event stream never carries a PlayerView."""
 
     id: str
     name: str
@@ -57,6 +108,8 @@ class PlayerView(BaseModel):
     #: Useless on its own: a member id only counts inside a signed
     #: session cookie.
     owner_member_id: str | None
+    #: Empty for every keyboard player.
+    tap_map: list[TapPointView]
 
     @classmethod
     def from_player(cls, player: Player, *, kind: TargetKind) -> PlayerView:
@@ -68,6 +121,7 @@ class PlayerView(BaseModel):
             notes=[NoteView.from_core(n) for n in player.notes],
             kind=kind,
             owner_member_id=player.owner_member_id,
+            tap_map=[TapPointView.from_core(p) for p in tap_map(player.place_profile)],
         )
 
 
@@ -97,6 +151,11 @@ class AttemptView(BaseModel):
     #: which can change timing (shown as "different keyboard"). None
     #: when it doesn't apply: a bot target, or a replay.
     same_keyboard: bool | None
+    #: A touch attempt's timing-only and position-only distances,
+    #: shown separately. Null for every keyboard attempt, and for a
+    #: touch attempt that couldn't be scored.
+    rhythm: float | None
+    place: float | None
 
     @classmethod
     def from_core(cls, attempt: Attempt) -> AttemptView:
@@ -114,6 +173,8 @@ class AttemptView(BaseModel):
             counted=attempt.counted,
             passed=attempt.passed,
             same_keyboard=attempt.same_keyboard,
+            rhythm=attempt.rhythm,
+            place=attempt.place,
         )
 
 
@@ -131,6 +192,12 @@ class PartyView(BaseModel):
     member_id: str
     is_host: bool
     member_count: int
+    #: What this room's players type on: "keyboard" or "touch".
+    device_type: DeviceType
+    #: True when this member's own device type differs from the
+    #: room's: they can read the room and run a replay, but not enroll,
+    #: rename, or type.
+    watching: bool
     level: Level
     phrase: str
     players: list[PlayerView]
@@ -154,7 +221,7 @@ class CreatePlayerRequest(BaseModel):
     #: None -> the server generates one (game/names.py).
     name: str | None = None
     #: 3-8 training lines, per docs/plans/done/PARTY_LAUNCH_PLAN.md Part 1 section 5.
-    training_lines: list[list[KeyEventSchema]] = Field(min_length=3, max_length=8)
+    training_lines: list[list[GameEventSchema]] = Field(min_length=3, max_length=8)
 
 
 class JoinRoomRequest(BaseModel):
@@ -162,6 +229,9 @@ class JoinRoomRequest(BaseModel):
     #: refused (409) unless this is set, so the page can ask "Leave
     #: your current room and join this one?" first.
     leave_current: bool = False
+    #: What the joining browser types on. If it differs from the
+    #: room's, this member watches.
+    device_type: DeviceType = "keyboard"
 
 
 class LockRoomRequest(BaseModel):
@@ -177,7 +247,7 @@ class AttemptRequest(BaseModel):
     typist_id: str | None = None
     target_id: str
     mode: AttemptMode
-    events: list[KeyEventSchema]
+    events: list[GameEventSchema]
     #: Idempotency key: a retried submission with the same
     #: (typist_id, client_attempt_id) returns the original result
     #: instead of being scored and recorded twice.
@@ -219,4 +289,4 @@ class RecordTargetRequest(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=24)
-    lines: dict[Level, list[list[KeyEventSchema]]]
+    lines: dict[Level, list[list[GameEventSchema]]]

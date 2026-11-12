@@ -41,7 +41,13 @@ GAME_THRESHOLD_MULTIPLIER = 1.2
 #: "2": GAME_MAX_THRESHOLD lowered from 3.5 to 2.0. Scores are
 #: computed exactly as in "1"; only limits above 2.0, and so the
 #: outcomes of attempts against those players, differ.
-SCORING_VERSION = "2"
+#:
+#: "3": touch rooms exist (game/touch_scoring.py), with their own
+#: line, scorer, and limits. Nothing about keyboard scoring changed:
+#: a keyboard row at "3" is computed exactly as at "2"
+#: (tests/game/test_keyboard_golden.py), so the two are comparable.
+#: Touch rows start at "3".
+SCORING_VERSION = "3"
 
 
 def line_feature_count(phrase: str) -> int:

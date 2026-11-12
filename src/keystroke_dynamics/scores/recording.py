@@ -14,7 +14,7 @@ from typing import Literal
 from keystroke_dynamics.game.judge import Verdict
 from keystroke_dynamics.game.levels import Level
 from keystroke_dynamics.game.scoring import SCORING_VERSION
-from keystroke_dynamics.game.store import Mode
+from keystroke_dynamics.game.store import DeviceType, Mode
 
 #: score_attempts.target_kind's own vocabulary -- deliberately not
 #: game/schemas.py's PlayerView.kind TargetKind ("player"/"sample"/
@@ -22,12 +22,9 @@ from keystroke_dynamics.game.store import Mode
 #: plan's own table definition's wording instead.
 ScoreTargetKind = Literal["player", "simulated", "permanent"]
 
-#: This game captures keystrokes from a physical keyboard only -- see
-#: game/judge.py's _clue() docstring on why there's no touch
-#: ("place") dimension yet. A constant, not a setting: there's
-#: nothing to configure until the touch version (out of scope for
-#: this launch) exists.
-DEVICE_TYPE = "keyboard"
+#: score_attempts.device_type for a row whose caller doesn't say --
+#: a physical keyboard, which is all there was before touch rooms.
+DEVICE_TYPE: DeviceType = "keyboard"
 
 #: Written to score_attempts.consent_version on every row. The column
 #: keeps its original name (its migration is never edited), but it now
@@ -53,6 +50,7 @@ def build_score_row(
     training_lines: int,
     limit_value: float,
     same_keyboard: bool | None,
+    device_type: DeviceType = DEVICE_TYPE,
 ) -> dict[str, object]:
     """Builds the row dict scores/writer.py's InsertRow carries.
     party_id/typist_id/target_id must already be score_ids (random,
@@ -72,7 +70,7 @@ def build_score_row(
         "created_on": datetime.date.today(),
         "scoring_version": SCORING_VERSION,
         "consent_version": NOTICE_VERSION,
-        "device_type": DEVICE_TYPE,
+        "device_type": device_type,
         "line_id": line_id,
         "mode": mode,
         "target_kind": target_kind,
@@ -81,22 +79,28 @@ def build_score_row(
         "target_id": target_id,
         "training_lines": training_lines,
         "compared_features": verdict.compared_features,
-        # rhythm and total hold the same value -- this game has no
-        # touch-position dimension to combine rhythm with (see
-        # game/judge.py's _clue() docstring). Populated whenever a
-        # distance was computed at all, even for an attempt that
-        # didn't count toward the party's own live tally (a disguise
-        # attempt disqualified by the pace gate still has a real,
-        # meaningful distance) -- only "unusable" (no distance at
-        # all) leaves these null.
-        "rhythm": verdict.distance,
-        "place": None,
+        # A keyboard row's rhythm and total hold the same value, and
+        # its place stays null: a physical keyboard has no tap
+        # position to combine rhythm with. A touch row has all three:
+        # the timing-only score, the position-only score, and the
+        # distance the limit was applied to. Scores only -- never a
+        # tap position or a timing (docs/plans/active/MOBILE_PLAN.md
+        # Phase 1 section 6).
+        #
+        # Populated whenever a distance was computed at all, even for
+        # an attempt that didn't count toward the party's own live
+        # tally (a disguise attempt disqualified by the pace gate
+        # still has a real, meaningful distance) -- only "unusable"
+        # (no distance at all) leaves these null.
+        "rhythm": verdict.rhythm if device_type == "touch" else verdict.distance,
+        "place": verdict.place if device_type == "touch" else None,
         "total": verdict.distance,
         "limit_value": limit_value,
         "pace": pace,
         "outcome": outcome,
         # Whether typist and target share a room member (a keyboard)
         # -- docs/plans/active/ROOMS_PLAN.md Phase 1 section 5. A plain
-        # true/false/null, not an id: it says nothing about who.
+        # true/false/null, not an id: it says nothing about who. In a
+        # touch room the "keyboard" is the phone.
         "same_keyboard": same_keyboard,
     }

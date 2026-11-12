@@ -7,11 +7,12 @@ past enrollment (see game/store.py).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from keystroke_dynamics.core.features import Feature
 from keystroke_dynamics.game.scoring import score_sample
 from keystroke_dynamics.game.store import Mode, Player
+from keystroke_dynamics.game.touch_scoring import TouchLine, score_touch
 
 #: A disguise attempt's typing pace must stay within this fraction of
 #: the typist's own usual pace, or it's disqualified before scoring
@@ -30,10 +31,10 @@ def _clue(*, distance: float, threshold: float, pace: float) -> str:
     fit on a result the distance itself contradicts (the plan's "never
     say everything fits on a failed attempt").
 
-    This game has no touch-position ("place") dimension -- a physical
-    keyboard has no tap coordinates (core/features.py extracts only
-    hold and flight timings) -- so unlike the touch mockup's three-way
-    clue, rhythm is the only thing besides pace worth naming here.
+    This is the keyboard game's clue: a physical keyboard has no tap
+    coordinates (core/features.py extracts only hold and flight
+    timings), so rhythm is the only thing besides pace worth naming
+    here. A touch attempt gets _touch_clue instead.
     """
     fast = pace < 1 - DISGUISE_PACE_TOLERANCE
     slow = pace > 1 + DISGUISE_PACE_TOLERANCE
@@ -42,6 +43,35 @@ def _clue(*, distance: float, threshold: float, pace: float) -> str:
         return "Right speed, wrong rhythm" if off else "Right speed, and the rhythm fits"
     speed = "Too fast" if fast else "Too slow"
     return f"{speed}, and the rhythm is off too" if off else f"{speed}, but the rhythm fits"
+
+
+def _touch_clue(*, rhythm: float, place: float, threshold: float, pace: float) -> str:
+    """_clue for a touch attempt, in design/typing-twin-touch.html's
+    own wording: it also names tap position when that is the
+    giveaway. Rhythm and Place are each compared with the limit on
+    their own.
+
+    "All fit" is only ever said when both are at or under the limit,
+    and the distance is a weighted mean of the two, so it is at or
+    under the limit too: this can't claim a good fit on a failed
+    attempt.
+    """
+    fast = pace < 1 - DISGUISE_PACE_TOLERANCE
+    slow = pace > 1 + DISGUISE_PACE_TOLERANCE
+    rhythm_off = rhythm > threshold
+    place_off = place > threshold
+    if not fast and not slow:
+        if rhythm_off:
+            return "Right speed, wrong rhythm"
+        if place_off:
+            return "Right speed and rhythm, wrong tap places"
+        return "Speed, rhythm, and tap places all fit"
+    speed = "Too fast" if fast else "Too slow"
+    if rhythm_off:
+        return f"{speed}, and the rhythm is off too"
+    if place_off:
+        return f"{speed}, with the right rhythm but wrong tap places"
+    return f"{speed}, but the rhythm and tap places fit"
 
 
 @dataclass(frozen=True)
@@ -68,6 +98,11 @@ class Verdict:
     #: Meaningful even when distance is None (it's exactly why: fewer
     #: than game/scoring.py's own minimum).
     compared_features: int
+    #: The timing-only and position-only parts of a touch attempt's
+    #: distance. None for every keyboard attempt, and alongside
+    #: distance.
+    rhythm: float | None = None
+    place: float | None = None
 
 
 def usual_duration_ms(player: Player) -> float:
@@ -108,7 +143,61 @@ def judge(
     run_duration_ms: float,
 ) -> Verdict:
     result = score_sample(sample, target.profile, phrase=phrase, threshold=target.threshold)
-    distance = result.score
+    return _verdict_for(
+        result.score,
+        result.compared_features,
+        typist_name=typist_name,
+        target=target,
+        mode=mode,
+        run_duration_ms=run_duration_ms,
+    )
+
+
+def judge_touch(
+    line: TouchLine,
+    *,
+    typist_name: str,
+    target: Player,
+    mode: Mode,
+    phrase: str,
+    run_duration_ms: float,
+) -> Verdict:
+    """judge() for a touch room: the same verdicts from the touch
+    scorer's distance, plus Rhythm and Place, and a clue that can name
+    tap position."""
+    score = score_touch(
+        line, target.profile, target.place_profile, phrase=phrase, threshold=target.threshold
+    )
+    verdict = _verdict_for(
+        score.distance,
+        score.compared_features,
+        typist_name=typist_name,
+        target=target,
+        mode=mode,
+        run_duration_ms=run_duration_ms,
+    )
+    if score.rhythm is None or score.place is None or verdict.pace is None:
+        return verdict
+    return replace(
+        verdict,
+        rhythm=score.rhythm,
+        place=score.place,
+        clue=_touch_clue(
+            rhythm=score.rhythm, place=score.place, threshold=target.threshold, pace=verdict.pace
+        ),
+    )
+
+
+def _verdict_for(
+    distance: float | None,
+    compared_features: int,
+    *,
+    typist_name: str,
+    target: Player,
+    mode: Mode,
+    run_duration_ms: float,
+) -> Verdict:
+    """The verdict for a distance, however it was scored."""
     ratio = distance / target.threshold if distance is not None else None
 
     # Every mode's result shows pace and a clue alongside the score
@@ -131,7 +220,7 @@ def judge(
             ratio=None,
             pace=None,
             clue=None,
-            compared_features=result.compared_features,
+            compared_features=compared_features,
         )
     clue = _clue(distance=distance, threshold=target.threshold, pace=pace)
 
@@ -146,7 +235,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
-                compared_features=result.compared_features,
+                compared_features=compared_features,
             )
         return Verdict(
             "Who are you?",
@@ -157,7 +246,34 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
-            compared_features=result.compared_features,
+            compared_features=compared_features,
+        )
+
+    if mode == "grip":
+        # The touch game's "New grip" test: the player's own line,
+        # held differently. No pace rule, unlike disguise.
+        if distance <= target.threshold:
+            return Verdict(
+                "That's you",
+                "It still recognized you with that grip.",
+                counted=True,
+                passed=True,
+                distance=distance,
+                ratio=ratio,
+                pace=pace,
+                clue=clue,
+                compared_features=compared_features,
+            )
+        return Verdict(
+            "Who are you?",
+            "The new grip was enough to throw it off.",
+            counted=True,
+            passed=False,
+            distance=distance,
+            ratio=ratio,
+            pace=pace,
+            clue=clue,
+            compared_features=compared_features,
         )
 
     if mode == "disguise":
@@ -174,7 +290,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
-                compared_features=result.compared_features,
+                compared_features=compared_features,
             )
         if distance > target.threshold:
             return Verdict(
@@ -186,7 +302,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
-                compared_features=result.compared_features,
+                compared_features=compared_features,
             )
         return Verdict(
             "Still you",
@@ -197,7 +313,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
-            compared_features=result.compared_features,
+            compared_features=compared_features,
         )
 
     if mode == "replay":
@@ -213,7 +329,7 @@ def judge(
                 ratio=ratio,
                 pace=pace,
                 clue=clue,
-                compared_features=result.compared_features,
+                compared_features=compared_features,
             )
         return Verdict(
             "Replay failed",
@@ -224,7 +340,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
-            compared_features=result.compared_features,
+            compared_features=compared_features,
         )
 
     # mode == "attack"
@@ -238,7 +354,7 @@ def judge(
             ratio=ratio,
             pace=pace,
             clue=clue,
-            compared_features=result.compared_features,
+            compared_features=compared_features,
         )
     return Verdict(
         "Caught!",
@@ -249,5 +365,5 @@ def judge(
         ratio=ratio,
         pace=pace,
         clue=clue,
-        compared_features=result.compared_features,
+        compared_features=compared_features,
     )

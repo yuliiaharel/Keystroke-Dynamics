@@ -123,3 +123,68 @@ def test_pace_is_the_given_value_not_the_verdicts_own() -> None:
     # them.
     row = _row(verdict=_verdict(distance=None, pace=None), pace=0.92)
     assert row["pace"] == 0.92
+
+
+# ---------- touch rows (docs/plans/active/MOBILE_PLAN.md Phase 1 section 6) ----------
+
+
+def _touch_row(**overrides: object) -> dict[str, object]:
+    defaults: dict[str, object] = {
+        "verdict": _verdict(distance=1.4, rhythm=1.1, place=2.0, compared_features=84),
+        "device_type": "touch",
+        "line_id": "touch",
+    }
+    defaults.update(overrides)
+    return _row(**defaults)
+
+
+def test_a_touch_row_stores_rhythm_place_and_total_separately() -> None:
+    row = _touch_row()
+    assert row["device_type"] == "touch"
+    assert row["line_id"] == "touch"
+    assert row["rhythm"] == 1.1
+    assert row["place"] == 2.0
+    assert row["total"] == 1.4
+    assert row["compared_features"] == 84
+
+
+def test_a_touch_rows_outcome_comes_from_the_total_not_from_rhythm_or_place() -> None:
+    # Rhythm alone is under the limit and place alone is over it; the
+    # distance the limit was applied to decides.
+    assert _touch_row(limit_value=1.65)["outcome"] == "pass"
+    assert _touch_row(limit_value=1.3)["outcome"] == "fail"
+
+
+def test_an_unusable_touch_row_has_no_scores() -> None:
+    row = _touch_row(
+        verdict=_verdict(
+            distance=None, ratio=None, pace=None, clue=None, counted=False, passed=None
+        ),
+    )
+    assert row["outcome"] == "unusable"
+    assert row["rhythm"] is None and row["place"] is None and row["total"] is None
+
+
+@pytest.mark.parametrize("mode", ["attack", "self", "grip", "replay"])
+def test_a_touch_row_keeps_its_mode(mode: str) -> None:
+    assert _touch_row(mode=mode)["mode"] == mode
+
+
+@pytest.mark.parametrize("same_keyboard", [True, False, None])
+def test_a_touch_row_fills_same_keyboard_by_the_same_rule(same_keyboard: bool | None) -> None:
+    assert _touch_row(same_keyboard=same_keyboard)["same_keyboard"] is same_keyboard
+
+
+def test_a_touch_row_has_exactly_the_table_columns_and_nothing_else() -> None:
+    # No tap position, no timing: the same fixed set of columns a
+    # keyboard row has.
+    assert set(_touch_row()) == {column.name for column in ScoreAttempt.__table__.columns}
+
+
+def test_a_keyboard_row_ignores_rhythm_and_place_on_the_verdict() -> None:
+    # A keyboard verdict never has them, but the row must not depend
+    # on that: a keyboard row's place is always empty.
+    row = _row(verdict=_verdict(distance=2.0, rhythm=1.0, place=3.0))
+    assert row["rhythm"] == 2.0
+    assert row["place"] is None
+    assert row["total"] == 2.0

@@ -26,7 +26,11 @@ happens to name something in a different room is simply "not found",
 never a cross-room leak.
 
 Permissions, in one place:
-- any member: read the room, enroll a player, attack any player
+- any member: read the room, run a replay
+- a member whose device type matches the room's (a keyboard in a
+  keyboard room, a phone in a touch room): also enroll a player and
+  attack any player. Anyone else is watching
+  (docs/plans/active/MOBILE_PLAN.md Phase 1 section 1)
 - a player's owner (the member who enrolled them): type as, rename,
   or delete that player
 - the host: also delete any player, remove a member, lock or unlock
@@ -50,30 +54,35 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from starlette.types import Receive, Scope, Send
 
-from keystroke_dynamics.api.schemas import KeyEventSchema
 from keystroke_dynamics.api.security import rate_limited, require_matching_origin
 from keystroke_dynamics.config import settings
-from keystroke_dynamics.core.events import InvalidSampleError, KeyEvent, pair_presses, validate
+from keystroke_dynamics.core.events import InvalidSampleError, KeyEvent, pair_presses
 from keystroke_dynamics.core.features import extract_features
 from keystroke_dynamics.game.codes import normalize_code
-from keystroke_dynamics.game.enroll import build_profile_and_threshold, median_notes
+from keystroke_dynamics.game.enroll import (
+    build_profile_and_threshold,
+    build_touch_profiles_and_threshold,
+    median_notes,
+)
 from keystroke_dynamics.game.events import (
     MemberStreamLimitError,
     RoomEvents,
     Subscription,
     TotalStreamLimitError,
 )
-from keystroke_dynamics.game.judge import judge, pace_ratio
-from keystroke_dynamics.game.levels import LEVELS
+from keystroke_dynamics.game.judge import judge, judge_touch, pace_ratio
+from keystroke_dynamics.game.levels import LEVELS, TOUCH_LEVEL
 from keystroke_dynamics.game.names import InvalidNameError, generate_name, validate_custom_name
 from keystroke_dynamics.game.rate_limit import game_join_rate_limiter, game_rate_limiter
-from keystroke_dynamics.game.replay import notes_to_events
+from keystroke_dynamics.game.replay import notes_to_events, notes_to_taps
 from keystroke_dynamics.game.schemas import (
+    AttemptMode,
     AttemptRequest,
     AttemptResponse,
     AttemptView,
     CreatePartyRequest,
     CreatePlayerRequest,
+    GameEventSchema,
     JoinRoomRequest,
     LockRoomRequest,
     NameSuggestionView,
@@ -88,6 +97,7 @@ from keystroke_dynamics.game.schemas import (
 from keystroke_dynamics.game.store import (
     REPLAY_TYPIST_ID,
     Attempt,
+    DeviceType,
     GameStore,
     InMemoryGameStore,
     Member,
@@ -100,13 +110,22 @@ from keystroke_dynamics.game.store import (
     RoomMembersFullError,
     RoomNotFoundError,
 )
+from keystroke_dynamics.game.taps import (
+    TapEvent,
+    to_key_events,
+    validate_keyboard_events,
+    validate_taps,
+)
 from keystroke_dynamics.game.targets import (
     SAMPLE_TARGET_ID_PREFIX,
     TARGETS_DIR,
     load_permanent_target,
     sample_targets,
     save_permanent_target,
+    save_permanent_touch_target,
+    touch_targets_dir,
 )
+from keystroke_dynamics.game.touch_scoring import extract_touch_line
 from keystroke_dynamics.scores.recording import (
     ScoreTargetKind,
     build_score_row,
@@ -205,6 +224,33 @@ def _room_for_session(request: Request, store: GameStore = Depends(get_game_stor
     return room
 
 
+#: What a watcher is told when they try to play, by the room's type.
+_WATCHING: dict[DeviceType, str] = {
+    "keyboard": "This room is for computers. You can watch it here, but not play.",
+    "touch": "This room is for phones. You can watch it here, but not play.",
+}
+
+#: The attempt modes each kind of room has. "disguise" needs the
+#: keyboard game's pace rule; "grip" is the touch game's own.
+_ATTEMPT_MODES: dict[DeviceType, frozenset[AttemptMode]] = {
+    "keyboard": frozenset({"attack", "self", "disguise"}),
+    "touch": frozenset({"attack", "self", "grip"}),
+}
+
+
+def _is_watching(room: RoomSession) -> bool:
+    return room.member.device_type != room.party.device_type
+
+
+def _playing_room_for_session(room: RoomSession = Depends(_room_for_session)) -> RoomSession:
+    """For the routes a watcher can't use: enrolling, renaming, and
+    typing. A phone's signature and a keyboard's are never compared,
+    so the other kind of device has nothing it could honestly submit."""
+    if _is_watching(room):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _WATCHING[room.party.device_type])
+    return room
+
+
 def _host_room_for_session(room: RoomSession = Depends(_room_for_session)) -> RoomSession:
     if not room.is_host:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "only the host can do that")
@@ -233,10 +279,19 @@ def _delete_scores_after_removal(party: Party, removal: MemberRemoval | None) ->
         score_writer.enqueue(DeleteByPlayerScoreId(player.score_id))
 
 
-def _validate_events(events_schema: list[KeyEventSchema]) -> list[KeyEvent]:
-    events = [e.to_core() for e in events_schema]
+def _validate_events(
+    events_schema: list[GameEventSchema], device_type: DeviceType
+) -> list[TapEvent]:
+    """One submitted line, checked by the rules of the room it was
+    sent to: a touch room's events must say where each tap landed, and
+    a keyboard room's must not. The events live only as long as the
+    request -- never stored, never logged."""
+    events = [e.to_tap() for e in events_schema]
     try:
-        validate(events, max_events=settings.max_events)
+        if device_type == "touch":
+            validate_taps(events, max_events=settings.max_events)
+        else:
+            validate_keyboard_events(events, max_events=settings.max_events)
     except InvalidSampleError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     return events
@@ -299,6 +354,8 @@ def _party_view(room: RoomSession) -> PartyView:
         member_id=room.member.id,
         is_host=room.is_host,
         member_count=len(party.members),
+        device_type=party.device_type,
+        watching=_is_watching(room),
         level=party.level,
         phrase=phrase,
         players=[PlayerView.from_player(p, kind="player") for p in party.players.values()],
@@ -315,9 +372,14 @@ def create_room(
 ) -> PartyView:
     if body.level not in LEVELS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown level {body.level!r}")
+    if (body.level == TOUCH_LEVEL) != (body.device_type == "touch"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"a touch room always uses the {TOUCH_LEVEL!r} level, and a keyboard room never does",
+        )
     previous = _current_room(request, store)
     try:
-        party = store.create_party(body.level)
+        party = store.create_party(body.level, body.device_type)
     except PartyLimitReached as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     # A browser is in one room at a time. Leaving the old one only
@@ -353,7 +415,9 @@ def join_room(
             "You're already in another room. Leave it to join this one.",
         )
     try:
-        party, member = store.join_party(normalized)
+        party, member = store.join_party(
+            normalized, body.device_type if body is not None else "keyboard"
+        )
     except RoomNotFoundError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _ROOM_NOT_FOUND) from exc
     except RoomLockedError as exc:
@@ -562,12 +626,13 @@ def suggest_name(room: RoomSession = Depends(_room_for_session)) -> NameSuggesti
 @router.post("/players", dependencies=_STATE_CHANGING)
 def create_player(
     body: CreatePlayerRequest,
-    room: RoomSession = Depends(_room_for_session),
+    room: RoomSession = Depends(_playing_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> PlayerView:
     party = room.party
     phrase = LEVELS[party.level].phrase
-    runs = [_validate_events(line) for line in body.training_lines]
+    taps = [_validate_events(line, party.device_type) for line in body.training_lines]
+    runs = [to_key_events(line) for line in taps]
 
     existing_names = {p.name.lower() for p in party.players.values()}
     if body.name is not None:
@@ -578,13 +643,18 @@ def create_player(
     else:
         name = _unused_generated_name(existing_names)
 
-    profile, threshold = build_profile_and_threshold(phrase, runs)
+    if party.device_type == "touch":
+        profile, place_profile, threshold = build_touch_profiles_and_threshold(phrase, taps)
+    else:
+        profile, threshold = build_profile_and_threshold(phrase, runs)
+        place_profile = {}
     notes = median_notes(phrase, runs)
     player = Player(
         id=str(uuid.uuid4()),
         name=name,
         color=len(party.players) % 6,
         profile=profile,
+        place_profile=place_profile,
         threshold=threshold,
         notes=notes,
         training_line_count=len(runs),
@@ -604,7 +674,7 @@ def create_player(
 def rename_player(
     player_id: str,
     body: RenamePlayerRequest,
-    room: RoomSession = Depends(_room_for_session),
+    room: RoomSession = Depends(_playing_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> PlayerView:
     party = room.party
@@ -657,10 +727,15 @@ def delete_player(
 @router.post("/attempts", dependencies=_STATE_CHANGING)
 def create_attempt(
     body: AttemptRequest,
-    room: RoomSession = Depends(_room_for_session),
+    room: RoomSession = Depends(_playing_room_for_session),
     store: GameStore = Depends(get_game_store),
 ) -> AttemptResponse:
     party = room.party
+    if body.mode not in _ATTEMPT_MODES[party.device_type]:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"{body.mode!r} attempts aren't part of a {party.device_type} room",
+        )
     if body.typist_id is not None:
         typist = party.players.get(body.typist_id)
         if typist is None:
@@ -674,19 +749,28 @@ def create_attempt(
     if target is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown target")
 
-    events = _validate_events(body.events)
-    sample = extract_features(pair_presses(events))
+    events = _validate_events(body.events, party.device_type)
     phrase = LEVELS[party.level].phrase
     run_duration_ms = events[-1].t_ms if events else 0.0
     typist_name = party.players[body.typist_id].name if body.typist_id else "Guest"
-    verdict = judge(
-        sample,
-        typist_name=typist_name,
-        target=target,
-        mode=body.mode,
-        phrase=phrase,
-        run_duration_ms=run_duration_ms,
-    )
+    if party.device_type == "touch":
+        verdict = judge_touch(
+            extract_touch_line(events),
+            typist_name=typist_name,
+            target=target,
+            mode=body.mode,
+            phrase=phrase,
+            run_duration_ms=run_duration_ms,
+        )
+    else:
+        verdict = judge(
+            extract_features(pair_presses(to_key_events(events))),
+            typist_name=typist_name,
+            target=target,
+            mode=body.mode,
+            phrase=phrase,
+            run_duration_ms=run_duration_ms,
+        )
 
     duplicate = next(
         (
@@ -720,6 +804,8 @@ def create_attempt(
         client_attempt_id=body.client_attempt_id,
         member_id=room.member.id,
         same_keyboard=_same_keyboard(room, target),
+        rhythm=verdict.rhythm,
+        place=verdict.place,
     )
     store.add_attempt(party.id, attempt)
 
@@ -743,6 +829,7 @@ def create_attempt(
             training_lines=target.training_line_count,
             limit_value=target.threshold,
             same_keyboard=attempt.same_keyboard,
+            device_type=party.device_type,
         )
         score_writer.enqueue(InsertRow(row))
 
@@ -763,17 +850,28 @@ def create_replay(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown target")
 
     phrase = LEVELS[party.level].phrase
-    events = notes_to_events(target.notes)
-    sample = extract_features(pair_presses(events))
-    run_duration_ms = events[-1].t_ms if events else 0.0
-    verdict = judge(
-        sample,
-        typist_name="Replay bot",
-        target=target,
-        mode="replay",
-        phrase=phrase,
-        run_duration_ms=run_duration_ms,
-    )
+    if party.device_type == "touch":
+        taps = notes_to_taps(target.notes, target.place_profile)
+        run_duration_ms = taps[-1].t_ms if taps else 0.0
+        verdict = judge_touch(
+            extract_touch_line(taps),
+            typist_name="Replay bot",
+            target=target,
+            mode="replay",
+            phrase=phrase,
+            run_duration_ms=run_duration_ms,
+        )
+    else:
+        events = notes_to_events(target.notes)
+        run_duration_ms = events[-1].t_ms if events else 0.0
+        verdict = judge(
+            extract_features(pair_presses(events)),
+            typist_name="Replay bot",
+            target=target,
+            mode="replay",
+            phrase=phrase,
+            run_duration_ms=run_duration_ms,
+        )
     attempt = Attempt(
         id=str(uuid.uuid4()),
         typist_name="Replay bot",
@@ -789,6 +887,8 @@ def create_replay(
         counted=verdict.counted,
         passed=verdict.passed,
         member_id=room.member.id,
+        rhythm=verdict.rhythm,
+        place=verdict.place,
     )
     store.add_attempt(party.id, attempt)
 
@@ -808,6 +908,7 @@ def create_replay(
             limit_value=target.threshold,
             # Nobody typed a replay, so there's no keyboard to compare.
             same_keyboard=None,
+            device_type=party.device_type,
         )
         score_writer.enqueue(InsertRow(row))
 
@@ -833,9 +934,22 @@ if settings.debug:
         dependencies=[Depends(require_matching_origin)],
     )
     def record_target(body: RecordTargetRequest) -> None:
+        filename = f"{body.name.lower().replace(' ', '-')}.json"
+        if TOUCH_LEVEL in body.lines:
+            # A touch target is recorded on its own, into its own
+            # file, so it can't replace a keyboard target's.
+            if len(body.lines) > 1:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "record the touch line separately from the keyboard lines",
+                )
+            runs = [_validate_events(line, "touch") for line in body.lines[TOUCH_LEVEL]]
+            touch_targets_dir().mkdir(parents=True, exist_ok=True)
+            save_permanent_touch_target(touch_targets_dir() / filename, name=body.name, runs=runs)
+            return
         lines: dict[str, list[list[KeyEvent]]] = {
-            level: [_validate_events(line) for line in runs] for level, runs in body.lines.items()
+            level: [to_key_events(_validate_events(line, "keyboard")) for line in runs]
+            for level, runs in body.lines.items()
         }
         TARGETS_DIR.mkdir(parents=True, exist_ok=True)
-        path = TARGETS_DIR / f"{body.name.lower().replace(' ', '-')}.json"
-        save_permanent_target(path, name=body.name, lines=lines)
+        save_permanent_target(TARGETS_DIR / filename, name=body.name, lines=lines)
