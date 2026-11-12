@@ -34,8 +34,8 @@ class ScoreAttempt(Base):
     __tablename__ = "score_attempts"
     __table_args__ = (
         CheckConstraint("device_type IN ('keyboard', 'touch')", name="ck_device_type"),
-        CheckConstraint("line_id IN ('word', 'sentence', 'long')", name="ck_line_id"),
-        CheckConstraint("mode IN ('attack', 'self', 'disguise', 'replay')", name="ck_mode"),
+        CheckConstraint("line_id IN ('word', 'sentence', 'long', 'touch')", name="ck_line_id"),
+        CheckConstraint("mode IN ('attack', 'self', 'disguise', 'replay', 'grip')", name="ck_mode"),
         CheckConstraint(
             "target_kind IN ('player', 'simulated', 'permanent')", name="ck_target_kind"
         ),
@@ -67,10 +67,10 @@ class ScoreAttempt(Base):
     training_lines: Mapped[int] = mapped_column(Integer)
     compared_features: Mapped[int] = mapped_column(Integer)
     #: Nullable exactly when the attempt was unusable (INSUFFICIENT_DATA
-    #: -- too messy to score at all). rhythm and total currently hold
-    #: the same value (this game has no touch-position dimension to
-    #: combine rhythm with -- see game/judge.py's _clue() docstring);
-    #: place stays null until the touch version exists.
+    #: -- too messy to score at all). A keyboard row's rhythm and
+    #: total hold the same value and its place is null. A touch row's
+    #: rhythm is its timing-only score, place its tap-position-only
+    #: score, and total the distance over both.
     rhythm: Mapped[float | None] = mapped_column(Float)
     place: Mapped[float | None] = mapped_column(Float)
     total: Mapped[float | None] = mapped_column(Float)

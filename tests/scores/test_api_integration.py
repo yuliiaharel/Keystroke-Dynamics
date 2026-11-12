@@ -27,3 +27,15 @@ def test_a_full_game_with_scores_on_records_every_attempt() -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout
+
+
+def test_a_touch_game_stores_scores_only_and_logs_no_taps() -> None:
+    script = Path(__file__).parent.parent / "_touch_scores_subprocess.py"
+    result = subprocess.run(
+        [sys.executable, str(script), SCORES_TEST_DATABASE_URL],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-3000:]
+    assert "OK" in result.stdout
