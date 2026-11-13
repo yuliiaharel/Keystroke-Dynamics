@@ -64,6 +64,9 @@ def party_page(request: Request) -> HTMLResponse:
             "party_path": PARTY_PATH,
             "public_base_url": settings.public_base_url,
             "goatcounter_site_code": settings.goatcounter_site_code,
+            # Local development only: lets a mouse stand in for a
+            # finger on the touch game's on-page keyboard.
+            "debug": settings.debug,
         },
     )
     response.headers["Content-Security-Policy"] = csp_with_analytics(

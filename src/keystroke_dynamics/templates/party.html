@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+{# viewport-fit=cover: lets the on-page keyboard clear a phone's home indicator through the safe-area insets. #}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Typing Twin Party</title>
-<meta name="description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then gather some friends around one keyboard and try to pass as each other.">
+<meta name="description" content="Type or tap a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then share a room with friends, on computers or on phones, and try to pass as each other.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Typing Twin Party">
-<meta property="og:description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then gather some friends around one keyboard and try to pass as each other.">
+<meta property="og:description" content="Type or tap a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend. Then share a room with friends, on computers or on phones, and try to pass as each other.">
 {% if public_base_url %}
 {# The game's own address even on a room link, so a preview never carries a room code. #}
 <meta property="og:url" content="{{ public_base_url }}{{ party_path }}">
@@ -15,9 +16,10 @@
 {% endif %}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Typing Twin Party">
-<meta name="twitter:description" content="Type a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend.">
+<meta name="twitter:description" content="Type or tap a line a few times and see your rhythm drawn as a signature, scored for real by a working keystroke-dynamics backend.">
 <link rel="stylesheet" href="/static/css/fonts.css">
 <link rel="stylesheet" href="/static/css/party.css">
+<link rel="stylesheet" href="/static/css/touch-keyboard.css">
 <script type="module" src="/static/js/party.js"></script>
 {% if goatcounter_site_code %}
 {# Visitor counting, only when GOATCOUNTER_SITE_CODE is set. no_onload: count.js never counts by itself. frontend/src/analytics.ts makes every count, so a room code is never sent. #}
@@ -32,5 +34,7 @@
   </header>
   <main id="app" class="stack" style="gap: 24px"></main>
 </div>
+{# The touch game's on-page keyboard (frontend/src/touch-keyboard.ts). Hidden unless a line is being tapped. In local development only, a mouse may stand in for a finger on it. #}
+<div id="keyboard" hidden{% if debug %} data-allow-mouse="true"{% endif %}></div>
 </body>
 </html>

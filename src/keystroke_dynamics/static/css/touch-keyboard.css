@@ -1,0 +1,23 @@
+/* The on-page keyboard of the touch game (frontend/src/touch-keyboard.ts),
+   taken from design/typing-twin-touch.html. Its own file because two
+   pages load it: the game, and the debug-only capture test page, whose
+   job is to measure the very keys the game ships. Loaded after
+   party.css, which supplies the other color tokens. */
+
+:root { --key: #ffffff; --key-down: #f7c3d7; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --key: #2b2758; --key-down: #6d2a50; } }
+:root[data-theme="dark"] { --key: #2b2758; --key-down: #6d2a50; }
+
+/* Fixed to the bottom, clear of the home indicator. Scrolling, zoom,
+   selection, and the long-press callout are switched off here only:
+   the rest of the page keeps them. */
+#keyboard { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--sheet); border-top: 1px solid var(--line); padding: 8px max(4px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#keyboard[hidden] { display: none; }
+.kb { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 7px; }
+.kb-row { display: flex; gap: 4px; justify-content: center; }
+.key { flex: 0 0 calc((100% - 36px) / 10); height: 54px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--line); border-radius: 7px; font: 400 21px var(--body); color: var(--ink); touch-action: none; }
+.key.space { flex: 0 0 66%; font-size: 15px; color: var(--muted); }
+.key.down { background: var(--key-down); }
+
+/* Room under the page for the keyboard, so the line can't hide behind it. */
+body.typing { padding-bottom: 300px; overscroll-behavior: none; }

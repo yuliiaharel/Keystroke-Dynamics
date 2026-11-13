@@ -127,3 +127,51 @@ details .stack { margin-top: 10px; }
    messages (a failed save, a party that disappeared mid-request)
    use this same class and had no rule for it here. */
 .error { color: var(--bad); font-weight: 600; }
+
+/* ---------- The touch game (docs/plans/active/MOBILE_PLAN.md Phase 2) ----------
+   Taken from design/typing-twin-touch.html. Everything layout-changing
+   sits under body.touch, which the page sets only for a browser that
+   taps the on-page keyboard, so the keyboard game looks as it did. The
+   keyboard itself is in touch-keyboard.css. */
+body.touch { font-size: 17px; line-height: 1.45; padding-block: 14px 40px; }
+body.touch .wrap { max-width: 620px; gap: 16px; }
+body.touch header { gap: 8px; }
+body.touch .brand { font-size: 22px; }
+body.touch h1 { font-size: clamp(38px, 11vw, 60px); line-height: 1.03; }
+body.touch h2 { font-size: clamp(26px, 7vw, 34px); }
+body.touch #app { gap: 18px !important; }
+body.touch .stack { gap: 12px; }
+/* Thumb-sized targets, and no double-tap zoom on a button. */
+body.touch button { border-radius: 10px; padding: 12px 16px; min-height: 46px; touch-action: manipulation; }
+body.touch button.quiet { padding: 8px 12px; min-height: 40px; }
+body.touch .brand { padding: 0; min-height: 0; }
+body.touch nav.tabs { gap: 4px; }
+body.touch nav.tabs button { padding: 8px 10px; min-height: 40px; font-size: 15px; }
+body.touch .row { gap: 8px; }
+body.touch .row > button { flex: 1 1 auto; }
+body.touch input, body.touch select { width: 100%; padding: 10px 12px; }
+body.touch .players { grid-template-columns: 1fr; }
+body.touch .card { gap: 10px; }
+body.touch .card.add { min-height: 0; padding: 16px 12px; }
+body.touch .verdict { font-size: clamp(46px, 13vw, 72px); }
+body.touch .trait { padding: 12px; }
+body.touch .board { grid-template-columns: 1fr; }
+
+/* Shared by anyone looking at a touch room, a watching computer included. */
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.card-top { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: center; }
+.map svg { display: block; width: 100%; height: auto; }
+.m-key { fill: var(--paper); stroke: var(--line); stroke-width: 1; }
+.m-off { fill: transparent; stroke: var(--line); stroke-width: .5; opacity: .6; }
+.m-label { font: 400 8px var(--mono); fill: var(--muted); }
+.m-center { stroke: var(--muted); stroke-width: .7; }
+.m-attempt { fill: var(--ink); }
+.solo-ring { max-width: 300px; width: 100%; align-self: center; }
+.swatch.round { width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; }
+.swatch.square { width: 10px; height: 10px; border-radius: 2px; background: var(--ink); }
+.tap-phrase { font-size: clamp(21px, 6vw, 28px); line-height: 1.45; background: var(--sheet); border-radius: 12px; padding: 14px 16px; border: 2px solid var(--line); }
+.tap-phrase.oops { border-color: var(--bad); }
+.tap-phrase.oops .cur { color: var(--bad); border-color: var(--bad); }
+.tap-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tap-gauge .g-text { font-size: 16px; }
+.tap-gauge .g-val { font-size: 17px; }

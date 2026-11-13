@@ -1,14 +1,9 @@
 /* Debug-only capture test page (docs/plans/active/MOBILE_PLAN.md Phase 0). Loaded after
-   party.css, which supplies the color tokens, type, and buttons. The
-   keyboard rules are taken from design/typing-twin-touch.html so that
-   key sizes on a real phone match what the game will ship. */
-
-:root { --key: #ffffff; --key-down: #f7c3d7; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --key: #2b2758; --key-down: #6d2a50; } }
-:root[data-theme="dark"] { --key: #2b2758; --key-down: #6d2a50; }
+   party.css, which supplies the color tokens, type, and buttons, and
+   touch-keyboard.css, which is the game's own keyboard: key sizes on
+   this page are the ones the game ships. */
 
 .wrap { max-width: 620px; gap: 16px; }
-body.typing { padding-bottom: 300px; overscroll-behavior: none; }
 .small { font-size: 15px; }
 .brand { font: 400 22px/1 var(--display); color: var(--accent); }
 
@@ -17,14 +12,6 @@ body.typing { padding-bottom: 300px; overscroll-behavior: none; }
 .phrase .cur { border-bottom: 3px solid var(--accent); font-weight: 600; }
 .phrase.oops { border-color: var(--bad); }
 .phrase.oops .cur { color: var(--bad); border-color: var(--bad); }
-
-#keyboard { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--sheet); border-top: 1px solid var(--line); padding: 8px max(4px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px)); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-#keyboard[hidden] { display: none; }
-.kb { max-width: 620px; margin: 0 auto; display: flex; flex-direction: column; gap: 7px; }
-.kb-row { display: flex; gap: 4px; justify-content: center; }
-.key { flex: 0 0 calc((100% - 36px) / 10); height: 54px; display: flex; align-items: center; justify-content: center; background: var(--key); border: 1px solid var(--line); border-radius: 7px; font: 400 21px var(--body); color: var(--ink); touch-action: none; }
-.key.space { flex: 0 0 66%; font-size: 15px; color: var(--muted); }
-.key.down { background: var(--key-down); }
 
 /* Reads the safe-area insets back as computed padding. */
 #safe-probe { position: fixed; top: 0; left: 0; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }

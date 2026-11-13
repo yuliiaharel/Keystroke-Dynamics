@@ -70,6 +70,32 @@ def test_the_page_is_told_its_home_path(client: TestClient) -> None:
     assert '<body data-home="/party">' in client.get("/r/ABCDEFGH").text
 
 
+def test_party_page_carries_the_touch_keyboard_and_its_styles(client: TestClient) -> None:
+    # docs/plans/active/MOBILE_PLAN.md Phase 2: the on-page keyboard is
+    # part of the page, hidden until a line is tapped, and
+    # viewport-fit=cover is what lets it clear a phone's home indicator.
+    page = client.get("/party").text
+    assert '<div id="keyboard" hidden' in page
+    assert "/static/css/touch-keyboard.css" in page
+    assert "viewport-fit=cover" in page
+    # Zoom stays available everywhere but the keyboard itself.
+    assert "user-scalable" not in page
+    assert "maximum-scale" not in page
+
+
+def test_a_mouse_may_tap_the_touch_keyboard_only_in_debug_mode(client: TestClient) -> None:
+    # conftest.py runs this process with DEBUG=true. The other half --
+    # no mark outside debug mode -- is in _debug_false_subprocess.py.
+    assert '<div id="keyboard" hidden data-allow-mouse="true"></div>' in client.get("/party").text
+
+
+def test_party_page_description_covers_phones_as_well_as_computers(client: TestClient) -> None:
+    page = client.get("/party").text
+    assert "Type or tap a line a few times" in page
+    assert "on computers or on phones" in page
+    assert "around one keyboard" not in page
+
+
 def test_typing_twin_page_no_longer_exists(client: TestClient) -> None:
     # Removed entirely -- Party replaces it (docs/plans/done/PARTY_LAUNCH_PLAN.md).
     # Checked here, under the accounts-enabled suite, since that's

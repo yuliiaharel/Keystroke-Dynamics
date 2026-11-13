@@ -18,6 +18,13 @@
  * a form -- is what the server trusts to know which room this
  * browser is in, and which of its players are this browser's own.
  *
+ * A phone plays a touch room instead: the same rooms and the same
+ * round trips, typed on the on-page keyboard and scored on tap rhythm
+ * and tap position (docs/plans/active/MOBILE_PLAN.md Phase 2, ported
+ * from design/typing-twin-touch.html). The keyboard game's own views
+ * and typing are untouched by it; whatever the two share is asked
+ * "is this a touch room?" in one place, touchRoom() below.
+ *
  * The page's URL is /r/<code> whenever a room is on screen, and the
  * home path otherwise. It only ever replaces the current history
  * entry: there's one screen here, not pages to go back through.
@@ -25,24 +32,30 @@
 
 import { analyticsPrivacyNote, startAnalytics } from "../analytics";
 import * as gameApi from "../game-api";
-import type { AttemptView, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
+import type { AttemptView, GameEvent, Level, Mode as ApiMode, NoteView, PartyView, PlayerView } from "../game-api";
 import { KeystrokeCapture } from "../capture";
+import { canChooseKeyboard, chooseOnScreenKeyboard, deviceType, mustTurnUpright, viewportWidth } from "../device";
 import { watchRoom } from "../live";
 import type { LiveRoom } from "../live";
 import { formatCode, joinFailure, roomCodeFromPath, roomLink, roomPath, sameCode } from "../room";
-import type { CapturedEvent } from "../capture";
 import { scoresMemoHTML } from "../scores-memo";
+import { codeFor, TapLine } from "../tap-line";
+import type { Tap } from "../tap-line";
+import { giveawayHTML, giveaways, leans, spotsFromTapMap, spotsFromTaps, tapMapSVG } from "../tap-map";
+import { attachKeyboard, flashKey, keyboardHTML } from "../touch-keyboard";
 import { traitsFromNotes } from "../traits";
 import type { PairTiming } from "../traits";
 
 const LEVELS: Record<Level, { name: string; blurb: string; rounds: number }> = {
   sentence: { name: "A sentence", blurb: "The best party mode. About a minute each.", rounds: 5 },
   long: { name: "A long line", blurb: "More to measure, more to fake. About 2 minutes each.", rounds: 4 },
+  touch: { name: "A tap line", blurb: "For phones. About a minute each.", rounds: 5 },
 };
 // Mirrors game/levels.py -- only used for the decorative intro rings,
 // drawn before any party (and therefore any server-known phrase)
 // exists. Every other view uses S.party.phrase, the server's own.
 const INTRO_PHRASE = "quiet rhythm hides in every small habit of your hands";
+const TOUCH_INTRO_PHRASE = "tap the rhythm of your thumbs";
 
 const QWERTY = "qwertyuiopasdfghjklzxcvbnm ";
 const label = (c: string): string => (c === " " ? "space" : c);
@@ -71,7 +84,9 @@ interface Run {
   finished: boolean;
 }
 
-type ViewName = "intro" | "name" | "enroll" | "reveal" | "room" | "attack" | "scores" | "how";
+/** "result" is the touch game's own: a phone shows a result on a
+ * page of its own, where the keyboard game shows it under the typer. */
+type ViewName = "intro" | "name" | "enroll" | "reveal" | "room" | "attack" | "result" | "scores" | "how";
 
 interface LastResult {
   run: Run;
@@ -83,6 +98,9 @@ interface LastResult {
   //: this-response-only, never persisted history. Null exactly when
   //: attempt.distance is null ("Too messy").
   clue: string | null;
+  //: Touch only: the line's own taps, kept in this browser to draw
+  //: where they landed. Null for a replay, which nobody tapped.
+  taps?: Tap[] | null;
 }
 
 /** A full-page state for a room link that hasn't become a room on
@@ -119,6 +137,11 @@ interface State {
   renamingId: string | null;
   busy: boolean;
   error: string | null;
+  //: Touch only. Why the line on screen was started again, said once
+  //: under it.
+  notice: string | null;
+  //: Touch only. The phone is on its side, so the line waits.
+  paused: boolean;
 }
 
 /** A function, not a constant: enrollRuns must be a fresh array each time. */
@@ -143,6 +166,8 @@ function initialState(): State {
     renamingId: null,
     busy: false,
     error: null,
+    notice: null,
+    paused: false,
   };
 }
 
@@ -159,10 +184,32 @@ const humans = (): PlayerView[] => S.party?.players ?? [];
 const mine = (p: PlayerView): boolean => p.owner_member_id !== null && p.owner_member_id === S.party?.member_id;
 const myPlayers = (): PlayerView[] => humans().filter(mine);
 
-/** Phone keyboards don't report when each key goes down and up, so a
- * phone can join a room and watch, but not type
- * (docs/plans/active/MOBILE_PLAN.md is what changes that). */
-const onPhone = (): boolean => window.matchMedia?.("(pointer: coarse)").matches ?? false;
+/** A room is for one kind of device: computers typing on a physical
+ * keyboard, or phones tapping the on-page one. A phone's signature
+ * and a keyboard's are never compared, so a browser of the other kind
+ * can open the link and watch, but not play (the server decides which
+ * it is, and refuses a watcher's enrollment or typing). */
+const touchRoom = (): boolean => S.party?.device_type === "touch";
+const watching = (): boolean => S.party?.watching ?? false;
+/** This browser taps the on-page keyboard: in a room, by the server's
+ * own record of it; before one, by what kind of device it is. */
+const playsTouch = (): boolean => (S.party ? touchRoom() && !watching() : deviceType() === "touch");
+/** The touch game's words and drawings apply: to a touch room,
+ * whoever is looking at it, and to a phone that has no room yet. */
+const touchGame = (): boolean => (S.party ? touchRoom() : deviceType() === "touch");
+
+function deviceReport(): gameApi.DeviceReport {
+  const type = deviceType();
+  return { deviceType: type, viewportWidth: type === "touch" ? viewportWidth() : null };
+}
+
+/** `crypto.randomUUID` only exists on HTTPS and localhost. A phone
+ * testing over the local network has neither, so fall back to the
+ * random bytes that are available everywhere. */
+function attemptId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** Where the game lives when no room is on screen: "/" in public
  * mode, "/party" beside the account pages (api/pages.py's PARTY_PATH). */
@@ -333,6 +380,10 @@ function rollSVG(text: string, layers: { notes: NoteView[]; cls: string; inset?:
 /* ---------- Typing ---------- */
 
 function startRun(): void {
+  if (playsTouch()) {
+    startTapLine();
+    return;
+  }
   S.run = { idx: 0, keys: [], errors: 0, pendingError: false, held: {}, finished: false };
   capture.reset();
   drawTyper();
@@ -450,7 +501,7 @@ async function finishRun(): Promise<void> {
 //: with S.enrollRuns (which keeps the richer Run shape for the
 //: reveal view's local-only traits display). Cleared on submit or
 //: reset -- never kept beyond this one enrollment.
-const enrollSamples: CapturedEvent[][] = [];
+const enrollSamples: GameEvent[][] = [];
 
 async function submitRunAsAttempt(run: Run): Promise<void> {
   const target = byId(S.target!);
@@ -482,6 +533,10 @@ async function submitRunAsAttempt(run: Run): Promise<void> {
 }
 
 function drawTyper(oops?: boolean): void {
+  if (playsTouch()) {
+    drawTapPhrase(oops);
+    return;
+  }
   const r = S.run;
   const p = $("phrase");
   if (!p || !r) return;
@@ -510,12 +565,12 @@ function drawTyper(oops?: boolean): void {
 }
 
 function typerHTML(hint: string, between?: string, extra?: string): string {
-  if (onPhone()) {
+  if (watching()) {
     // The line and the roll still show (a replay draws on both), but
     // there's nothing to focus and nothing listens for keys.
     return `<div class="typer" style="cursor:default">
     <div class="phrase" id="phrase"></div>
-    <div class="typer-foot"><span class="blur-note">Join from a computer to play</span></div>
+    <div class="typer-foot"><span class="blur-note">${roomIsFor()}</span></div>
   </div>
   ${extra ? `<div class="row">${extra}</div>` : ""}
   ${between ?? ""}
@@ -530,6 +585,299 @@ function typerHTML(hint: string, between?: string, extra?: string): string {
   ${between ?? ""}
   <div class="roll-box" id="live-roll"></div>`;
 }
+
+/* ---------- Tapping: the touch game's typing (docs/plans/active/MOBILE_PLAN.md Phase 2) ---------- */
+
+//: The page's one on-page keyboard, fixed to the bottom of the screen
+//: and shown only while there's a line to tap.
+const keyboardEl = $("keyboard");
+//: The line being tapped. Null whenever nothing is listening for taps:
+//: between views, while a line is being scored, while a replay plays,
+//: and while the phone is on its side.
+let tapLine: TapLine | null = null;
+
+/** The keyboard shows while a line is being tapped or replayed, and
+ * the page leaves room under itself for it. */
+function syncKeyboard(): void {
+  const show = playsTouch() && $("phrase") !== null && (tapLine !== null || S.replaying > 0);
+  if (keyboardEl) keyboardEl.hidden = !show;
+  document.body.classList.toggle("typing", show);
+}
+
+function startTapLine(): void {
+  S.run = null;
+  // Key shape changes where taps land, so a phone on its side waits
+  // for the turn instead of starting a line (onTurn below).
+  S.paused = mustTurnUpright();
+  tapLine = S.paused ? null : new TapLine(phrase());
+  syncKeyboard();
+  drawTapPhrase();
+}
+
+/** Throws away whatever was tapped so far and says why. A line is
+ * only ever scored whole. */
+function restartTapLine(why: string): void {
+  S.notice = why;
+  startTapLine();
+}
+
+function drawTapPhrase(oops?: boolean): void {
+  const p = $("phrase");
+  if (!p) return;
+  const text = phrase();
+  const i = tapLine?.index ?? S.run?.idx ?? 0;
+  p.classList.toggle("oops", !!oops);
+  p.innerHTML =
+    `<span>${text.slice(0, i)}</span>` +
+    (i < text.length
+      ? `<span class="cur">${text[i] === " " ? "&nbsp;" : text[i]}</span><span class="todo">${text.slice(i + 1)}</span>`
+      : "");
+  const typos = $("typos");
+  const errors = tapLine?.errors ?? 0;
+  if (typos) typos.textContent = errors === 1 ? "1 wrong key" : `${errors} wrong keys`;
+  const status = $("tap-status");
+  if (status) {
+    const say = S.paused
+      ? "Turn your phone upright to keep going. Key shape changes where taps land, so this line starts again."
+      : S.notice;
+    status.textContent = say ?? "";
+    status.hidden = !say;
+  }
+}
+
+function tapBlockHTML(hint: string): string {
+  return `<div class="phrase tap-phrase" id="phrase" aria-label="The line to tap: ${phrase()}"></div>
+    <div class="tap-foot small muted"><span>${hint}</span><span id="typos"></span></div>
+    <p class="notice small" id="tap-status" role="status" hidden></p>`;
+}
+
+function runFromTaps(line: TapLine): Run {
+  return {
+    idx: line.index,
+    keys: line.taps.map((t) => ({ ch: t.ch, down: t.down, up: t.up, afterError: t.afterError })),
+    errors: line.errors,
+    pendingError: false,
+    held: {},
+    finished: true,
+  };
+}
+
+if (keyboardEl) {
+  keyboardEl.innerHTML = keyboardHTML();
+  attachKeyboard(
+    keyboardEl,
+    {
+      onDown(pointerId, code, t, dx, dy) {
+        if (!tapLine) return;
+        const result = tapLine.down(pointerId, code, t, dx, dy);
+        if (result === "ignored") return;
+        S.notice = null;
+        drawTapPhrase(result === "wrong");
+      },
+      onUp(pointerId, t) {
+        if (!tapLine) return;
+        tapLine.up(pointerId, t);
+        if (tapLine.complete) void finishTapLine();
+      },
+      onCancel(pointerId) {
+        if (!tapLine) return;
+        tapLine.cancel(pointerId);
+        if (tapLine.broken) restartTapLine("That touch was interrupted, so this line starts again.");
+      },
+      onMouse() {
+        if (!tapLine) return;
+        S.notice = "Tap with your fingers. A mouse click isn't a touch signature.";
+        drawTapPhrase();
+      },
+    },
+    // The plan's open decision 3: mouse clicks only count in debug
+    // mode, which the server marks on the keyboard (api/pages.py).
+    { allowMouse: () => keyboardEl.dataset.allowMouse === "true" },
+  );
+}
+
+function toTop(): void {
+  if (playsTouch()) window.scrollTo(0, 0);
+}
+
+async function finishTapLine(): Promise<void> {
+  const line = tapLine;
+  if (!line || !line.complete) return;
+  // Nothing listens for taps while this line is saved or scored.
+  tapLine = null;
+  const run = runFromTaps(line);
+  const events = line.events();
+
+  if (S.view === "enroll") {
+    S.enrollRuns.push(run);
+    // The warm-up line isn't kept as training data.
+    if (S.enrollRuns.length > 1) enrollSamples.push(events);
+    if (S.enrollRuns.length < LEVELS[S.level!].rounds) {
+      render();
+      startRun();
+      return;
+    }
+    S.busy = true;
+    S.error = null;
+    render();
+    try {
+      const player = await gameApi.createPlayer(S.enrollName || null, enrollSamples);
+      S.enrollRuns = [];
+      enrollSamples.length = 0;
+      S.typingAs = player.id;
+      S.justAddedId = player.id;
+      await refreshParty();
+    } catch (error) {
+      S.busy = false;
+      if (gameApi.isRoomGone(error)) {
+        S.partyGone = true;
+        render();
+        return;
+      }
+      // The last line goes back, so tapping it again retries the save
+      // with the full set of lines, never a partial one.
+      S.enrollRuns.pop();
+      enrollSamples.pop();
+      S.error = "Couldn't save your signature. Check your connection, then tap this line again.";
+      render();
+      startRun();
+      return;
+    }
+    S.busy = false;
+    if (S.view === "enroll") S.view = "reveal";
+    render();
+    toTop();
+    return;
+  }
+
+  const target = byId(S.target!);
+  if (!target || S.mode === "replay") {
+    go("room");
+    return;
+  }
+  S.busy = true;
+  S.error = null;
+  render();
+  try {
+    const resp = await gameApi.submitAttempt({
+      typistId: S.typingAs,
+      targetId: target.id,
+      mode: S.mode,
+      events,
+      clientAttemptId: attemptId(),
+    });
+    S.last = { run, attempt: resp.attempt, text: resp.verdict_text, target, clue: resp.clue, taps: line.taps };
+    await refreshParty();
+  } catch (error) {
+    S.busy = false;
+    if (gameApi.isRoomGone(error)) {
+      S.partyGone = true;
+      render();
+      return;
+    }
+    S.error = "Couldn't reach the server to score that line. Check your connection, then tap it again.";
+    render();
+    if (S.view === "attack") startRun();
+    return;
+  }
+  S.busy = false;
+  if (S.view === "attack") S.view = "result";
+  render();
+  toTop();
+}
+
+/** The touch game's replay: the same server round trip as the keyboard
+ * game's, played back on the line and the on-page keyboard, and then
+ * shown on the result page. */
+async function runTapReplay(): Promise<void> {
+  const target = byId(S.target!);
+  if (!target) return;
+  const token = ++S.replaying;
+  tapLine = null;
+  S.mode = "replay";
+  S.last = null;
+  S.notice = null;
+  S.error = null;
+  S.busy = true;
+  render();
+
+  let resp;
+  try {
+    resp = await gameApi.submitReplay(target.id);
+  } catch (error) {
+    S.busy = false;
+    S.replaying = 0;
+    S.mode = "attack";
+    if (gameApi.isRoomGone(error)) {
+      S.partyGone = true;
+      render();
+      return;
+    }
+    S.error = "Couldn't reach the server to run the replay.";
+    render();
+    if (S.view === "attack") startRun();
+    return;
+  }
+  S.busy = false;
+  if (S.replaying !== token || S.view !== "attack") return;
+
+  const notes = resp.notes;
+  const run: Run = { idx: 0, keys: [], errors: 0, pendingError: false, held: {}, finished: true };
+  S.run = run;
+  render();
+  const t0 = notes.length ? notes[0]!.start_ms : 0;
+  const showResult = (): void => {
+    if (S.replaying !== token || S.view !== "attack") return;
+    S.last = { run, attempt: resp.attempt, text: resp.verdict_text, target, clue: resp.clue, taps: null };
+    if (resp.attempt.counted) buzz(resp.attempt.passed === true);
+    S.replaying = 0;
+    S.mode = "attack";
+    S.view = "result";
+    void refreshParty();
+    render();
+    toTop();
+  };
+  if (!notes.length) {
+    showResult();
+    return;
+  }
+  notes.forEach((n, i) =>
+    setTimeout(
+      () => {
+        if (S.replaying !== token || S.view !== "attack") return;
+        run.keys.push({ ch: n.ch, down: n.start_ms - t0, up: n.start_ms + n.dur_ms - t0, afterError: false });
+        run.idx = i + 1;
+        if (keyboardEl) flashKey(keyboardEl, codeFor(n.ch), n.dur_ms);
+        drawTapPhrase();
+        if (i === notes.length - 1) setTimeout(showResult, 300);
+      },
+      n.start_ms - t0,
+    ),
+  );
+}
+
+/** A phone turned on its side mid-line, or back upright. */
+function onTurn(): void {
+  if (!playsTouch() || !$("phrase") || S.busy || S.replaying) return;
+  if (mustTurnUpright()) {
+    tapLine = null;
+    S.paused = true;
+    S.notice = null;
+    syncKeyboard();
+    drawTapPhrase();
+  } else if (S.paused) {
+    restartTapLine("This line started again after the turn.");
+  }
+}
+window.matchMedia?.("(orientation: landscape)").addEventListener?.("change", onTurn);
+
+// Switching apps or locking the phone mid-line: the timing across the
+// gap isn't typing, so the line starts again rather than being scored
+// with a hole in it.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "hidden" || !tapLine || tapLine.index === 0) return;
+  restartTapLine("You switched away, so this line started again.");
+});
 
 /* ---------- Sound (unchanged from the mockup) ---------- */
 
@@ -598,9 +946,30 @@ function gaugeSVG(d: number, thr: number): string {
   </svg>`;
 }
 
+/** The same gauge at the touch mockup's proportions: drawn for a
+ * phone's width, so its text stays readable there. */
+function tapGaugeSVG(d: number, thr: number): string {
+  const W = 400;
+  const end = Math.max(thr * 2, d * 1.15);
+  const x = (v: number): number => 8 + (v / end) * (W - 16);
+  const px = Math.min(W - 70, Math.max(70, x(d)));
+  return `<svg viewBox="0 0 ${W} 78" role="img" aria-label="Distance ${d.toFixed(2)} against a limit of ${thr.toFixed(2)}">
+    <text class="g-val" x="${px}" y="16" text-anchor="middle">distance ${d.toFixed(2)}</text>
+    <path class="g-mark" d="M${x(d) - 6} 22 h12 l-6 8 z"/>
+    <rect class="g-a" x="8" y="32" width="${x(thr) - 8}" height="12" rx="2"/>
+    <rect class="g-b" x="${x(thr)}" y="32" width="${W - 8 - x(thr)}" height="12" rx="2"/>
+    <line class="g-thr" x1="${x(thr)}" x2="${x(thr)}" y1="28" y2="48"/>
+    <text class="g-text" x="${Math.min(W - 70, Math.max(70, x(thr)))}" y="68" text-anchor="middle">limit ${thr.toFixed(2)}</text>
+  </svg>`;
+}
+
 /* ---------- Replay: server-driven, animated from its response's notes ---------- */
 
 async function runReplay(): Promise<void> {
+  if (playsTouch()) {
+    await runTapReplay();
+    return;
+  }
   const target = byId(S.target!);
   if (!target) return;
   const token = ++S.replaying;
@@ -712,6 +1081,7 @@ function startLive(): void {
 
 function resetState(): void {
   stopLive();
+  tapLine = null;
   Object.assign(S, initialState());
   enrollSamples.length = 0;
 }
@@ -728,8 +1098,16 @@ function enterRoom(party: PartyView, view: ViewName): void {
 }
 
 /** The first thing a browser new to a room sees: the name step, or
- * the room itself where it can't type. */
-const firstView = (): ViewName => (onPhone() ? "room" : "name");
+ * the room itself where it can only watch. */
+const firstView = (party: PartyView): ViewName => (party.watching ? "room" : "name");
+
+/** A room takes its kind from the device that starts it: a phone
+ * always starts a touch room, on the touch line, and a computer never
+ * does -- whatever line the room it's leaving was on. */
+function levelForThisDevice(level: Level): Level {
+  if (deviceType() === "touch") return "touch";
+  return level === "touch" ? "sentence" : level;
+}
 
 async function startRoom(level: Level): Promise<void> {
   S.busy = true;
@@ -738,9 +1116,9 @@ async function startRoom(level: Level): Promise<void> {
   try {
     // The server takes this browser out of any room it was in, once
     // the new one exists.
-    const party = await gameApi.createRoom(level);
+    const party = await gameApi.createRoom(levelForThisDevice(level), deviceReport());
     resetState();
-    enterRoom(party, firstView());
+    enterRoom(party, firstView(party));
   } catch {
     S.confirm = null;
     S.error = "Couldn't start a room right now. Try again in a moment.";
@@ -782,9 +1160,9 @@ async function joinByLink(code: string, leaveCurrent: boolean): Promise<void> {
   S.gate = { kind: "opening" };
   render();
   try {
-    const party = await gameApi.joinRoom(code, leaveCurrent);
+    const party = await gameApi.joinRoom(code, leaveCurrent, deviceReport());
     resetState();
-    enterRoom(party, firstView());
+    enterRoom(party, firstView(party));
   } catch (error) {
     const failure = joinFailure(gameApi.errorStatus(error));
     if (failure === "gone") {
@@ -814,6 +1192,34 @@ async function closeRoom(request: () => Promise<void>, failure: string): Promise
   resetState();
   showUrl(HOME_PATH);
   render();
+}
+
+/** For a computer with a touchscreen, which can play either kind of
+ * room (the plan's open decision 2): rejoins the room on screen as
+ * the other kind of device. The server fixes a member's device when
+ * they join, so this leaves and joins again -- only offered to a
+ * watcher, who has no players to lose, in a room that's unlocked and
+ * has someone else in it to keep it alive meanwhile. */
+async function switchKeyboard(onScreen: boolean): Promise<void> {
+  chooseOnScreenKeyboard(onScreen);
+  const party = S.party;
+  if (!party) {
+    render();
+    return;
+  }
+  S.busy = true;
+  render();
+  try {
+    await gameApi.leaveRoom();
+  } catch (error) {
+    if (!gameApi.isRoomGone(error)) {
+      chooseOnScreenKeyboard(!onScreen);
+      S.busy = false;
+      showError("Couldn't switch keyboards. Try again.");
+      return;
+    }
+  }
+  await joinByLink(party.code, false);
 }
 
 async function doLockRoom(locked: boolean): Promise<void> {
@@ -890,20 +1296,40 @@ async function doRenamePlayer(id: string, name: string): Promise<void> {
 
 /* ---------- Views ---------- */
 
+const TOUCH_INTRO_SAMPLES: [string, number][] = [
+  ["Speedy Thumbs", 0.75],
+  ["One-Finger Pecker", 1.45],
+];
+
+function tapIntroView(): string {
+  const rings = TOUCH_INTRO_SAMPLES.map(
+    ([n, sp], i) => `<div class="ring">${ringSVG(decorativeNotes(TOUCH_INTRO_PHRASE, n, sp!, 6), i, null, n)}</div>`,
+  ).join("");
+  return `<section class="stack">
+      <h1>Your thumbs leave a signature.</h1>
+      <p>Tap a short line a few times on this page's own keyboard. The game maps your rhythm and where your thumbs land, scored for real by this app's own backend. Then pass the phone around, or share your room's link with other phones, and try to pass as each other.</p>
+      <div class="row"><button class="primary" data-level="touch" ${S.busy ? "disabled" : ""}>Start a party</button></div>
+      ${canChooseKeyboard() ? `<button class="quiet" id="use-keys" style="align-self:flex-start">Use my physical keyboard instead</button>` : ""}
+      ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+      <div class="pair">${rings}</div>
+      <p class="small muted">Example rhythm signatures from simulated typists. Yours will be made from your real taps.</p>
+    </section>`;
+}
+
 function introView(): string {
+  if (touchGame()) return tapIntroView();
   const rings = INTRO_SAMPLES.map(
     ([n, sp], i) => `<div class="ring">${ringSVG(decorativeNotes(INTRO_PHRASE, n, sp!, 6), i, null, n)}</div>`,
   ).join("");
-  const coarse = onPhone();
   return `<section class="hero">
       <div class="stack">
         <h1>Everyone types in their own shape.</h1>
         <p>Type a line a few times and see your rhythm drawn as a signature -- scored for real by this app's own backend. Then share your room's link, or gather some friends around one keyboard, and try to pass as each other.</p>
-        ${coarse ? `<div class="notice">Best on a computer. Phone keyboards don't report when each key goes down and up -- you can still look around and watch a replay attack without typing.</div>` : ""}
         <div class="row">
           <button class="primary" data-level="sentence">Start a party</button>
         </div>
         <button class="quiet" data-level="long" style="align-self:flex-start">Want a challenge? Try a long line</button>
+        ${canChooseKeyboard() ? `<button class="quiet" id="use-touch" style="align-self:flex-start">Use on-screen keyboard</button>` : ""}
         ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
       </div>
       <div class="stack">
@@ -913,15 +1339,30 @@ function introView(): string {
     </section>`;
 }
 
-function nameView(): string {
-  if (onPhone()) {
-    return `<section class="stack" style="max-width:560px">
+/** Why the on-page keyboard can't be used with a screen reader, and
+ * what can be done without it. */
+const NO_SCREEN_READER_SIGNATURE =
+  "The keyboard measures when and where your fingers land, so a signature made with a screen reader's touch gestures wouldn't be an honest one. The room, every signature and score, and replay attacks can all be read and run without tapping.";
+
+function tapNameView(): string {
+  return `<section class="stack">
     <div class="eyebrow">New player</div>
-    <h2>Join from a computer to play</h2>
-    <p class="muted">Phone keyboards don't report when each key goes down and up, so a signature can't be made here. You can still watch the room and its scores, and run a replay attack.</p>
-    <div class="row"><button class="primary" id="to-room">See the room</button></div>
+    <h2>Who's tapping?</h2>
+    <p class="muted">You'll tap the line ${LEVELS[S.level!].rounds} times with your normal grip. The first one is a warm-up.</p>
+    <form id="name-form" class="stack">
+      <label for="player-name">Your name<input id="player-name" maxlength="24" autocomplete="off"></label>
+      <div class="row"><button type="button" class="quiet" id="shuffle-name">Shuffle</button><button class="primary" type="submit">Start tapping</button></div>
+    </form>
+    <p class="small muted">${NO_SCREEN_READER_SIGNATURE}</p>
+    ${scoresMemoHTML(S.party?.scores_enabled ?? false, true)}
+    ${humans().length ? `<button class="quiet" id="to-room">Skip and see the room</button>` : ""}
   </section>`;
-  }
+}
+
+function nameView(): string {
+  // A watcher can't enroll; the room view says why.
+  if (watching()) return roomView();
+  if (playsTouch()) return tapNameView();
   return `<section class="stack" style="max-width:560px">
     <div class="eyebrow">New player</div>
     <h2>Who's typing?</h2>
@@ -965,7 +1406,9 @@ async function suggestName(replace: boolean): Promise<void> {
   if (!replace && (input.value !== "" || input.dataset.edited)) return;
   suggestedName = name;
   input.value = name;
-  if (replace) input.focus();
+  // Focusing the field opens a phone's own keyboard, so there it's
+  // left to the person to tap the field if they want to edit it.
+  if (replace && !playsTouch()) input.focus();
   if (document.activeElement === input) input.select();
 }
 
@@ -976,6 +1419,14 @@ function enrollView(): string {
     { length: cfg.rounds },
     (_, i) => `<span class="dot ${i < n ? "ok" : i === n ? "on" : ""}">${i === 0 ? "Warm-up" : i}</span>`,
   ).join("");
+  if (playsTouch()) {
+    return `<section class="stack">
+    <div class="eyebrow">${esc(S.enrollName || "New player")}</div>
+    <div class="dots" aria-label="Line ${Math.min(n + 1, cfg.rounds)} of ${cfg.rounds}">${dots}</div>
+    ${S.busy ? `<p class="muted">Saving...</p>` : tapBlockHTML(n === 0 ? "Warm up on this line" : "Same line, your normal grip")}
+    ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+  </section>`;
+  }
   return `<section class="stack">
     <div class="eyebrow">${esc(S.enrollName || "New player")}</div>
     <h2>${n === 0 ? "Warm up on this line" : "Same line, your normal rhythm"}</h2>
@@ -1004,7 +1455,54 @@ function traitsHTML(p: PlayerView): string {
   </div>`;
 }
 
+/** The reveal's stats for a touch player: the keyboard game's four,
+ * plus how far their taps lean from the key centers. */
+function tapTraitsHTML(p: PlayerView): string {
+  const t = traitsFromNotes(p.notes);
+  const lean = leans(p.tap_map);
+  const pairLabel = (pair: string): string => `${label(pair[0]!)} → ${label(pair[1]!)}`;
+  const tile = (title: string, big: string, small: string): string =>
+    `<div class="trait"><span class="eyebrow">${title}</span><b>${big}</b><span class="small muted">${small}</span></div>`;
+  const pairTile = (title: string, timing: PairTiming | null): string =>
+    timing
+      ? tile(title, pairLabel(timing.pair), `${Math.round(timing.gapMs)} ms`)
+      : tile(title, "–", "between taps");
+  const leanTile = (title: string, value: number | null, positive: string, negative: string): string =>
+    tile(
+      title,
+      value === null ? "–" : `${Math.round(Math.abs(value) * 100)}% ${value >= 0 ? positive : negative}`,
+      "of a key, on average",
+    );
+  return `<div class="traits">
+    ${tile("Pace", t.wpm === null ? "–" : `${t.wpm} wpm`, "on this line")}
+    ${tile("Typical hold", t.typicalHoldMs === null ? "–" : `${t.typicalHoldMs} ms`, "per tap")}
+    ${leanTile("Side lean", lean.side, "right", "left")}
+    ${leanTile("Height lean", lean.height, "low", "high")}
+    ${pairTile("Fastest pair", t.fastest)}
+    ${pairTile("Slowest pair", t.slowest)}
+  </div>`;
+}
+
+function tapRevealView(p: PlayerView): string {
+  return `<section class="stack">
+      <div class="eyebrow">${esc(p.name)}'s signature</div>
+      <h2>This is how you tap.</h2>
+      <div class="ring solo-ring">${ringSVG(p.notes, p.color, null, p.name)}</div>
+      <p class="small muted">Taps run clockwise from the top. The outer shape bulges where you pause, and the inner marks grow on keys you hold longer.</p>
+      <h3>Where you land</h3>
+      <div class="map">${tapMapSVG(p.tap_map, p.color, phrase(), null, p.name)}</div>
+      <p class="small muted">The cross marks each key's center. The dot is your average tap, and the shaded area is its usual variation.</p>
+      ${tapTraitsHTML(p)}
+      <div class="row"><button class="primary" id="to-room">Enter the room</button><button id="hear" data-id="${esc(p.id)}">Hear my rhythm</button></div>
+    </section>`;
+}
+
 function revealView(): string {
+  if (touchRoom()) {
+    // The host can remove a player from under their own reveal.
+    const player = S.justAddedId ? byId(S.justAddedId) : undefined;
+    return player ? tapRevealView(player) : roomView();
+  }
   const p = byId(S.justAddedId!)!;
   return `<section class="split">
       <div class="ring">${ringSVG(p.notes, p.color, null, p.name)}</div>
@@ -1083,9 +1581,26 @@ function playerCardHTML(p: PlayerView): string {
         : S.party?.is_host
           ? `<button class="quiet" data-remove="${esc(p.id)}">Remove</button>`
           : "";
+  const touch = touchRoom();
+  const where = touch ? "phone" : "keyboard";
   const keyboard =
-    p.kind === "player" ? `<div class="tag" data-keyboard>${own ? "On this keyboard" : "On another keyboard"}</div>` : "";
+    p.kind === "player" ? `<div class="tag" data-keyboard>${own ? `On this ${where}` : `On another ${where}`}</div>` : "";
   const removing = S.confirm?.kind === "remove" && S.confirm.playerId === p.id;
+  if (touch) {
+    // The touch mockup's card: a small ring beside the name, and the
+    // tap map under it.
+    return `<article class="card">
+      <div class="card-top">
+        <div class="ring">${ringSVG(p.notes, p.color, null, p.name)}</div>
+        <div class="stack" style="gap:4px"><h3>${esc(p.name)}</h3><div class="tag">${targetTag(p)}</div>${keyboard}</div>
+      </div>
+      <div class="map">${tapMapSVG(p.tap_map, p.color, phrase(), null, p.name)}</div>
+      <div class="row"><button class="primary" data-attack="${esc(p.id)}">${attackButtonLabel(p)}</button>${own ? `<button data-self="${esc(p.id)}">Test me</button><button data-grip="${esc(p.id)}">New grip</button>` : ""}</div>
+      ${controls ? `<div class="row">${controls}</div>` : ""}
+      ${renameForm}
+      ${removing ? confirmHTML() : ""}
+    </article>`;
+  }
   return `<article class="card">
       <h3>${esc(p.name)}</h3>
       <div class="ring">${ringSVG(p.notes, p.color, null, p.name)}</div>
@@ -1107,20 +1622,44 @@ function roomHeaderHTML(party: PartyView): string {
         </div>
       </div>
       ${S.showLink ? `<label for="room-link">Copy this link<input id="room-link" readonly value="${esc(roomLink(location.origin, party.code))}"></label>` : ""}
-      <p class="small muted" id="room-note">Anyone with this link can join and see names and signatures.${party.locked ? " The room is locked, so nobody new can join right now." : ""}</p>`;
+      <p class="small muted" id="room-note">Anyone with this link can join and see names${touchRoom() ? ", signatures, and tap maps" : " and signatures"}.${party.locked ? " The room is locked, so nobody new can join right now." : ""}</p>`;
+}
+
+/** "This room is for computers" / "This room is for phones": what a
+ * watcher is told wherever they would otherwise play. */
+const roomIsFor = (): string => `This room is for ${touchRoom() ? "phones" : "computers"}`;
+
+/** Shown to a browser that joined as the other kind of device. */
+function watchingHTML(party: PartyView): string {
+  const why = touchRoom()
+    ? "Its players tap an on-screen keyboard, and a phone's signature is never compared with a computer keyboard's."
+    : "Its players type on a physical keyboard, and a keyboard's signature is never compared with a phone's.";
+  // A computer with a touchscreen can play either kind of room.
+  const canSwitch = canChooseKeyboard() && !party.locked && party.member_count > 1;
+  const swap = !canSwitch
+    ? ""
+    : touchRoom()
+      ? `<button id="use-touch" ${S.busy ? "disabled" : ""}>Use on-screen keyboard</button>`
+      : `<button id="use-keys" ${S.busy ? "disabled" : ""}>Use my physical keyboard</button>`;
+  return `<div class="notice stack" id="watching">
+      <p><b>${roomIsFor()}.</b> ${why} You can watch it here and run a replay attack, but not play.</p>
+      <div class="row">${startOwnHTML(false)}${swap}</div>
+    </div>`;
 }
 
 function roomView(): string {
   const party = S.party;
   if (!party) return "";
   const cards = [...humans(), ...party.targets].map(playerCardHTML).join("");
-  const add = `<article class="card add"><h3>${myPlayers().length ? "Someone else wants in?" : "Add yourself"}</h3><p class="small muted">Everyone types the same line, so attacks are fair.</p><button class="primary" id="add-player">Add a player</button></article>`;
+  const add = party.watching
+    ? ""
+    : `<article class="card add"><h3>${myPlayers().length ? "Someone else wants in?" : "Add yourself"}</h3><p class="small muted">Everyone ${touchRoom() ? "taps" : "types"} the same line, so attacks are fair.</p><button class="primary" id="add-player">Add a player</button></article>`;
   const hostControls = party.is_host
     ? `<button class="quiet" id="lock-room">${party.locked ? "Unlock room" : "Lock room"}</button><button class="quiet" id="end-room">End room for everyone</button>`
     : "";
   return `<section class="stack">
       ${roomHeaderHTML(party)}
-      ${onPhone() ? `<div class="notice">Join from a computer to play. Here you can watch the room and run a replay attack.</div>` : ""}
+      ${party.watching ? watchingHTML(party) : ""}
       <div class="players">${add}${cards}</div>
       ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
       <div class="row">
@@ -1130,6 +1669,58 @@ function roomView(): string {
       </div>
       ${S.confirm && S.confirm.kind !== "remove" ? confirmHTML() : ""}
     </section>`;
+}
+
+/** A touch attempt's two scores, side by side. Empty for a keyboard
+ * attempt, which has only the one distance. */
+function rhythmAndPlaceHTML(attempt: AttemptView): string {
+  if (attempt.rhythm === null || attempt.place === null) return "";
+  return `<div class="pair" id="rhythm-place">
+      <div class="trait"><span class="eyebrow">Rhythm</span><b>${attempt.rhythm.toFixed(2)}</b><span class="small muted">timing distance</span></div>
+      <div class="trait"><span class="eyebrow">Tap place</span><b>${attempt.place.toFixed(2)}</b><span class="small muted">position distance</span></div>
+    </div>`;
+}
+
+/** The touch game's result page (design/typing-twin-touch.html). */
+function tapResultView(): string {
+  const L = S.last;
+  if (!L) return roomView();
+  const { attempt, text, target, clue } = L;
+  const good = attempt.mode === "attack" ? attempt.passed === false : attempt.passed === true;
+  const replayed = attempt.mode === "replay";
+  // Where this line's taps landed: known only here, in the browser
+  // that tapped them. A replay lands on the target's own averages.
+  const spots = L.taps ? spotsFromTaps(L.taps) : spotsFromTapMap(target.tap_map);
+  const tells = L.taps ? giveaways(L.taps, target.notes, target.tap_map) : [];
+  const phoneNote =
+    attempt.same_keyboard === false
+      ? `<p class="small muted" id="keyboard-note">Different phone: this wasn't tapped on the phone ${esc(target.name)} enrolled on, which can change where taps land and their timing.</p>`
+      : "";
+  // Hidden together on a "Too messy" result, where there's no score
+  // to explain.
+  const details =
+    attempt.distance !== null && attempt.pace !== null
+      ? `<div class="gauge tap-gauge">${tapGaugeSVG(attempt.distance, attempt.threshold)}</div>
+    <h3 id="clue">${esc(clue ?? "")}</h3>
+    <div class="trait"><span class="eyebrow">Pace</span><b>${attempt.pace.toFixed(2)}&times;</b><span class="small muted">${esc(target.name)}'s usual time, where 1&times; is the same speed</span></div>
+    ${rhythmAndPlaceHTML(attempt)}
+    ${
+      tells.length
+        ? `<div class="stack" style="gap:6px"><h3>Biggest giveaways</h3><ul class="tells" id="giveaways">${tells.map((g) => `<li>${giveawayHTML(g)}</li>`).join("")}</ul><p class="small muted">Measured in this browser against ${esc(target.name)}'s typical line and tap map. A guide to what stood out, not the score itself.</p></div>`
+        : ""
+    }
+    <div class="ring solo-ring">${ringSVG(target.notes, target.color, notesFromRun(L.run), target.name)}</div>
+    <div class="map">${tapMapSVG(target.tap_map, target.color, phrase(), spots, target.name)}</div>
+    <div class="legend"><span><i class="swatch round" style="background:var(--p${target.color})"></i>${esc(target.name)}</span><span><i class="swatch square"></i>${replayed ? "The replay" : "This attempt"} (dashed ring, square taps)</span></div>`
+      : "";
+  return `<section class="stack" id="result" aria-live="polite">
+    <p class="verdict ${good ? "v-good" : "v-bad"}">${esc(attempt.word)}</p>
+    <p>${esc(text)}</p>
+    ${phoneNote}
+    <div class="row"><button class="primary" id="again">Go again</button><button id="to-room">Back to the room</button></div>
+    ${details}
+    ${scoresMemoHTML(S.party?.scores_enabled ?? false, true)}
+  </section>`;
 }
 
 function resultHTML(): string {
@@ -1148,6 +1739,7 @@ function resultHTML(): string {
     attempt.distance !== null && attempt.pace !== null
       ? `<h3 id="clue">${esc(clue ?? "")}</h3>
     <div class="trait"><span class="eyebrow">Pace</span><b>${attempt.pace.toFixed(2)}&times;</b><span class="small muted">${esc(target.name)}'s usual time, where 1&times; is the same speed</span></div>
+    ${rhythmAndPlaceHTML(attempt)}
     <div class="split">
       <div class="ring">${ringSVG(target.notes, target.color, notesFromRun(L.run), target.name)}</div>
       <div class="stack">
@@ -1168,9 +1760,45 @@ function resultHTML(): string {
   </section>`;
 }
 
+/** The touch game's typing page: the line, and the keyboard under it. */
+function tapAttackView(target: PlayerView): string {
+  const own = S.mode === "self" || S.mode === "grip";
+  const replaying = S.mode === "replay";
+  const title =
+    S.mode === "grip"
+      ? "Try a different grip"
+      : own
+        ? "Prove it's you"
+        : replaying
+          ? `Replay attack on ${esc(target.name)}`
+          : `Pass as ${esc(target.name)}`;
+  // Only this phone's own players: the server refuses anyone else's.
+  const whoOpts = myPlayers()
+    .filter((p) => p.id !== target.id)
+    .map((p) => `<option value="${esc(p.id)}"${S.typingAs === p.id ? " selected" : ""}>${esc(p.name)}</option>`)
+    .join("");
+  const lead = own
+    ? S.mode === "grip"
+      ? `<p class="small muted">Switch thumbs, use one finger, or set the phone on a table.</p>`
+      : ""
+    : replaying
+      ? `<p class="small muted">The server taps ${esc(target.name)}'s typical timing, on their average spots.</p>`
+      : `<label for="who">Who's tapping?<select id="who"><option value="">Guest</option>${whoOpts}</select></label>`;
+  const working = S.busy ? `<p class="muted">${replaying ? "Running the replay..." : "Scoring..."}</p>` : "";
+  return `<section class="stack">
+      <div class="row" style="justify-content:space-between"><h2 style="flex:1 1 60%">${title}</h2><button class="quiet" id="to-room" style="flex:0 0 auto">Back</button></div>
+      ${lead}
+      ${working || tapBlockHTML(replaying ? "Watch the keys" : "Use your normal grip")}
+      ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
+      ${S.mode === "attack" && !S.busy ? `<button class="quiet" id="replay">Watch a replay attack</button>` : ""}
+      ${scoresMemoHTML(S.party?.scores_enabled ?? false, true)}
+    </section>`;
+}
+
 function attackView(): string {
   const target = byId(S.target!);
   if (!target) return roomView();
+  if (playsTouch()) return tapAttackView(target);
   const typist = S.typingAs ? byId(S.typingAs) : undefined;
   const same = typist && typist.id === target.id;
   const opts = (sel: string | null, list: PlayerView[]): string =>
@@ -1192,7 +1820,7 @@ function attackView(): string {
       </div>
       ${typerHTML(hint, resultHTML(), replay)}
       ${S.error ? `<p class="error">${esc(S.error)}</p>` : ""}
-      ${scoresMemoHTML(S.party?.scores_enabled ?? false)}
+      ${scoresMemoHTML(S.party?.scores_enabled ?? false, touchRoom())}
     </section>`;
 }
 
@@ -1227,12 +1855,28 @@ function scoresView(): string {
     ${closest ? tile("Closest call", `${closest.ratio!.toFixed(2)}×`, `${esc(closest.typist_name)} as ${esc(closest.target_name)}, where 1× is the limit`) : ""}
   </div>`
       : "";
+  if (touchRoom()) {
+    // The touch mockup's table: Rhythm and Place side by side, so the
+    // room can see which one gives people away.
+    const num = (v: number | null): string => (v === null ? "n/a" : v.toFixed(2));
+    const tapRows = [...attempts]
+      .reverse()
+      .slice(0, 12)
+      .map(
+        (a: AttemptView) =>
+          `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own", disguise: "Disguise", grip: "New grip", replay: "Replay" }[a.mode]}${a.same_keyboard === false ? ` <span class="small muted">· different phone</span>` : ""}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${num(a.rhythm)}</td><td>${num(a.place)}</td><td>${num(a.distance)}</td><td>${a.threshold.toFixed(2)}</td><td>${esc(a.word)}</td></tr>`,
+      )
+      .join("");
+    return `<section class="stack"><h2>Scores</h2><p class="muted">From this room only, and shared by everyone in it. Compare Rhythm and Place to see which one gives people away. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
+    ${board}
+    <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Tapping</th><th>Target</th><th>Type</th><th>Pace</th><th>Rhythm</th><th>Place</th><th>Total</th><th>Limit</th><th>Result</th></tr></thead><tbody>${tapRows}</tbody></table></div></section>`;
+  }
   const rows = [...attempts]
     .reverse()
     .slice(0, 12)
     .map(
       (a: AttemptView) =>
-        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", replay: "Replay" }[a.mode]}${a.same_keyboard === false ? ` <span class="small muted">· different keyboard</span>` : ""}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
+        `<tr><td>${esc(a.typist_name)}</td><td>${esc(a.target_name)}</td><td>${{ attack: "Attack", self: "Own typing", disguise: "Disguise", grip: "New grip", replay: "Replay" }[a.mode]}${a.same_keyboard === false ? ` <span class="small muted">· different keyboard</span>` : ""}</td><td>${a.pace === null ? "n/a" : `${a.pace.toFixed(2)}&times;`}</td><td>${a.ratio === null ? "n/a" : `${a.ratio.toFixed(2)}×`}</td><td>${esc(a.word)}</td></tr>`,
     )
     .join("");
   return `<section class="stack"><h2>Scores</h2><p class="muted">From this room only, and shared by everyone in it. A few attempts make a fun scoreboard, not a measure of accuracy.</p></section>
@@ -1240,7 +1884,38 @@ function scoresView(): string {
     <section class="stack"><h3>Latest attempts</h3><div class="table-box"><table><thead><tr><th>Typing</th><th>Target</th><th>Type</th><th>Pace</th><th>Distance</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
+/** How it works, for a touch room or a phone
+ * (docs/plans/active/MOBILE_PLAN.md Phase 2 section 5). The privacy
+ * text says what the touch code does, which isn't what the keyboard
+ * game's says: tap positions are sent, and a tap map is shown to the
+ * room. */
+function tapHowView(): string {
+  return `<section class="stack">
+    <h2>How it works</h2>
+    <p>The game records when each finger lands, when it lifts, and where on the key it lands. For each measurement, it works out how far your line is from a player's profile, measured in that measurement's usual variation. Timing makes the Rhythm score and position makes the Place score, and the distance is the average of the two -- scored by this app's own backend for every player, real or simulated.</p>
+    <p>Each player's limit comes from testing each of their training lines against the others, and it is never below 1.65, a provisional value from one small phone test. Below the limit, the tapping passes as them. Treat the limits as party tuning: tapping on a phone hasn't been benchmarked here at all.</p>
+    <p>Pace compares how long a line took with the target's usual time. It's shown as a clue. The Rhythm score still includes speed, so a very different pace also raises it.</p>
+    <p>Reading a signature: the ring is scaled to each player's own median gap, so it shows their relative rhythm and not simply their speed. The tap map shows where they usually land on each key of the line. Signatures can look alike, and a distinctive one doesn't prove anyone is unique.</p>
+    <p>This is a game, not security. A different grip or a different phone can change your signature, and a replay -- run on the server from the target's typical timing and average tap positions, not a secret recording -- shows why this can't be the only check.</p>
+    <p>${NO_SCREEN_READER_SIGNATURE}</p>
+    <details>
+      <summary>Privacy</summary>
+      <div class="stack">
+        <p class="small">A room's link is its only key. Anyone who has the link can join, and everyone in the room sees every player's name, rhythm ring, tap map, and scores. The host can lock the room to stop new people joining.</p>
+        <p class="small">For each tap on the room's line, which key it was, when your finger landed and lifted, and where on the key it landed are sent to the server for scoring. Raw taps are discarded right after scoring. The server keeps a player's average tap positions and timing statistics in memory until they delete themselves or are removed, the room ends or expires, or the app restarts. Your screen's width is sent when you start or join a room, and only a rough size is kept: small, medium, large, or extra large. The page never opens your phone's own keyboard, and nothing typed outside the game line is accepted.</p>
+        ${
+          S.party?.scores_enabled
+            ? `<p class="small">Scores are saved automatically, for every attempt. This site saves a few numbers about each result -- pace, the Rhythm and Place scores, how close it came to the limit, whether it passed, whether it was tapped on the target's own phone, and that rough screen size -- never your name, your taps, where or when they landed, or your IP address. Your attempts in this room are grouped under a random ID that isn't linked to your name. <b>Delete me</b>, <b>Leave room</b>, and <b>New room</b> remove your stored numbers while the room still exists, and the host ending the room removes everyone's; once a room expires, they can no longer be matched back to you at all, so they can no longer be deleted on request either.</p>`
+            : `<p class="small">Nothing from this room is written to a database.</p>`
+        }
+        ${analyticsPrivacyNote()}
+      </div>
+    </details>
+  </section>`;
+}
+
 function howView(): string {
+  if (touchGame()) return tapHowView();
   // The approved mockup's own How It Works content (design/typing-twin-party.html's
   // howView()), kept here rather than linking out to the old account
   // system's separate /how-it-works page -- that page doesn't exist
@@ -1332,15 +2007,20 @@ function renderTabs(): void {
 }
 
 function render(): void {
+  // The phone layout, for a browser that taps. A watcher keeps the
+  // layout of the device it is.
+  document.body.classList.toggle("touch", playsTouch());
   renderTabs();
   const app = $("app");
   if (!app) return;
   if (S.gate) {
     app.innerHTML = gateView(S.gate);
+    syncKeyboard();
     return;
   }
   if (S.partyGone) {
     app.innerHTML = partyGoneView();
+    syncKeyboard();
     return;
   }
   const views: Record<ViewName, () => string> = {
@@ -1350,13 +2030,17 @@ function render(): void {
     reveal: revealView,
     room: roomView,
     attack: attackView,
+    result: () => (playsTouch() ? tapResultView() : roomView()),
     scores: scoresView,
     how: howView,
   };
   app.innerHTML = views[S.view]();
+  syncKeyboard();
   if ($("phrase")) drawTyper();
   if (S.view === "name") {
-    ($("player-name") as HTMLInputElement | null)?.focus();
+    // Not on a phone: focusing the field would open its own keyboard
+    // over a name that's already filled in.
+    if (!playsTouch()) ($("player-name") as HTMLInputElement | null)?.focus();
     void suggestName(false);
   }
 }
@@ -1364,10 +2048,14 @@ function render(): void {
 function go(view: ViewName): void {
   S.replaying = 0;
   S.run = null;
+  tapLine = null;
+  S.notice = null;
+  S.paused = false;
   S.error = null;
   S.confirm = null;
   S.view = view;
   render();
+  toTop();
 }
 
 function openAttack(targetId: string, mode: ApiMode): void {
@@ -1376,9 +2064,11 @@ function openAttack(targetId: string, mode: ApiMode): void {
   S.last = null;
   S.replaying = 0;
   S.error = null;
+  S.notice = null;
   S.view = "attack";
   render();
   startRun();
+  toTop();
 }
 
 document.addEventListener("submit", (e) => {
@@ -1387,12 +2077,16 @@ document.addEventListener("submit", (e) => {
     e.preventDefault();
     const input = $("player-name") as HTMLInputElement | null;
     S.enrollName = input?.value.trim() ?? "";
+    // On a phone, so its own keyboard closes before the line starts.
+    if (playsTouch()) input?.blur();
     S.enrollRuns = [];
     enrollSamples.length = 0;
     S.error = null;
+    S.notice = null;
     S.view = "enroll";
     render();
     startRun();
+    toTop();
     return;
   }
   const renameId = (form as HTMLFormElement).dataset.renameForm;
@@ -1503,6 +2197,22 @@ document.addEventListener("click", (e) => {
   if (b.dataset.self) {
     S.typingAs = b.dataset.self;
     openAttack(b.dataset.self, "self");
+    return;
+  }
+  if (b.dataset.grip) {
+    S.typingAs = b.dataset.grip;
+    openAttack(b.dataset.grip, "grip");
+    return;
+  }
+  if (b.id === "again") {
+    // The same test again; a replay leads back to the attack it was
+    // watched from.
+    if (S.target && byId(S.target)) openAttack(S.target, S.mode === "replay" ? "attack" : S.mode);
+    else go("room");
+    return;
+  }
+  if (b.id === "use-touch" || b.id === "use-keys") {
+    void switchKeyboard(b.id === "use-touch");
     return;
   }
   if (b.dataset.delete) {

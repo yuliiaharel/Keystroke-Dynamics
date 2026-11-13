@@ -41,4 +41,12 @@ assert resp.status_code == 404, resp.status_code
 resp = client.get("/debug/touch-capture")
 assert resp.status_code == 404, resp.status_code
 
+# The touch game's on-page keyboard takes a mouse click only in debug
+# mode (docs/plans/active/MOBILE_PLAN.md, open decision 3): outside it,
+# the page carries the keyboard without that mark.
+resp = client.get("/")
+assert resp.status_code == 200, resp.status_code
+assert '<div id="keyboard" hidden></div>' in resp.text
+assert "data-allow-mouse" not in resp.text
+
 print("OK")
