@@ -356,8 +356,89 @@ describe("watchRoom falling back to polling", () => {
     w.stream.say({ version: 0 });
     w.doc.setVisibility("hidden");
     w.doc.setVisibility("visible");
+    // The stream opened on the way back works too.
+    w.stream.say({ version: 0 });
     await advance(POLL_HIDDEN_MS * 2);
+    // One request, made on coming back, and no polling after it.
+    expect(w.fetches).toBe(1);
+  });
+});
+
+describe("watchRoom when the page comes back", () => {
+  it("fetches the room at once, even with a stream that looked fine", async () => {
+    const w = setup();
+    w.stream.say({ version: 0 });
+    w.doc.setVisibility("hidden");
+    // A locked phone: the room moved on, and the stream never said so.
+    w.serverVersion = 3;
+
+    w.doc.setVisibility("visible");
+    await advance(0);
+    expect(w.rooms).toEqual([{ version: 3 }]);
+  });
+
+  it("replaces the stream with a fresh one", async () => {
+    const w = setup();
+    const old = w.stream;
+    old.say({ version: 0 });
+    w.doc.setVisibility("hidden");
+
+    w.doc.setVisibility("visible");
+    expect(old.closed).toBe(true);
+    expect(w.streams).toHaveLength(2);
+
+    // The new stream is the one being listened to.
+    w.serverVersion = 1;
+    w.stream.say({ version: 1 });
+    await advance(COALESCE_MS);
+    expect(w.rooms).toEqual([{ version: 1 }]);
+  });
+
+  it("does nothing when the page is hidden", async () => {
+    const w = setup();
+    w.stream.say({ version: 0 });
+    w.doc.setVisibility("hidden");
+    await advance(0);
     expect(w.fetches).toBe(0);
+    expect(w.streams).toHaveLength(1);
+    expect(w.stream.closed).toBe(false);
+  });
+
+  it("falls back to polling when the fresh stream is refused", async () => {
+    const w = setup();
+    w.stream.say({ version: 0 });
+    w.doc.setVisibility("hidden");
+    w.doc.setVisibility("visible");
+    await advance(0);
+    expect(w.fetches).toBe(1);
+
+    w.stream.refuse();
+    await advance(POLL_VISIBLE_MS);
+    expect(w.fetches).toBe(2);
+  });
+
+  it("opens a stream early when one was refused and waiting to be retried", async () => {
+    const w = setup();
+    w.stream.refuse();
+    expect(w.streams).toHaveLength(1);
+    w.doc.setVisibility("hidden");
+
+    w.doc.setVisibility("visible");
+    expect(w.streams).toHaveLength(2);
+    // The retry that was pending doesn't open a third.
+    w.stream.say({ version: 0 });
+    await advance(STREAM_RETRY_MS);
+    expect(w.streams).toHaveLength(2);
+  });
+
+  it("stays stopped after stop()", async () => {
+    const w = setup();
+    w.live.stop();
+    w.doc.setVisibility("hidden");
+    w.doc.setVisibility("visible");
+    await advance(POLL_HIDDEN_MS);
+    expect(w.fetches).toBe(0);
+    expect(w.streams).toHaveLength(1);
   });
 });
 

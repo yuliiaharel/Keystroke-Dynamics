@@ -11,6 +11,12 @@
  * holding it back), this polls the room instead: every 5 seconds
  * while the page is visible, every 30 while it's hidden. Polling
  * stops again as soon as the stream delivers something.
+ *
+ * A phone that's locked, or a browser sent to the background, can lose
+ * its stream without the page ever being told
+ * (docs/plans/active/MOBILE_PLAN.md Phase 2 section 4). So whenever
+ * the page becomes visible again, it fetches the room and opens a
+ * fresh stream, rather than trusting the old one.
  */
 
 /** Signals this close together become one room request. */
@@ -143,10 +149,13 @@ export function watchRoom<Room extends { version: number }>(options: LiveRoomOpt
   }
 
   function onVisibilityChange(): void {
-    if (pollTimer === null) return;
-    // Coming back to the tab shouldn't mean waiting out a 30-second timer.
-    if (doc.visibilityState === "visible") void refresh();
-    schedulePoll();
+    if (doc.visibilityState === "visible") {
+      // Coming back shouldn't mean waiting out a 30-second timer, or
+      // trusting a stream that may have died while nobody was looking.
+      void refresh();
+      reconnect();
+    }
+    if (pollTimer !== null) schedulePoll();
   }
 
   /* ---------- the stream ---------- */
@@ -213,6 +222,14 @@ export function watchRoom<Room extends { version: number }>(options: LiveRoomOpt
         startPolling();
       }
     };
+  }
+
+  /** Drops the stream, whatever state it's in, and opens a new one.
+   * The new one says the room's version as it opens, like any other. */
+  function reconnect(): void {
+    closeStream();
+    retryTimer = clear(retryTimer);
+    connect();
   }
 
   doc.addEventListener("visibilitychange", onVisibilityChange);
