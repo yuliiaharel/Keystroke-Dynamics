@@ -70,6 +70,32 @@ whole suite.
 member of the room. `room-screenshots.spec.ts` saves the room header, join
 step, and ended page to `screenshots/`, on a desktop and on a phone.
 
+### The touch game
+
+The `touch-*.spec.ts` files play the phone game
+(`docs/plans/active/MOBILE_PLAN.md` Phase 2) with emulated touches: Chromium's
+`Input.dispatchTouchEvent`, which the browser turns into the trusted
+`pointerType: "touch"` events the game listens for. `touch-helpers.ts` holds
+the shared tapping. They need nothing beyond the setup above.
+
+- `touch-party.spec.ts`: a full game on one phone.
+- `touch-rooms.spec.ts`: two phones in one room, each its own browser context.
+- `touch-watching.spec.ts`: a phone in a keyboard room, a computer in a touch
+  room, and a touchscreen laptop choosing between the two keyboards.
+- `touch-input.spec.ts`: overlapping fingers, a canceled touch, wrong keys, a
+  mouse, rotation, and a line interrupted by switching apps or losing the
+  connection.
+- `touch-privacy.spec.ts`: what a phone game sends, and no sideways scroll at
+  320, 390, and 430 px.
+- `touch-screenshots.spec.ts`: saves each main phone view to `screenshots/` at
+  390 px, in the light and the dark theme.
+
+This is emulation. It proves the page's own logic, not how a real phone's
+browser delivers touches, which is what Phase 3 of that plan checks by hand.
+The local server runs with `DEBUG=true`, where a mouse may stand in for a
+finger on the on-page keyboard; `touch-input.spec.ts` removes that mark to
+check that the deployed site refuses one.
+
 Then, in another terminal, from `frontend/`: `npm run e2e`. Override
 the target with `E2E_BASE_URL` if the app is running somewhere other
 than `http://127.0.0.1:8000`.
@@ -104,11 +130,25 @@ GoatCounter changes its script.
   fails. See `docs/plans/active/ROOMS_PLAN.md` Phase 2.
 - `src/room.ts` -- room links and codes: reading `/r/<code>`, showing a
   code as `ABCD-EFGH`, and naming why a join was refused.
+- `src/device.ts` -- whether this browser plays by tapping (a phone) or by
+  typing (a computer), which is what it reports when it creates or joins a
+  room.
+- `src/tap-line.ts` -- one line tapped on the on-page keyboard: which key is
+  expected, what each finger did, and the events sent for scoring. Pure, like
+  `capture.ts`: key codes, timing, and where on the key a finger landed, never
+  text.
+- `src/touch-keyboard.ts` -- the on-page keyboard's elements and pointer
+  events. Never a text input, so a phone's own keyboard stays closed.
+- `src/tap-map.ts` -- draws where a player's taps land, and names what stood
+  out in a tapped line. Display only: scores always come from the server.
 - `src/ui.ts` -- small DOM helpers shared by the account pages.
 - `src/pages/create-profile.ts`, `src/pages/authenticate.ts` -- the
   account system's two page-specific entry points.
 - `src/pages/party.ts` -- the party game's own entry point (ported from
   `design/typing-twin-party.html`; see `docs/plans/done/PARTY_LAUNCH_PLAN.md`).
+  Also the touch game, for a phone (ported from
+  `design/typing-twin-touch.html`; see `docs/plans/active/MOBILE_PLAN.md`
+  Phase 2).
 - `src/touch-capture.ts`, `src/pages/touch-capture.ts` -- the debug-only
   touch capture test page (`/debug/touch-capture`, `DEBUG=true` only; see
   `docs/touch-capture-testing.md`). `e2e/touch-capture.spec.ts` drives it

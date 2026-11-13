@@ -1,6 +1,6 @@
 # Typing Twin Party: Mobile Plan
 
-> **Status: Active.** Phase 0's capture test page is built on the `mobile` branch. Real-device results are still to come. Revised on 2026-11-12 for shareable rooms, which are now live.
+> **Status: Active.** Phases 0 to 2 are built on the `mobile` branch: the capture test page, backend touch scoring, and the touch game itself. Everything so far was checked with emulated touches only, so Phase 0's real-device results and Phase 3 are still to come. Revised on 2026-11-12 for shareable rooms, which are now live.
 
 Repository: `yuliiaharel/Keystroke-Dynamics`
 
