@@ -1,4 +1,4 @@
-import { devices, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import { LIVE_MS, card, enrollByApi, enrollByTyping, post, roomPathOf, typeLine } from "./room-helpers";
 
@@ -305,40 +305,5 @@ test("leaving a room returns to the start, and the room goes on without that bro
   await friend.close();
 });
 
-test("a phone can open a room link and watch, but is told to join from a computer to play", async ({
-  browser,
-  baseURL,
-}) => {
-  const host = await browser.newContext({ baseURL });
-  const room = await post(host.request, baseURL!, "/api/game/rooms", { level: "sentence" });
-  await enrollByApi(host, baseURL!, "Ada");
-
-  const phone = await browser.newContext({ ...devices["Pixel 7"], baseURL });
-  const page = await phone.newPage();
-  await page.goto(`/r/${room.code}`);
-
-  // Straight to the room: there's no name to give without typing.
-  await expect(card(page, "Ada")).toBeVisible();
-  await expect(page.locator(".notice")).toContainText("Join from a computer to play");
-
-  // The name step is replaced.
-  await page.click("#add-player");
-  await expect(page.locator("h2")).toHaveText("Join from a computer to play");
-  await expect(page.locator("#name-form")).toHaveCount(0);
-  await page.click("#to-room");
-
-  // So is the typing step of an attack -- but a replay still plays.
-  await card(page, "Ada").locator("[data-attack]").click();
-  await expect(page.locator("#typer")).toHaveCount(0);
-  await expect(page.locator(".typer")).toContainText("Join from a computer to play");
-  await page.click("#replay");
-  await expect(page.locator("#result")).toContainText("Replay wins", { timeout: 15000 });
-
-  // New players still appear live.
-  await page.click('[data-tab="room"]');
-  await enrollByApi(host, baseURL!, "Grace");
-  await expect(card(page, "Grace")).toBeVisible({ timeout: LIVE_MS });
-
-  await host.close();
-  await phone.close();
-});
+// A phone opening this kind of room's link, which it can watch but not
+// play in, is in touch-watching.spec.ts with the other watcher cases.

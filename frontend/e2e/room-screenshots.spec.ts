@@ -6,7 +6,9 @@ import { card, enrollByApi, post } from "./room-helpers";
  * Not a behavior test (rooms.spec.ts is): saves the room header, the
  * join step, and the ended page for review, on a desktop and on a
  * phone (docs/plans/active/ROOMS_PLAN.md Phase 3's "Done when").
- * A phone's join step is the "Join from a computer to play" page.
+ * These are keyboard rooms, so the phone is a watcher: its join step
+ * is the room itself, with "This room is for computers" on it.
+ * touch-screenshots.spec.ts has the phone's own rooms.
  */
 
 const SIZES: [string, BrowserContextOptions][] = [
@@ -29,15 +31,14 @@ for (const [size, options] of SIZES) {
     await page.goto(`/r/${room.code}`);
     if (size === "phone") {
       await expect(card(page, "Ada")).toBeVisible();
-      await page.click("#add-player");
-      await expect(page.locator("h2")).toHaveText("Join from a computer to play");
+      await expect(page.locator("#watching")).toContainText("This room is for computers.");
     } else {
       await expect(page.locator("#name-form")).toBeVisible();
     }
     await shot("join");
 
     // The room, as someone in it who has a player elsewhere on the page.
-    await page.click("#to-room");
+    if (size !== "phone") await page.click("#to-room");
     await expect(card(page, "Grace")).toBeVisible();
     if (size !== "phone") {
       await enrollByApi(visitor, baseURL!, "Bob");
