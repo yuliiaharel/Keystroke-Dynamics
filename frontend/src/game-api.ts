@@ -7,10 +7,32 @@
  */
 
 import type { CapturedEvent } from "./capture";
+import type { DeviceType } from "./device";
 
-export type Level = "sentence" | "long";
-export type Mode = "attack" | "self" | "disguise" | "replay";
+/** "touch" is the one level a touch room uses, and a keyboard room
+ * never does (game/levels.py). */
+export type Level = "sentence" | "long" | "touch";
+/** "disguise" belongs to keyboard rooms and "grip" to touch rooms. */
+export type Mode = "attack" | "self" | "disguise" | "grip" | "replay";
 export type TargetKind = "player" | "sample" | "target";
+
+/** One key or tap event. A touch room's down events also say where
+ * on the key the finger landed, in letter-key widths and heights from
+ * its center; a keyboard room's events never do. */
+export interface GameEvent extends CapturedEvent {
+  dx?: number;
+  dy?: number;
+}
+
+/** One key of a touch player's tap map: where their taps usually
+ * land, and how much that varies. x is null for the space bar. */
+export interface TapPointView {
+  code: string;
+  x: number | null;
+  x_spread: number | null;
+  y: number;
+  y_spread: number;
+}
 
 export interface NoteView {
   ch: string;
@@ -29,6 +51,8 @@ export interface PlayerView {
    * PartyView.member_id when it's one of this browser's own. Null for
    * sample bots and the permanent target. */
   owner_member_id: string | null;
+  /** Empty for every keyboard player. */
+  tap_map: TapPointView[];
 }
 
 export interface AttemptView {
@@ -49,6 +73,10 @@ export interface AttemptView {
   /** False when the typist's browser isn't the one the target was
    * enrolled on. Null where it doesn't apply: a bot target, a replay. */
   same_keyboard: boolean | null;
+  /** A touch attempt's timing-only and position-only distances. Null
+   * for every keyboard attempt, and for one that couldn't be scored. */
+  rhythm: number | null;
+  place: number | null;
 }
 
 /** A room, as this browser's member sees it. */
@@ -64,6 +92,11 @@ export interface PartyView {
   /** Goes up on every change anyone in the room could see -- how
    * live.ts tells "the room changed" from a number alone. */
   version: number;
+  /** What this room's players type on. */
+  device_type: DeviceType;
+  /** True when this browser joined as the other kind of device: it
+   * can read the room and run a replay, but not enroll or type. */
+  watching: boolean;
   level: Level;
   phrase: string;
   players: PlayerView[];
@@ -125,8 +158,22 @@ export function isRoomGone(error: unknown): boolean {
 
 /** Creates a room and joins it as host. A browser is in one room at a
  * time: the server takes it out of any room it was in. */
-export function createRoom(level: Level): Promise<PartyView> {
-  return request("POST", "/api/game/rooms", { level });
+export function createRoom(level: Level, device: DeviceReport): Promise<PartyView> {
+  return request("POST", "/api/game/rooms", { level, ...deviceFields(device) });
+}
+
+/** What this browser plays on, reported when it creates or joins a
+ * room. The width is sent only from a touch browser; the server keeps
+ * a size bucket and never the width. */
+export interface DeviceReport {
+  deviceType: DeviceType;
+  viewportWidth: number | null;
+}
+
+function deviceFields(device: DeviceReport): { device_type: DeviceType; viewport_width?: number } {
+  return device.deviceType === "touch" && device.viewportWidth !== null
+    ? { device_type: "touch", viewport_width: device.viewportWidth }
+    : { device_type: device.deviceType };
 }
 
 /** Joins by code -- any case, with or without the dash. Rejects with
@@ -134,9 +181,10 @@ export function createRoom(level: Level): Promise<PartyView> {
  * expired: the server answers all three alike), 423 for a locked
  * room, and 409 for a full one or, unless `leaveCurrent`, when this
  * browser is in another room. */
-export function joinRoom(code: string, leaveCurrent: boolean): Promise<PartyView> {
+export function joinRoom(code: string, leaveCurrent: boolean, device: DeviceReport): Promise<PartyView> {
   return request("POST", `/api/game/rooms/${encodeURIComponent(code)}/join`, {
     leave_current: leaveCurrent,
+    ...deviceFields(device),
   });
 }
 
@@ -169,7 +217,7 @@ export async function suggestName(): Promise<string> {
 
 export function createPlayer(
   name: string | null,
-  trainingLines: CapturedEvent[][],
+  trainingLines: GameEvent[][],
 ): Promise<PlayerView> {
   return request("POST", "/api/game/players", {
     name,
@@ -189,8 +237,8 @@ export function deletePlayer(id: string): Promise<void> {
 export function submitAttempt(params: {
   typistId: string | null;
   targetId: string;
-  mode: "attack" | "self" | "disguise";
-  events: CapturedEvent[];
+  mode: "attack" | "self" | "disguise" | "grip";
+  events: GameEvent[];
   clientAttemptId: string;
 }): Promise<AttemptResponse> {
   return request("POST", "/api/game/attempts", {
